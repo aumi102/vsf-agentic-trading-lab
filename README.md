@@ -30,17 +30,19 @@ The priority is not to build a full backend or frontend immediately. Instead, th
 
 ```text
 docs/
-  paper-notes/          Research notes from papers and daily reports
-  domain-knowledge/     Core concepts and technical background
+  conventions/          Documentation writing conventions
   architecture/         System architecture and pipeline design
-  ops/                  Documentation tooling notes
+  data_sources/         Reviewed data sources
+  domain_knowledge/     Core concepts and technical background
+  plans/                Project and implementation plans
+  references/           Glossary, papers, and supporting references
+  research_notes/       Research notes from papers and daily reports
+  archive/              Preserved old notes and pre-migration docs
 
 scripts/
   research/             Research helper scripts
   experiments/          Prototype experiment scripts
-
-references/
-  papers.md             List of reviewed papers and resources
+```
 
 ## Design Principles
 

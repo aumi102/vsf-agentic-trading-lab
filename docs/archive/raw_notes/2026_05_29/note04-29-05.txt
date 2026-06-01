@@ -1,0 +1,49 @@
+notes:
+phân tích xu hướng và đường trung bình cộng(moving average)
+các loại đường trung bình:
+- simple(SMA): trung bình đơn giản của các kỳ trước đó
+- exponential(EMA): phản ứng nhanh hơn với các thay đổi giá vì đặt trọng số nhiều hơn vào dữ liệu gần nhất
+- wilder: do welles wilder phát triển, có độ trễ lớn hơn các loại khác
+- centered: được dịch chuyển về giữa chu kỳ, thường dùng để xác định các chu kỳ thị trường nhưng không thực tế cho các tín hiệu giao cắt(crossover)?
+
+cách sử dụng: 
+- xác định xu hướng : giá trên MA là xu hướng tăng và ngược lại
+- hỗ trợ và kháng cự: MA đóng vai trò là rào cản động hoặc mức dừng lỗ kéo theo?(trailing stop)
+- tín hiệu giao dịch: khi giá cắt MA hoặc hai đường MA có độ dài khác nhau cắt nhau(như golden cross?)?. Tín hiệu này hiệu quả trong thị trường có xu hướng mạnh nhưng có thể gây thua lỗ trong thị trường đi ngang?
+
+các hệ thống dải(Bands/Channels): Sử dụng các dải như Bollinger bands, keltner channels? hay STARC bands? để xác định biến động và điểm bắt đầu của xu hướng. **Khi giá phá vỡ dải ngoài**, đó thường là tín hiệu gia nhập thị trường theo hướng phá vỡ.
+
+phân tích khối lượng và cung-cầu
+khối lượng phản ánh cường độ của niềm tin đằng sau một bước di chuyển giá
+nguyên tắc cơ bản:
+- xu hướng tang bền vững: cần đi kèm với khối lượng tang(Demand volume)
+- cảnh báo đảo chiều: Khối lượng thấp trong một đợt phá vỡ xu hướng làm giảm độ tin cậy của đợt di chuyển đó
+- cung và cầu: Khi cầu vượt cung, giá tang. Xu hướng tang với khối lượng giảm cho thấy "cầu yếu", báo hiệu sự kiệt sức
+
+các chỉ báo khối lượng quan trọng:
+- on-balance volume(obv) & accumulation/Distribution: Dùng để xác định xem dòng tiền đang tích lũy hay phân phối bằ ng cách cộng/trừ khối lượng dựa trên biến độ ng giá
+- force index(elder): kết hợp thay đổi giá và khối lượng để đo lường sức mạnh của phe mua hoặc phe bán
+- vwap(giá trung bình trọng số khối lượng): là mức giá mà các quỹ lớn thường dùng để giao dịch nhằm tránh gây biến động mạnh cho thị trường
+
+độ rộng thị trường:
+- sự xác nhận: nếu một chỉ số(như S&P 500) t ăng nhưng đa số cổ phiếu thành phần lại giảm, đó là dấu hiệu t ăng trưởng không bền vững
+- hệ thống advance-decline(CHADTP): sử dụng các mức cực đoan(ví dụ: +/- 400) để xác định trạng thái quá mua(overbought) hoặc quá bán(oversold) cho các hợp đồng tương lai chỉ số
+- tín hiệu ngược xu hướng: số lượng cổ phiếu giảm tăng liên tục trong 3 ngày thường là dấu hiệu của một đợt hồi phục sắp tới(mean-reversion)
+
+mô hình ngắn hạn và khoảng trống giá(gaps)
+các mô hình này giúp xác định các điểm xoay chiều hoặc tiếp diễn xu hướng trong ngắn hạn
+các loại gaps:
+- breakaway gap: xuất hiện khi giá thoát ra khỏi vùng tích lũy, đánh dấu sự bắt đầu của một xu hướng mới
+- runaway (measuring) gap: xuất hiện ở giữa xu hướng, dung để dự báo mục tiêu giá
+- exhaustion gap: xuất hiện ở cuối xu hướng, báo hiệu sự kiệt sức và sắp đảo chiều
+mô hình đảo chiều thanh bar(bar patterns):
+- one bar/two bar reversal: giá tạo đỉnh/đáy mới nhưng đóng cửa ngược lại hướng cũ
+- inside bar: cho thấy sự tạm dừng của xu hướng; outside bar: cho thấy sự biến động mạnh và thường dẫn đến sự tiếp diễn theo hướng đóng cửa
+- dead cat bounce: một đợt hồi phục ngắn sau cú giảm giá mạnh, thường là cái bẫy trước khi giá tạo đáy thấp hơn nữa
+
+động lượng(momentum) và chu kỳ(cycles)
+- momentum: đo lường vận tốc và gia tốc của giá. công thức đơn giản là hiệu số giữa giá hiện tại và giá của n ngày trước
+- tối ưu hóa độ dài: tài liệu gợi ý xác định độ dài chu kỳ thống trị(dominant cycle) bằng cách đo khoảng cách giữa các đỉnh hoặc đáy. Độ dài momentum tối ưu thường bằng 1/2 hoặc 1/4 độ dài chu kỳ đó
+
+===> Dùng đường trung bình để định hướng, dùng khối lượng và độ rộng để xác nhận sức mạnh của hướng đi đó, và dùng các mô hình ngắn hạn/gaps để tìm điểm vào lệnh cụ thể.
+===> các chỉ báo động lượng cho biết khi nào xu hướng đang tăng tốc hoặc bắt đầu chậm lại để thoát vị thế kịp thời.
