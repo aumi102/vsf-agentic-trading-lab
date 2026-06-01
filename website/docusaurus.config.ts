@@ -5,8 +5,8 @@ import type * as Preset from '@docusaurus/preset-classic';
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
 const config: Config = {
-  title: 'My Site',
-  tagline: 'Dinosaurs are cool',
+  title: 'Autonomous Trading Agent Lab',
+  tagline: 'Research notes, architecture docs, and implementation plans for an autonomous trading agent',
   favicon: 'img/favicon.ico',
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
@@ -40,7 +40,10 @@ const config: Config = {
       'classic',
       {
         docs: {
+          path: '../docs',
+          routeBasePath: 'docs',
           sidebarPath: './sidebars.ts',
+          exclude: ['archive/**'],
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl:
@@ -75,9 +78,9 @@ const config: Config = {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: 'My Site',
+      title: 'Autonomous Trading Agent Lab',
       logo: {
-        alt: 'My Site Logo',
+        alt: 'Autonomous Trading Agent Lab Logo',
         src: 'img/logo.svg',
       },
       items: [
@@ -85,7 +88,7 @@ const config: Config = {
           type: 'docSidebar',
           sidebarId: 'tutorialSidebar',
           position: 'left',
-          label: 'Tutorial',
+          label: 'Docs',
         },
         {to: '/blog', label: 'Blog', position: 'left'},
         {
@@ -102,8 +105,8 @@ const config: Config = {
           title: 'Docs',
           items: [
             {
-              label: 'Tutorial',
-              to: '/docs/intro',
+              label: 'Architecture',
+              to: '/docs/architecture/deepagents_concepts',
             },
           ],
         },
@@ -138,7 +141,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} My Project, Inc. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} Autonomous Trading Agent Lab. Built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.github,

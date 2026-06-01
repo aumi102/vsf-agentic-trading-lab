@@ -30,37 +30,30 @@ toc_max_heading_level: 3
 
 - **Skeleton:**
 
-  ```text
+```text
+---
+title: <filename without .md>          # title MUST equal the filename
+toc_min_heading_level: 2
+toc_max_heading_level: 3
+---
 
-  ---
+## <Top-level part>
 
-  title: <filename without .md>          # title MUST equal the filename
+### <Section>
 
-  toc_min_heading_level: 2
+<details open>
+<summary>one plain-text line describing the section</summary>
 
-  toc_max_heading_level: 3
+---
 
-  ---
+#### <Subsection>
 
-  ## <Top-level part>
+- bullets, one idea each (no paragraphs)
 
-  ### <Section>
+---
 
-  <details open>
-
-  <summary>one plain-text line describing the section</summary>
-
-  ---
-
-  #### <Subsection>
-
-  - bullets, one idea each (no paragraphs)
-
-  ---
-
-  </details>
-
-  ```
+</details>
+```
 
   - each `###` gets exactly one `<details open>`; the `<summary>` is a descriptive plain-text line (never "Details").
 
@@ -112,7 +105,7 @@ toc_max_heading_level: 3
 
 - **Don't:** leave `%` / `$` / `<` unbacked; build a wide table that scrolls; write `<br>` instead of `<br/>`.
 
-- **Example:** ❌ "loss <40% on $800K" -> ✅ "loss `<40%` on `$800K`".
+- **Example:** ❌ "`loss <40% on $800K`" -> ✅ "loss `<40%` on `$800K`".
 
 ---
 
