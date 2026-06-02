@@ -34,7 +34,9 @@ class FredAdapter(SourceAdapter):
             end=end,
             run_id=run_id,
             likely_canonical_tables=["macro_series", "macro_observations", "macro_features"],
-            request_params={"series_id": "DGS10", "observation_start": start, "observation_end": end, "api_key": api_key},
+            request_params={"series_id": "DGS10", "observation_start": start, "observation_end": end, "auth_env": "FRED_API_KEY", "auth_in": "query", "auth_param": "api_key"},
             auth_status="api_key_configured",
+            auth_in="query",
+            auth_param="api_key",
             terms_notes="FRED macro context only; preserve release/observation timing for point-in-time joins.",
         )

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from enum import Enum
 import os
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -62,6 +63,8 @@ class SourceProbeResult:
     config_file: str = ""
     target_skipped_reason: str = ""
     auth_env_missing: str = ""
+    auth_in: str = ""
+    auth_param: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -140,6 +143,8 @@ class SourceAdapter:
             )
 
         auth_env = str(getattr(target, "auth_env", "") or "").strip()
+        auth_in = str(getattr(target, "auth_in", "") or "header").strip() or "header"
+        auth_param = str(getattr(target, "auth_param", "") or "").strip()
         headers = dict(getattr(target, "headers", {}) or {})
         if auth_env:
             token = os.getenv(auth_env, "").strip()
@@ -155,14 +160,31 @@ class SourceAdapter:
                     next_action=f"Set {auth_env} in the environment before probing this target.",
                     auth_env_missing=auth_env,
                 )
-            auth_header = str(getattr(target, "auth_header", "") or "Authorization")
-            auth_prefix = str(getattr(target, "auth_prefix", "") or "")
-            headers[auth_header] = f"{auth_prefix}{token}"
+            if auth_in == "query":
+                if not auth_param:
+                    return self._configured_target_not_run(
+                        target=target,
+                        symbols=symbols,
+                        start=start,
+                        end=end,
+                        access_status=AccessStatus.NOT_CONFIGURED,
+                        auth_status="missing_auth_param",
+                        reason="auth_param_missing",
+                        next_action="Set auth_param for query-param authentication.",
+                    )
+                url = _append_query_param(url, auth_param, token)
+            else:
+                auth_header = str(getattr(target, "auth_header", "") or "Authorization")
+                auth_prefix = str(getattr(target, "auth_prefix", "") or "")
+                headers[auth_header] = f"{auth_prefix}{token}"
 
         request_params = dict(getattr(target, "request_params", {}) or {})
         request_params.update({"target_name": target_name, "config_file": config_file})
         if auth_env:
             request_params["auth_env"] = auth_env
+            request_params["auth_in"] = auth_in
+            if auth_param:
+                request_params["auth_param"] = auth_param
 
         return self._probe_url(
             url=url,
@@ -178,6 +200,8 @@ class SourceAdapter:
             terms_notes=terms_notes,
             target_name=target_name,
             config_file=config_file,
+            auth_in=auth_in if auth_env else "",
+            auth_param=auth_param if auth_env else "",
         )
 
     def _configured_target_not_run(
@@ -211,6 +235,8 @@ class SourceAdapter:
             config_file=str(getattr(target, "config_file", "") or ""),
             target_skipped_reason=reason,
             auth_env_missing=auth_env_missing,
+            auth_in=str(getattr(target, "auth_in", "") or ""),
+            auth_param=str(getattr(target, "auth_param", "") or ""),
         )
 
     def _not_configured_result(
@@ -284,6 +310,8 @@ class SourceAdapter:
         terms_notes: str = "",
         target_name: str = "",
         config_file: str = "",
+        auth_in: str = "",
+        auth_param: str = "",
     ) -> SourceProbeResult:
         request = Request(url, headers=headers or {"User-Agent": "vsf-source-probe/0.1"})
         try:
@@ -309,6 +337,8 @@ class SourceAdapter:
                 next_action="Verify credentials, access rights, and provider terms.",
                 target_name=target_name,
                 config_file=config_file,
+                auth_in=auth_in,
+                auth_param=auth_param,
             )
         except (TimeoutError, URLError, OSError) as exc:
             return SourceProbeResult(
@@ -326,6 +356,8 @@ class SourceAdapter:
                 next_action="Retry manually and verify the endpoint/configuration.",
                 target_name=target_name,
                 config_file=config_file,
+                auth_in=auth_in,
+                auth_param=auth_param,
             )
 
         raw_paths: list[str] = []
@@ -337,7 +369,7 @@ class SourceAdapter:
                 source_name=self.source_name,
                 adapter_name=self.adapter_name,
                 dataset=dataset,
-                endpoint_or_surface=url,
+                endpoint_or_surface=_redact_url_query_param(url, auth_param) if auth_param else url,
                 payload=payload,
                 request_params=request_params or {"url": url},
                 symbol=",".join(symbols),
@@ -361,7 +393,7 @@ class SourceAdapter:
             adapter_name=self.adapter_name,
             access_status=AccessStatus.VERIFIED,
             auth_status=auth_status,
-            endpoint_or_surface=url,
+            endpoint_or_surface=_redact_url_query_param(url, auth_param) if auth_param else url,
             datasets=[dataset],
             sample_symbols=symbols,
             sample_start=start,
@@ -378,4 +410,25 @@ class SourceAdapter:
             next_action="Inspect raw sample fields before promoting this source to ingestion.",
             target_name=target_name,
             config_file=config_file,
+            auth_in=auth_in,
+            auth_param=auth_param,
         )
+
+
+def _append_query_param(url: str, key: str, value: str) -> str:
+    parts = urlsplit(url)
+    query_items = parse_qsl(parts.query, keep_blank_values=True)
+    query_items = [(existing_key, existing_value) for existing_key, existing_value in query_items if existing_key != key]
+    query_items.append((key, value))
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query_items), parts.fragment))
+
+
+def _redact_url_query_param(url: str, key: str) -> str:
+    parts = urlsplit(url)
+    query_items = []
+    for existing_key, existing_value in parse_qsl(parts.query, keep_blank_values=True):
+        if existing_key == key:
+            query_items.append((existing_key, "<redacted>"))
+        else:
+            query_items.append((existing_key, existing_value))
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query_items), parts.fragment))

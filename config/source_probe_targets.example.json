@@ -64,6 +64,9 @@
       "dataset": "fred_observations",
       "url": "https://api.stlouisfed.org/fred/series/observations?series_id=DGS10&file_type=json&limit=5",
       "method": "GET",
+      "auth_env": "FRED_API_KEY",
+      "auth_in": "query",
+      "auth_param": "api_key",
       "likely_canonical_tables": [
         "macro_series",
         "macro_observations",

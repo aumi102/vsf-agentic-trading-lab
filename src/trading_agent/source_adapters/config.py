@@ -21,6 +21,8 @@ class ProbeTarget:
     auth_env: str = ""
     auth_header: str = "Authorization"
     auth_prefix: str = ""
+    auth_in: str = "header"
+    auth_param: str = ""
     config_file: str = ""
 
     def auth_token_from_env(self) -> str | None:
@@ -65,6 +67,10 @@ def _target_from_dict(path: Path, source_name: str, index: int, entry: Any) -> P
     auth_env = _string_field(entry, "auth_env", default="")
     auth_header = _string_field(entry, "auth_header", default="Authorization")
     auth_prefix = _string_field(entry, "auth_prefix", default="")
+    auth_in = _string_field(entry, "auth_in", default="header") or "header"
+    if auth_in not in {"header", "query"}:
+        raise ValueError(f"Invalid source probe target field `auth_in`: expected `header` or `query`.")
+    auth_param = _string_field(entry, "auth_param", default="")
     return ProbeTarget(
         source_name=source_name,
         name=name,
@@ -78,6 +84,8 @@ def _target_from_dict(path: Path, source_name: str, index: int, entry: Any) -> P
         auth_env=auth_env,
         auth_header=auth_header,
         auth_prefix=auth_prefix,
+        auth_in=auth_in,
+        auth_param=auth_param,
         config_file=str(path),
     )
 
