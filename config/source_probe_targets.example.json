@@ -44,10 +44,16 @@
   ],
   "vbma": [
     {
-      "name": "vbma_bonds_rates_candidate",
-      "dataset": "vbma_bonds_rates_probe",
-      "url": "https://example.com/replace-with-vbma-url",
+      "name": "vbma_primary_market_auction_csv",
+      "dataset": "vbma_primary_market_auction_results",
+      "url": "https://vbma.org.vn/csv/markets/tables/vi/ket_qua_dau_thau_theo_dot.csv",
       "method": "GET",
+      "verify_ssl": false,
+      "headers": {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://vbma.org.vn/vi/market-data/primary-market",
+        "Accept": "text/csv,*/*"
+      },
       "likely_canonical_tables": [
         "bond_auctions",
         "bond_instruments",

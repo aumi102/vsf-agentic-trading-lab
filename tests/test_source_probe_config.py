@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import ssl
 import sys
 from pathlib import Path
 
@@ -28,6 +29,9 @@ def test_example_config_loads() -> None:
     assert targets["fred"][0].auth_env == "FRED_API_KEY"
     assert targets["fred"][0].auth_in == "query"
     assert targets["fred"][0].auth_param == "api_key"
+    assert targets["hose"][0].verify_ssl is True
+    assert targets["vbma"][0].verify_ssl is False
+    assert targets["vbma"][0].headers["User-Agent"] == "Mozilla/5.0"
 
 
 def test_placeholder_url_is_skipped_without_network() -> None:
@@ -92,7 +96,7 @@ def test_query_auth_appends_token_internally_and_redacts_metadata(monkeypatch, t
 
     requested_urls: list[str] = []
 
-    def fake_urlopen(request, timeout):
+    def fake_urlopen(request, timeout, context=None):
         requested_urls.append(request.full_url)
         return FakeResponse()
 
@@ -114,8 +118,59 @@ def test_query_auth_appends_token_internally_and_redacts_metadata(monkeypatch, t
     assert result.auth_in == "query"
     assert result.auth_param == "api_key"
     assert "api_key=super-secret-fred-key" in requested_urls[0]
+    assert "super-secret-fred-key" not in result.endpoint_or_surface
     metadata = json.loads(Path(result.metadata_paths[0]).read_text(encoding="utf-8"))
     metadata_text = json.dumps(metadata)
     assert "super-secret-fred-key" not in metadata_text
     assert metadata["request_params"]["auth_env"] == "FRED_API_KEY"
     assert metadata["request_params"]["auth_param"] == "api_key"
+
+
+def test_vbma_configured_target_passes_verify_false_and_headers(monkeypatch, tmp_path: Path) -> None:
+    class FakeHeaders:
+        def get(self, key: str, default: str = "") -> str:
+            return "text/csv" if key == "content-type" else default
+
+    class FakeResponse:
+        status = 200
+        headers = FakeHeaders()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self) -> bytes:
+            return "auction_date,issuer,winning_yield\n2024-01-01,MOF,2.5\n".encode("utf-8")
+
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(request, timeout, context=None):
+        captured["url"] = request.full_url
+        captured["context"] = context
+        captured["user_agent"] = request.get_header("User-agent")
+        captured["referer"] = request.get_header("Referer")
+        captured["accept"] = request.get_header("Accept")
+        return FakeResponse()
+
+    monkeypatch.setattr("trading_agent.source_adapters.base.urlopen", fake_urlopen)
+    targets = load_probe_targets(ROOT / "config" / "source_probe_targets.example.json")
+
+    from trading_agent.source_adapters.vbma_adapter import VbmaAdapter
+
+    result = VbmaAdapter(raw_store=RawProbeStore(tmp_path)).probe_configured_targets(
+        targets["vbma"], ["FPT"], "2024-01-01", "2024-01-02", "run1"
+    )[0]
+
+    assert result.access_status == AccessStatus.VERIFIED
+    assert result.verify_ssl is False
+    assert isinstance(captured["context"], ssl.SSLContext)
+    assert captured["context"].verify_mode == ssl.CERT_NONE
+    assert captured["user_agent"] == "Mozilla/5.0"
+    assert captured["referer"] == "https://vbma.org.vn/vi/market-data/primary-market"
+    assert captured["accept"] == "text/csv,*/*"
+
+    metadata = json.loads(Path(result.metadata_paths[0]).read_text(encoding="utf-8"))
+    assert metadata["request_params"]["verify_ssl"] is False
+    assert metadata["request_params"]["header_names"] == ["Accept", "Referer", "User-Agent"]

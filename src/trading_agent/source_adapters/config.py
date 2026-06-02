@@ -23,6 +23,7 @@ class ProbeTarget:
     auth_prefix: str = ""
     auth_in: str = "header"
     auth_param: str = ""
+    verify_ssl: bool = True
     config_file: str = ""
 
     def auth_token_from_env(self) -> str | None:
@@ -71,6 +72,7 @@ def _target_from_dict(path: Path, source_name: str, index: int, entry: Any) -> P
     if auth_in not in {"header", "query"}:
         raise ValueError(f"Invalid source probe target field `auth_in`: expected `header` or `query`.")
     auth_param = _string_field(entry, "auth_param", default="")
+    verify_ssl = _bool_field(entry, "verify_ssl", default=True)
     return ProbeTarget(
         source_name=source_name,
         name=name,
@@ -86,6 +88,7 @@ def _target_from_dict(path: Path, source_name: str, index: int, entry: Any) -> P
         auth_prefix=auth_prefix,
         auth_in=auth_in,
         auth_param=auth_param,
+        verify_ssl=verify_ssl,
         config_file=str(path),
     )
 
@@ -105,6 +108,13 @@ def _dict_field(entry: dict[str, Any], key: str) -> dict[str, Any]:
         return {}
     if not isinstance(value, dict):
         raise ValueError(f"Invalid source probe target field `{key}`: expected object.")
+    return value
+
+
+def _bool_field(entry: dict[str, Any], key: str, default: bool) -> bool:
+    value = entry.get(key, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"Invalid source probe target field `{key}`: expected boolean.")
     return value
 
 

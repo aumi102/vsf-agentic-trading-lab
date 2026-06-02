@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 import os
+import ssl
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.error import HTTPError, URLError
@@ -65,6 +66,7 @@ class SourceProbeResult:
     auth_env_missing: str = ""
     auth_in: str = ""
     auth_param: str = ""
+    verify_ssl: bool = True
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -145,7 +147,9 @@ class SourceAdapter:
         auth_env = str(getattr(target, "auth_env", "") or "").strip()
         auth_in = str(getattr(target, "auth_in", "") or "header").strip() or "header"
         auth_param = str(getattr(target, "auth_param", "") or "").strip()
-        headers = dict(getattr(target, "headers", {}) or {})
+        verify_ssl = bool(getattr(target, "verify_ssl", True))
+        headers = {"User-Agent": "vsf-source-probe/0.1"}
+        headers.update({str(key): str(value) for key, value in dict(getattr(target, "headers", {}) or {}).items()})
         if auth_env:
             token = os.getenv(auth_env, "").strip()
             if not token:
@@ -180,6 +184,8 @@ class SourceAdapter:
 
         request_params = dict(getattr(target, "request_params", {}) or {})
         request_params.update({"target_name": target_name, "config_file": config_file})
+        request_params["verify_ssl"] = verify_ssl
+        request_params["header_names"] = sorted(headers.keys())
         if auth_env:
             request_params["auth_env"] = auth_env
             request_params["auth_in"] = auth_in
@@ -196,6 +202,7 @@ class SourceAdapter:
             likely_canonical_tables=likely_tables,
             request_params=request_params,
             headers=headers or None,
+            verify_ssl=verify_ssl,
             auth_status="configured_target",
             terms_notes=terms_notes,
             target_name=target_name,
@@ -237,6 +244,7 @@ class SourceAdapter:
             auth_env_missing=auth_env_missing,
             auth_in=str(getattr(target, "auth_in", "") or ""),
             auth_param=str(getattr(target, "auth_param", "") or ""),
+            verify_ssl=bool(getattr(target, "verify_ssl", True)),
         )
 
     def _not_configured_result(
@@ -306,6 +314,7 @@ class SourceAdapter:
         likely_canonical_tables: list[str],
         request_params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
+        verify_ssl: bool = True,
         auth_status: str = "configured",
         terms_notes: str = "",
         target_name: str = "",
@@ -314,8 +323,9 @@ class SourceAdapter:
         auth_param: str = "",
     ) -> SourceProbeResult:
         request = Request(url, headers=headers or {"User-Agent": "vsf-source-probe/0.1"})
+        ssl_context = None if verify_ssl else ssl._create_unverified_context()
         try:
-            with urlopen(request, timeout=10) as response:
+            with urlopen(request, timeout=10, context=ssl_context) as response:
                 payload = response.read()
                 http_status = getattr(response, "status", None)
                 content_type = response.headers.get("content-type", "")
@@ -326,7 +336,7 @@ class SourceAdapter:
                 adapter_name=self.adapter_name,
                 access_status=status,
                 auth_status="auth_or_access_failed",
-                endpoint_or_surface=url,
+                endpoint_or_surface=_redact_url_query_param(url, auth_param) if auth_param else url,
                 datasets=[dataset],
                 sample_symbols=symbols,
                 sample_start=start,
@@ -339,6 +349,7 @@ class SourceAdapter:
                 config_file=config_file,
                 auth_in=auth_in,
                 auth_param=auth_param,
+                verify_ssl=verify_ssl,
             )
         except (TimeoutError, URLError, OSError) as exc:
             return SourceProbeResult(
@@ -346,7 +357,7 @@ class SourceAdapter:
                 adapter_name=self.adapter_name,
                 access_status=AccessStatus.ERROR,
                 auth_status=auth_status,
-                endpoint_or_surface=url,
+                endpoint_or_surface=_redact_url_query_param(url, auth_param) if auth_param else url,
                 datasets=[dataset],
                 sample_symbols=symbols,
                 sample_start=start,
@@ -358,6 +369,7 @@ class SourceAdapter:
                 config_file=config_file,
                 auth_in=auth_in,
                 auth_param=auth_param,
+                verify_ssl=verify_ssl,
             )
 
         raw_paths: list[str] = []
@@ -412,6 +424,7 @@ class SourceAdapter:
             config_file=config_file,
             auth_in=auth_in,
             auth_param=auth_param,
+            verify_ssl=verify_ssl,
         )
 
 
