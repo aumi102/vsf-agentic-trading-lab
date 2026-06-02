@@ -16,6 +16,8 @@ env/
 
 # Raw/private/non-public materials
 data/
+reports/
+.pytest-tmp/
 *.pdf
 *.docx
 *.xlsx
@@ -31,3 +33,5 @@ Thumbs.db
 node_modules/
 .docusaurus/
 build/
+
+**/__init__.py
