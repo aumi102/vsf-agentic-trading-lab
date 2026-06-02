@@ -35,3 +35,4 @@ node_modules/
 build/
 
 **/__init__.py
+!src/trading_agent/source_adapters/__init__.py
