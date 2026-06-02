@@ -17,9 +17,9 @@ class FredAdapter(SourceAdapter):
                 end=end,
                 endpoint_or_surface="FRED_API_KEY not configured",
                 datasets=["macro_series", "macro_observations"],
-                likely_canonical_tables=["macro_series", "macro_observations"],
+                likely_canonical_tables=["macro_series", "macro_observations", "macro_features"],
                 terms_notes="FRED is global macro context and does not block equity OHLCV.",
-                next_action="Configure FRED_API_KEY later when macro context is needed.",
+                next_action="Configure FRED_API_KEY to probe tiny observations for DGS10, DGS2, T10Y2Y, FEDFUNDS, CPIAUCSL, or UNRATE.",
                 auth_status="missing_api_key",
             )
         url = (
@@ -33,7 +33,7 @@ class FredAdapter(SourceAdapter):
             start=start,
             end=end,
             run_id=run_id,
-            likely_canonical_tables=["macro_series", "macro_observations"],
+            likely_canonical_tables=["macro_series", "macro_observations", "macro_features"],
             request_params={"series_id": "DGS10", "observation_start": start, "observation_end": end, "api_key": api_key},
             auth_status="api_key_configured",
             terms_notes="FRED macro context only; preserve release/observation timing for point-in-time joins.",

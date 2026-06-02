@@ -12,7 +12,7 @@ This is the single source of truth for implementation and coding agents working 
 
 Use this document to implement source/vendor/provider ingestion, raw evidence capture, canonical schemas, data quality checks, feature generation, signal generation, backtesting, validation gates, trace storage, and answer composition. Do not treat this as a research summary. Domain notes and paper notes remain supporting material, not coding instructions.
 
-The project direction is now source-first. `vnstock` is prototype/fallback/reference only and must not be treated as the canonical MVP data source.
+The project direction is source-first and focused only on the mentor-named sources: HSX/HOSE, Vietcap IQ, VBMA, and FRED/fredapi.
 
 ## 2. Consolidated Sources
 
@@ -54,16 +54,11 @@ In scope:
 - Validation gates for data quality, cost, drawdown, benchmark, sample size, leakage, and source limitations.
 - Trace records for tool inputs, outputs, warnings, failures, source IDs, and final decisions.
 
-Prototype/fallback only:
-
-- `vnstock` can be used to compare fields, test normalizers, and keep a fallback demo path.
-- `vnstock` must not be the canonical source for MVP market data after mentor feedback.
-
 Optional later:
 
 - FRED macro series.
 - VBMA bond/rates context.
-- Vietcap reports and research evidence.
+- Vietcap IQ reports and research evidence.
 - Company news.
 - Macro/evidence retrieval.
 - Vector search over reports/news.
@@ -87,11 +82,10 @@ Out of scope:
 
 #### Rationale
 
-- Source/vendor/provider data exposes the real fields, timestamps, adjustment flags, identifiers, and access constraints that shape schema and DB design.
+- Source data exposes the real fields, timestamps, adjustment flags, identifiers, and access constraints that shape schema and DB design.
 - Wrapper libraries hide field provenance and may rename, drop, join, or transform values before the project can audit them.
 - The trading agent must be able to explain where a price, event, report, or macro value came from.
-- Provider-level adapters make data quality, legal/access constraints, point-in-time rules, and failure handling explicit.
-- `vnstock` is useful as a prototype reference, but relying on it as canonical would skip the intended data infrastructure work.
+- Source-specific adapters make data quality, legal/access constraints, point-in-time rules, and failure handling explicit.
 
 ---
 
@@ -132,7 +126,7 @@ source -> raw capture -> bronze parser -> silver canonical table -> gold feature
 
 | Layer | Coding meaning | Required output |
 |---|---|---|
-| `source` | verified official/vendor/provider surface, including public pages, APIs, downloads, or paid feeds. | source probe result and access notes. |
+| `source` | verified HSX/HOSE, Vietcap IQ, VBMA, or FRED/fredapi surface, including public pages, APIs, downloads, or permitted exports. | source probe result and access notes. |
 | `raw` | exact response, export, page payload, or serialized object before interpretation. | raw file path, crawl metadata, source ID, content hash. |
 | `bronze` | minimally parsed source-shaped rows; preserve original names where useful. | parse status, parser version, schema version, raw path. |
 | `silver` | canonical normalized tables with stable IDs, types, units, and quality status. | Parquet tables such as `securities`, `daily_prices`, `corporate_events`. |
@@ -192,23 +186,20 @@ source -> raw capture -> bronze parser -> silver canonical table -> gold feature
 - **failure modes:** undefined strategy rule, missing feature, ambiguous signal conflict.
 - **must not do:** create discretionary LLM signals or change strategy rules after seeing backtest results.
 
-## 7. Source And Provider Priority
+## 7. Focused Source Priority
 
-| Priority | Source/provider | Role | Blocking for MVP? |
+| Priority | Source | Role | Blocking for MVP? |
 |---|---|---|---|
-| P0 | HSX/HOSE official data surfaces | official exchange reference for symbol, market, and trading data where accessible. | yes, if accessible fields cover daily OHLCV. |
-| P0/P1 | SSI FastConnect Data | candidate vendor API for securities, daily OHLC, intraday OHLC, daily index, daily stock price, and streaming. | yes only after access/auth is verified. |
-| P1 | FiinGroup Datafeed | candidate vendor feed for EOD price, adjusted price, foreign trading, and market-depth-style fields. | yes only after access/auth is verified. |
-| P2 | Vietcap IQ / Vietcap Research | reports, research, company context, and evidence retrieval; not primary OHLCV. | no for first market-data MVP. |
-| P2 | VBMA | Vietnam bond/rates context. | no for first market-data MVP. |
-| P2/P3 | FRED API | global macro context and release-timestamp caution. | no for first market-data MVP. |
-| prototype | `vnstock` | fallback/reference adapter for existing prototype and field comparison. | no. |
+| P0 | HSX/HOSE official data surfaces | canonical stock-market target for universe stocks, OHLCV, order book/price board, corporate actions, indexes, and trading calendar. | yes, once verified. |
+| P1/P2 | Vietcap IQ | company profiles, financial statements, ratios, reports, documents, and evidence. | no for primary OHLCV. |
+| P2 | VBMA | Vietnam bonds, auctions, issuance, yields, rates, and local macro context. | no for primary stock OHLCV. |
+| P2/P3 | FRED/fredapi | global macro series, observations, rates, yields, inflation, unemployment, and regime context. | no for primary stock OHLCV. |
 
-See `docs/source_provider_matrix.md` for the current provider matrix. Do not claim a provider is production-usable until access, terms, response fields, and sample raw capture are verified.
+Do not add other sources to active scope unless the mentor explicitly asks for them. Do not claim a source is production-usable until access, terms, response fields, and sample raw capture are verified.
 
 ## 8. Canonical Data Contracts
 
-Canonical tables are source-agnostic. A source-specific adapter may produce these rows from HSX/HOSE, SSI, FiinGroup, or another verified source. `vnstock` can produce the same tables only as prototype/fallback output.
+Canonical tables are source-agnostic. For the current roadmap, active source-specific adapters are limited to HSX/HOSE, Vietcap IQ, VBMA, and FRED/fredapi.
 
 ### 8.1 `securities`
 
@@ -358,7 +349,7 @@ Required outputs:
 
 Prototype behavior:
 
-- Probe HSX/HOSE, SSI FastConnect candidate endpoints if credentials/config exist, FiinGroup if credentials/config exist, Vietcap public/research surfaces if available, VBMA/FRED as non-blocking context, and `vnstock` as fallback/reference only.
+- Probe HSX/HOSE, Vietcap IQ, VBMA, and FRED/fredapi configured targets only.
 - Record access status as `verified`, `auth_required`, `manual_only`, `blocked`, `not_configured`, or `unknown`.
 - Preserve raw evidence for every successful probe.
 - Do not build full ingestion until at least one canonical OHLCV-capable source is verified.
@@ -369,11 +360,11 @@ Do not implement backtest, agent orchestration, vector search, FRED/VBMA/Vietcap
 
 This document is acceptable if:
 
-- source/vendor/provider ingestion is the canonical path.
-- `vnstock` is clearly prototype/fallback/reference only.
+- source-first ingestion is the canonical path.
+- active source scope is limited to HSX/HOSE, Vietcap IQ, VBMA, and FRED/fredapi.
 - data contracts are source-agnostic and concrete.
 - the first source-first coding target is unambiguous.
 - raw evidence, source IDs, parser metadata, and source terms are required before canonical ingestion.
 - FRED and VBMA are clearly non-blocking macro/rates context.
-- Vietcap is clearly reports/evidence context, not primary OHLCV.
+- Vietcap IQ is clearly company/financial reports/evidence context, not primary OHLCV.
 - no `domain_knowledge` or long paper notes are copied.

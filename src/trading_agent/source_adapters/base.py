@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+import os
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -57,6 +58,10 @@ class SourceProbeResult:
     errors: list[str] = field(default_factory=list)
     next_action: str = ""
     probed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    target_name: str = ""
+    config_file: str = ""
+    target_skipped_reason: str = ""
+    auth_env_missing: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -67,8 +72,9 @@ class SourceProbeResult:
 class SourceAdapter:
     source_name: str = "unknown"
 
-    def __init__(self, raw_store: Any | None = None) -> None:
+    def __init__(self, raw_store: Any | None = None, probe_targets: list[Any] | None = None) -> None:
         self.raw_store = raw_store
+        self.probe_targets = probe_targets or []
 
     @property
     def adapter_name(self) -> str:
@@ -95,6 +101,117 @@ class SourceAdapter:
 
     def fetch_reports(self, symbol: str) -> SourceFetchResult:
         return SourceFetchResult(dataset="reports", status=AccessStatus.NOT_CONFIGURED.value, error="Not implemented for source probe task.")
+
+    def probe_configured_targets(self, targets: list[Any], symbols: list[str], start: str, end: str, run_id: str) -> list[SourceProbeResult]:
+        return [self._probe_configured_target(target, symbols=symbols, start=start, end=end, run_id=run_id) for target in targets]
+
+    def _probe_configured_target(self, target: Any, *, symbols: list[str], start: str, end: str, run_id: str) -> SourceProbeResult:
+        url = str(getattr(target, "url", "") or "").strip()
+        target_name = str(getattr(target, "name", "") or "")
+        dataset = str(getattr(target, "dataset", "") or target_name or "configured_target")
+        likely_tables = list(getattr(target, "likely_canonical_tables", []) or [])
+        terms_notes = str(getattr(target, "terms_notes", "") or "")
+        config_file = str(getattr(target, "config_file", "") or "")
+        method = str(getattr(target, "method", "GET") or "GET").upper()
+
+        if method != "GET":
+            return self._configured_target_not_run(
+                target=target,
+                symbols=symbols,
+                start=start,
+                end=end,
+                access_status=AccessStatus.NOT_CONFIGURED,
+                auth_status="unsupported_method",
+                reason=f"unsupported_method:{method}",
+                next_action="Only GET source probes are supported for now.",
+            )
+
+        lower_url = url.lower()
+        if not url or "example.com" in lower_url or "replace-with" in lower_url:
+            return self._configured_target_not_run(
+                target=target,
+                symbols=symbols,
+                start=start,
+                end=end,
+                access_status=AccessStatus.NOT_CONFIGURED,
+                auth_status="placeholder_or_missing_url",
+                reason="placeholder_url",
+                next_action="Replace placeholder URL with a real candidate endpoint before probing.",
+            )
+
+        auth_env = str(getattr(target, "auth_env", "") or "").strip()
+        headers = dict(getattr(target, "headers", {}) or {})
+        if auth_env:
+            token = os.getenv(auth_env, "").strip()
+            if not token:
+                return self._configured_target_not_run(
+                    target=target,
+                    symbols=symbols,
+                    start=start,
+                    end=end,
+                    access_status=AccessStatus.NOT_CONFIGURED,
+                    auth_status="missing_auth_env",
+                    reason="auth_env_missing",
+                    next_action=f"Set {auth_env} in the environment before probing this target.",
+                    auth_env_missing=auth_env,
+                )
+            auth_header = str(getattr(target, "auth_header", "") or "Authorization")
+            auth_prefix = str(getattr(target, "auth_prefix", "") or "")
+            headers[auth_header] = f"{auth_prefix}{token}"
+
+        request_params = dict(getattr(target, "request_params", {}) or {})
+        request_params.update({"target_name": target_name, "config_file": config_file})
+        if auth_env:
+            request_params["auth_env"] = auth_env
+
+        return self._probe_url(
+            url=url,
+            dataset=dataset,
+            symbols=symbols,
+            start=start,
+            end=end,
+            run_id=run_id,
+            likely_canonical_tables=likely_tables,
+            request_params=request_params,
+            headers=headers or None,
+            auth_status="configured_target",
+            terms_notes=terms_notes,
+            target_name=target_name,
+            config_file=config_file,
+        )
+
+    def _configured_target_not_run(
+        self,
+        *,
+        target: Any,
+        symbols: list[str],
+        start: str,
+        end: str,
+        access_status: AccessStatus,
+        auth_status: str,
+        reason: str,
+        next_action: str,
+        auth_env_missing: str = "",
+    ) -> SourceProbeResult:
+        return SourceProbeResult(
+            source_name=self.source_name,
+            adapter_name=self.adapter_name,
+            access_status=access_status,
+            auth_status=auth_status,
+            endpoint_or_surface=str(getattr(target, "url", "") or "configured target"),
+            datasets=[str(getattr(target, "dataset", "") or "configured_target")],
+            sample_symbols=symbols,
+            sample_start=start,
+            sample_end=end,
+            likely_canonical_tables=list(getattr(target, "likely_canonical_tables", []) or []),
+            terms_notes=str(getattr(target, "terms_notes", "") or ""),
+            warnings=[reason],
+            next_action=next_action,
+            target_name=str(getattr(target, "name", "") or ""),
+            config_file=str(getattr(target, "config_file", "") or ""),
+            target_skipped_reason=reason,
+            auth_env_missing=auth_env_missing,
+        )
 
     def _not_configured_result(
         self,
@@ -165,6 +282,8 @@ class SourceAdapter:
         headers: dict[str, str] | None = None,
         auth_status: str = "configured",
         terms_notes: str = "",
+        target_name: str = "",
+        config_file: str = "",
     ) -> SourceProbeResult:
         request = Request(url, headers=headers or {"User-Agent": "vsf-source-probe/0.1"})
         try:
@@ -188,6 +307,8 @@ class SourceAdapter:
                 terms_notes=terms_notes,
                 errors=[str(exc)],
                 next_action="Verify credentials, access rights, and provider terms.",
+                target_name=target_name,
+                config_file=config_file,
             )
         except (TimeoutError, URLError, OSError) as exc:
             return SourceProbeResult(
@@ -203,6 +324,8 @@ class SourceAdapter:
                 terms_notes=terms_notes,
                 errors=[str(exc)],
                 next_action="Retry manually and verify the endpoint/configuration.",
+                target_name=target_name,
+                config_file=config_file,
             )
 
         raw_paths: list[str] = []
@@ -253,4 +376,6 @@ class SourceAdapter:
             terms_notes=terms_notes,
             warnings=["raw_sample_captured_but_schema_not_promoted"],
             next_action="Inspect raw sample fields before promoting this source to ingestion.",
+            target_name=target_name,
+            config_file=config_file,
         )

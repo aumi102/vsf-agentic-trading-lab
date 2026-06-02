@@ -1,0 +1,75 @@
+{
+  "hose": [
+    {
+      "name": "hose_market_data_candidate",
+      "dataset": "hose_official_market_data_probe",
+      "url": "https://example.com/replace-with-hose-url",
+      "method": "GET",
+      "headers": {
+        "User-Agent": "vsf-source-probe/0.1"
+      },
+      "request_params": {
+        "note": "replace with actual HSX/HOSE query params if any"
+      },
+      "likely_canonical_tables": [
+        "securities",
+        "daily_prices",
+        "order_book_snapshots",
+        "realtime_quote_snapshots",
+        "corporate_events",
+        "index_prices",
+        "trading_calendar"
+      ],
+      "terms_notes": "Manual terms review required before crawling HSX/HOSE."
+    }
+  ],
+  "vietcap_iq": [
+    {
+      "name": "vietcap_iq_reports_candidate",
+      "dataset": "vietcap_iq_financial_reports_probe",
+      "url": "https://example.com/replace-with-vietcap-iq-url",
+      "method": "GET",
+      "auth_env": "VIETCAP_IQ_TOKEN",
+      "auth_header": "Authorization",
+      "auth_prefix": "Bearer ",
+      "likely_canonical_tables": [
+        "company_profiles",
+        "financial_statement_items",
+        "financial_ratios",
+        "company_reports",
+        "report_documents"
+      ],
+      "terms_notes": "Use only with verified Vietcap IQ access and provider permission."
+    }
+  ],
+  "vbma": [
+    {
+      "name": "vbma_bonds_rates_candidate",
+      "dataset": "vbma_bonds_rates_probe",
+      "url": "https://example.com/replace-with-vbma-url",
+      "method": "GET",
+      "likely_canonical_tables": [
+        "bond_auctions",
+        "bond_instruments",
+        "yield_curve_points",
+        "bond_reports",
+        "macro_context_events"
+      ],
+      "terms_notes": "Manual terms review required before crawling VBMA."
+    }
+  ],
+  "fred": [
+    {
+      "name": "fred_dgs10_observations_candidate",
+      "dataset": "fred_observations",
+      "url": "https://api.stlouisfed.org/fred/series/observations?series_id=DGS10&file_type=json&limit=5",
+      "method": "GET",
+      "likely_canonical_tables": [
+        "macro_series",
+        "macro_observations",
+        "macro_features"
+      ],
+      "terms_notes": "Use FRED/fredapi for global macro context only, not stock OHLCV."
+    }
+  ]
+}

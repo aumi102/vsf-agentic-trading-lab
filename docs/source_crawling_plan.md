@@ -13,7 +13,7 @@ toc_max_heading_level: 3
 
 ---
 
-This plan defines how the project should move from wrapper-library prototypes to source/vendor/provider crawling and fetching. The next coding task should implement source probes and adapter skeletons, not full production ingestion.
+This plan defines how the project should probe only the mentor-named sources: HSX/HOSE, Vietcap IQ, VBMA, and FRED/fredapi. The next coding tasks should remain source probes and adapter skeletons until raw fields and access are verified.
 
 ---
 
@@ -22,11 +22,11 @@ This plan defines how the project should move from wrapper-library prototypes to
 ### Source-First Principle
 
 <details open>
-<summary>Canonical data must come from verified source/vendor/provider payloads.</summary>
+<summary>Canonical data must come from verified HSX/HOSE, Vietcap IQ, VBMA, or FRED/fredapi payloads.</summary>
 
 ---
 
-The project should learn the data infrastructure by inspecting and preserving source-level fields. Wrappers can be references, but the canonical MVP should be built from adapters that know which source produced each row, what request generated it, what raw payload was captured, and how it maps into canonical tables.
+The project should learn the data infrastructure by inspecting and preserving source-level fields from the four active sources. The canonical MVP should be built from adapters that know which source produced each row, what request generated it, what raw payload was captured, and how it maps into canonical tables.
 
 ---
 
@@ -263,7 +263,7 @@ Failure categories:
 - `terms_unclear`
 - `blocked`
 
-Downstream code must not silently substitute `vnstock` for a failed canonical source. Fallback use must be explicit in the report.
+Downstream code must not substitute legacy prototype sources for failed active source probes.
 
 ---
 
@@ -310,8 +310,7 @@ Required sections:
 The source-probe task is acceptable if:
 
 - source adapters are skeletons/probes, not full ingestion.
-- at least HSX/HOSE and `vnstock` fallback/reference are represented.
-- SSI and FiinGroup probes fail cleanly when credentials are absent.
+- active probes cover only HSX/HOSE, Vietcap IQ, VBMA, and FRED/fredapi.
 - raw probe metadata is generated for successful probes.
 - `reports/source_probe_report.md` explains which source can or cannot support canonical OHLCV.
 - no backtest, feature expansion, database, agent orchestration, or vector search is implemented.

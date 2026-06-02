@@ -13,6 +13,7 @@ env/
 .env.*
 *.key
 *.pem
+config/source_probe_targets.local.json
 
 # Raw/private/non-public materials
 data/
