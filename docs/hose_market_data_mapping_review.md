@@ -30,6 +30,7 @@ The run contains three configured HOSE targets:
 - The listed-stock universe target returned row-level JSON with `data.list` rows and `data.paging` pagination metadata.
 - The completed-day quote-report target returned HTTP 200, but the saved payload body is an HTML `Request Rejected` page, not row-level JSON.
 - The current-day quote-report target also returned HTTP 200 with an HTML `Request Rejected` page, not row-level JSON.
+- Future quote-report probes must pass body-shape validation before they are treated as usable samples: JSON content type, JSON-looking body, and no rejection markers such as `Request Rejected`.
 
 #### Parser planning readiness
 
@@ -283,6 +284,15 @@ Pagination is not confirmed for quote-report. Coverage is also not confirmed:
 
 Do not implement quote-report parser dry run from these saved quote-report artifacts. The correct next step is to re-probe quote-report with the browser-observed request requirements until the local raw sample contains actual row-level JSON.
 
+The quote-report probe target should require response validation before parser planning:
+
+- `expected_content_type_contains: application/json`
+- `expected_body_startswith_json: true`
+- `reject_body_contains: Request Rejected`
+- `reject_body_contains: The requested URL was rejected`
+
+HTTP 200 alone is not sufficient evidence of a usable quote-report sample.
+
 ---
 
 </details>
@@ -330,6 +340,7 @@ Why this matters:
 
 - The saved quote-report bodies are request rejection HTML, despite HTTP 200.
 - Content type may not be enough to decide success; parser/probe must inspect body shape.
+- Source probe validation should mark HTTP 200 rejection HTML as `rejected_response`, not `verified`.
 - `tradingBy` parameter semantics are not confirmed.
 - Date parameter may not equal actual trading calendar date if the date is holiday/weekend/non-trading day.
 - Current-day values may be provisional.

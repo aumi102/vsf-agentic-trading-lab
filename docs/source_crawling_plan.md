@@ -73,11 +73,41 @@ Probe goals:
 Probe statuses:
 
 - `verified`
+- `rejected_response`
 - `auth_required`
 - `manual_only`
 - `blocked`
 - `not_configured`
 - `unknown`
+
+---
+
+</details>
+
+### Response Validation
+
+<details open>
+<summary>HTTP success is not enough when the body is a rejection page or wrong shape.</summary>
+
+---
+
+Configured source targets may include optional response validation fields:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `expected_content_type_contains` | string or list of strings | Required substring or substrings that must appear in the response `Content-Type`. |
+| `expected_body_startswith_json` | boolean | If `true`, the body must start with `{` or `[` after leading whitespace. |
+| `reject_body_contains` | list of strings | If any marker appears in the response body, reject the sample even when HTTP status is 200. |
+| `min_body_bytes` | integer | Minimum acceptable response size in bytes. |
+
+If a response violates these rules:
+
+- access status should be `rejected_response`.
+- raw payload may still be stored for debugging.
+- metadata/report must explain the validation reason.
+- the sample must not be treated as verified usable data.
+
+Use this for HSX/HOSE quote-report endpoints, where HTTP 200 can still return an HTML `Request Rejected` body.
 
 ---
 

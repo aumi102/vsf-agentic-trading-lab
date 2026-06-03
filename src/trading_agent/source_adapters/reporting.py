@@ -86,7 +86,7 @@ def write_source_probe_report(
             ]
         )
 
-    blocking = [result for result in results if result.access_status in {AccessStatus.AUTH_REQUIRED, AccessStatus.BLOCKED, AccessStatus.ERROR}]
+    blocking = [result for result in results if result.access_status in {AccessStatus.AUTH_REQUIRED, AccessStatus.BLOCKED, AccessStatus.ERROR, AccessStatus.REJECTED_RESPONSE}]
     lines.extend(["## Blocking Issues", ""])
     if blocking:
         for result in blocking:

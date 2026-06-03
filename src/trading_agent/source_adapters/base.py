@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 
 class AccessStatus(str, Enum):
     VERIFIED = "verified"
+    REJECTED_RESPONSE = "rejected_response"
     AUTH_REQUIRED = "auth_required"
     MANUAL_ONLY = "manual_only"
     BLOCKED = "blocked"
@@ -186,6 +187,14 @@ class SourceAdapter:
         request_params.update({"target_name": target_name, "config_file": config_file})
         request_params["verify_ssl"] = verify_ssl
         request_params["header_names"] = sorted(headers.keys())
+        response_validation = {
+            "expected_content_type_contains": list(getattr(target, "expected_content_type_contains", []) or []),
+            "expected_body_startswith_json": bool(getattr(target, "expected_body_startswith_json", False)),
+            "reject_body_contains": list(getattr(target, "reject_body_contains", []) or []),
+            "min_body_bytes": int(getattr(target, "min_body_bytes", 0) or 0),
+        }
+        if any(response_validation.values()):
+            request_params["response_validation"] = response_validation
         if auth_env:
             request_params["auth_env"] = auth_env
             request_params["auth_in"] = auth_in
@@ -209,6 +218,7 @@ class SourceAdapter:
             config_file=config_file,
             auth_in=auth_in if auth_env else "",
             auth_param=auth_param if auth_env else "",
+            response_validation=response_validation,
         )
 
     def _configured_target_not_run(
@@ -321,6 +331,7 @@ class SourceAdapter:
         config_file: str = "",
         auth_in: str = "",
         auth_param: str = "",
+        response_validation: dict[str, Any] | None = None,
     ) -> SourceProbeResult:
         request = Request(url, headers=headers or {"User-Agent": "vsf-source-probe/0.1"})
         ssl_context = None if verify_ssl else ssl._create_unverified_context()
@@ -336,7 +347,7 @@ class SourceAdapter:
                 adapter_name=self.adapter_name,
                 access_status=status,
                 auth_status="auth_or_access_failed",
-                endpoint_or_surface=_redact_url_query_param(url, auth_param) if auth_param else url,
+                endpoint_or_surface=_redact_sensitive_url(url),
                 datasets=[dataset],
                 sample_symbols=symbols,
                 sample_start=start,
@@ -357,7 +368,7 @@ class SourceAdapter:
                 adapter_name=self.adapter_name,
                 access_status=AccessStatus.ERROR,
                 auth_status=auth_status,
-                endpoint_or_surface=_redact_url_query_param(url, auth_param) if auth_param else url,
+                endpoint_or_surface=_redact_sensitive_url(url),
                 datasets=[dataset],
                 sample_symbols=symbols,
                 sample_start=start,
@@ -372,6 +383,15 @@ class SourceAdapter:
                 verify_ssl=verify_ssl,
             )
 
+        validation_reasons = _validate_response_payload(
+            payload=payload,
+            content_type=content_type,
+            validation=response_validation or {},
+        )
+        access_status = AccessStatus.REJECTED_RESPONSE if validation_reasons else AccessStatus.VERIFIED
+        stored_status = access_status.value if validation_reasons else "success"
+        error_text = ";".join(validation_reasons) if validation_reasons else None
+
         raw_paths: list[str] = []
         metadata_paths: list[str] = []
         original_fields: list[str] = []
@@ -381,19 +401,20 @@ class SourceAdapter:
                 source_name=self.source_name,
                 adapter_name=self.adapter_name,
                 dataset=dataset,
-                endpoint_or_surface=_redact_url_query_param(url, auth_param) if auth_param else url,
+                endpoint_or_surface=_redact_sensitive_url(url),
                 payload=payload,
                 request_params=request_params or {"url": url},
                 symbol=",".join(symbols),
                 start=start,
                 end=end,
                 run_id=run_id,
-                access_status=AccessStatus.VERIFIED.value,
+                access_status=access_status.value,
                 auth_mode=auth_status,
                 http_status=http_status,
                 content_type=content_type,
-                status="success",
+                status=stored_status,
                 terms_notes=terms_notes,
+                error=error_text,
             )
             raw_paths = [fetch.raw_path] if fetch.raw_path else []
             metadata_paths = [fetch.metadata_path] if fetch.metadata_path else []
@@ -403,9 +424,9 @@ class SourceAdapter:
         return SourceProbeResult(
             source_name=self.source_name,
             adapter_name=self.adapter_name,
-            access_status=AccessStatus.VERIFIED,
+            access_status=access_status,
             auth_status=auth_status,
-            endpoint_or_surface=_redact_url_query_param(url, auth_param) if auth_param else url,
+            endpoint_or_surface=_redact_sensitive_url(url),
             datasets=[dataset],
             sample_symbols=symbols,
             sample_start=start,
@@ -418,8 +439,13 @@ class SourceAdapter:
             metadata_paths=metadata_paths,
             likely_canonical_tables=likely_canonical_tables,
             terms_notes=terms_notes,
-            warnings=["raw_sample_captured_but_schema_not_promoted"],
-            next_action="Inspect raw sample fields before promoting this source to ingestion.",
+            warnings=validation_reasons or ["raw_sample_captured_but_schema_not_promoted"],
+            errors=validation_reasons,
+            next_action=(
+                "Fix request headers/cookies or endpoint until response validation passes."
+                if validation_reasons
+                else "Inspect raw sample fields before promoting this source to ingestion."
+            ),
             target_name=target_name,
             config_file=config_file,
             auth_in=auth_in,
@@ -445,3 +471,39 @@ def _redact_url_query_param(url: str, key: str) -> str:
         else:
             query_items.append((existing_key, existing_value))
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query_items), parts.fragment))
+
+
+def _redact_sensitive_url(url: str) -> str:
+    parts = urlsplit(url)
+    query_items = []
+    for existing_key, existing_value in parse_qsl(parts.query, keep_blank_values=True):
+        if any(token in existing_key.lower() for token in ("api_key", "token", "secret", "password", "auth", "key")):
+            query_items.append((existing_key, "<redacted>"))
+        else:
+            query_items.append((existing_key, existing_value))
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query_items), parts.fragment))
+
+
+def _validate_response_payload(*, payload: bytes, content_type: str, validation: dict[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    expected_content_types = [str(value).lower() for value in validation.get("expected_content_type_contains", []) if str(value)]
+    lower_content_type = (content_type or "").lower()
+    for expected in expected_content_types:
+        if expected not in lower_content_type:
+            reasons.append(f"response_content_type_missing:{expected}")
+
+    if validation.get("expected_body_startswith_json"):
+        stripped = payload.lstrip()
+        if not (stripped.startswith(b"{") or stripped.startswith(b"[")):
+            reasons.append("response_body_not_json")
+
+    min_body_bytes = int(validation.get("min_body_bytes", 0) or 0)
+    if min_body_bytes and len(payload) < min_body_bytes:
+        reasons.append(f"response_body_too_small:{len(payload)}<{min_body_bytes}")
+
+    body_text = payload.decode("utf-8", errors="replace").lower()
+    for marker in validation.get("reject_body_contains", []) or []:
+        marker_text = str(marker)
+        if marker_text and marker_text.lower() in body_text:
+            reasons.append(f"response_body_contains_rejected_marker:{marker_text}")
+    return reasons

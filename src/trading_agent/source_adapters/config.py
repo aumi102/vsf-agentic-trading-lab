@@ -24,6 +24,10 @@ class ProbeTarget:
     auth_in: str = "header"
     auth_param: str = ""
     verify_ssl: bool = True
+    expected_content_type_contains: list[str] = field(default_factory=list)
+    expected_body_startswith_json: bool = False
+    reject_body_contains: list[str] = field(default_factory=list)
+    min_body_bytes: int = 0
     config_file: str = ""
 
     def auth_token_from_env(self) -> str | None:
@@ -73,6 +77,10 @@ def _target_from_dict(path: Path, source_name: str, index: int, entry: Any) -> P
         raise ValueError(f"Invalid source probe target field `auth_in`: expected `header` or `query`.")
     auth_param = _string_field(entry, "auth_param", default="")
     verify_ssl = _bool_field(entry, "verify_ssl", default=True)
+    expected_content_type_contains = _string_or_string_list_field(entry, "expected_content_type_contains")
+    expected_body_startswith_json = _bool_field(entry, "expected_body_startswith_json", default=False)
+    reject_body_contains = _string_list_field(entry, "reject_body_contains")
+    min_body_bytes = _int_field(entry, "min_body_bytes", default=0)
     return ProbeTarget(
         source_name=source_name,
         name=name,
@@ -89,6 +97,10 @@ def _target_from_dict(path: Path, source_name: str, index: int, entry: Any) -> P
         auth_in=auth_in,
         auth_param=auth_param,
         verify_ssl=verify_ssl,
+        expected_content_type_contains=expected_content_type_contains,
+        expected_body_startswith_json=expected_body_startswith_json,
+        reject_body_contains=reject_body_contains,
+        min_body_bytes=min_body_bytes,
         config_file=str(path),
     )
 
@@ -118,10 +130,28 @@ def _bool_field(entry: dict[str, Any], key: str, default: bool) -> bool:
     return value
 
 
+def _int_field(entry: dict[str, Any], key: str, default: int) -> int:
+    value = entry.get(key, default)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"Invalid source probe target field `{key}`: expected integer.")
+    return value
+
+
 def _string_list_field(entry: dict[str, Any], key: str) -> list[str]:
     value = entry.get(key, [])
     if value is None:
         return []
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ValueError(f"Invalid source probe target field `{key}`: expected list of strings.")
+    return list(value)
+
+
+def _string_or_string_list_field(entry: dict[str, Any], key: str) -> list[str]:
+    value = entry.get(key, [])
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"Invalid source probe target field `{key}`: expected string or list of strings.")
     return list(value)

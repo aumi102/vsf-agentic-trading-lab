@@ -1,26 +1,76 @@
 {
   "hose": [
     {
-      "name": "hose_market_data_candidate",
-      "dataset": "hose_official_market_data_probe",
-      "url": "https://example.com/replace-with-hose-url",
+      "name": "hose_listed_stock_universe_api_candidate",
+      "dataset": "hose_listed_stock_universe",
+      "url": "https://api.hsx.vn/l/api/v1/1/securities/stock?pageIndex=1&pageSize=30&alphabet=&sectorId=",
       "method": "GET",
       "headers": {
+        "Accept": "application/json,text/plain,*/*",
+        "Referer": "https://www.hsx.vn/",
         "User-Agent": "vsf-source-probe/0.1"
       },
-      "request_params": {
-        "note": "replace with actual HSX/HOSE query params if any"
-      },
-      "likely_canonical_tables": [
-        "securities",
-        "daily_prices",
-        "order_book_snapshots",
-        "realtime_quote_snapshots",
-        "corporate_events",
-        "index_prices",
-        "trading_calendar"
+      "expected_content_type_contains": "application/json",
+      "expected_body_startswith_json": true,
+      "reject_body_contains": [
+        "Request Rejected",
+        "The requested URL was rejected"
       ],
-      "terms_notes": "Manual terms review required before crawling HSX/HOSE."
+      "min_body_bytes": 100,
+      "likely_canonical_tables": [
+        "securities_master",
+        "exchange_listings",
+        "symbol_universe"
+      ],
+      "terms_notes": "Public HOSE listed-stock API discovered from browser Network tab. Use for listed stock universe and exchange listing metadata, not OHLCV."
+    },
+    {
+      "name": "hose_daily_quote_report_completed_day_candidate",
+      "dataset": "hose_daily_quote_report",
+      "url": "https://api.hsx.vn/mk/api/v1/market/quote-report?tradingBy=VNINDEX&date=2026-06-02",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json,text/plain,*/*",
+        "Referer": "https://www.hsx.vn/",
+        "User-Agent": "vsf-source-probe/0.1"
+      },
+      "expected_content_type_contains": "application/json",
+      "expected_body_startswith_json": true,
+      "reject_body_contains": [
+        "Request Rejected",
+        "The requested URL was rejected"
+      ],
+      "min_body_bytes": 100,
+      "likely_canonical_tables": [
+        "daily_price_bars",
+        "daily_quote_reports",
+        "market_ohlcv_snapshots"
+      ],
+      "terms_notes": "Public HOSE quote-report API candidate. Treat completed-day quote data as EOD candidate only after response body shape, final status, units, pagination, and tradingBy semantics are confirmed."
+    },
+    {
+      "name": "hose_daily_quote_report_current_day_candidate",
+      "dataset": "hose_daily_quote_report_current_day",
+      "url": "https://api.hsx.vn/mk/api/v1/market/quote-report?tradingBy=VNINDEX&date=2026-06-03",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json,text/plain,*/*",
+        "Referer": "https://www.hsx.vn/",
+        "User-Agent": "vsf-source-probe/0.1"
+      },
+      "expected_content_type_contains": "application/json",
+      "expected_body_startswith_json": true,
+      "reject_body_contains": [
+        "Request Rejected",
+        "The requested URL was rejected"
+      ],
+      "min_body_bytes": 100,
+      "likely_canonical_tables": [
+        "daily_price_bars",
+        "daily_quote_reports",
+        "market_ohlcv_snapshots"
+      ],
+      "terms_notes": "Current-day HOSE quote-report candidate. Treat as provisional snapshot unless final EOD status is confirmed."
     }
   ],
   "vietcap_iq": [
@@ -73,6 +123,12 @@
       "auth_env": "FRED_API_KEY",
       "auth_in": "query",
       "auth_param": "api_key",
+      "expected_content_type_contains": "application/json",
+      "expected_body_startswith_json": true,
+      "reject_body_contains": [
+        "Bad Request",
+        "error_code"
+      ],
       "likely_canonical_tables": [
         "macro_series",
         "macro_observations",
