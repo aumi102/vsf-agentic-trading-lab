@@ -17,10 +17,11 @@ toc_max_heading_level: 3
 
 - **VBMA** is ready for ingestion v2 planning for government bond auction results. The verified raw sample is row-level and parses as an XLSX spreadsheet even though the endpoint path ends in `.csv`.
 - **FRED** is ready for macro-context ingestion planning. The verified raw sample is structured JSON with top-level series metadata and nested observations.
+- **HOSE listed-stock universe** is ready for parser dry-run planning from the saved page-1 JSON sample. It is listing metadata only, not OHLCV.
 
 #### What is not ready yet
 
-- **HOSE** is not ready for ingestion. The current verified sample is an HTML/JavaScript app shell, not row-level listing or market data.
+- **HOSE quote-report market data** is not ready for ingestion. The current saved quote-report samples are HTML request-rejection bodies, not row-level quote JSON.
 - **Vietcap IQ** is not ready for ingestion. The current verified sample is an HTML/report surface that points toward IQ/report pages, but it does not contain report-list rows or document metadata.
 
 #### Why VBMA plus FRED first
@@ -48,7 +49,7 @@ toc_max_heading_level: 3
 
 #### Out of scope for now
 
-- HOSE ingestion until actual row-level JSON/XHR endpoints are captured.
+- HOSE quote-report/OHLCV ingestion until actual row-level quote JSON is captured.
 - Vietcap IQ ingestion until report-list and document APIs are captured.
 - Stock OHLCV ingestion.
 - Price board/order book ingestion.
@@ -171,6 +172,18 @@ Dry-run note:
 
 - The first FRED dry run writes local CSV outputs only: `macro_series.csv`, `macro_observations.csv`, `validation_report.md`, and `validation_summary.json`.
 - No database migration or database write is part of the FRED observations parser dry run.
+
+#### HOSE listed-universe dry-run outputs
+
+The first HOSE listed-universe dry run uses only the saved page-1 sample and writes local CSV outputs:
+
+- `securities_master.csv`
+- `exchange_listings.csv`
+- `symbol_universe.csv`
+- `validation_report.md`
+- `validation_summary.json`
+
+No database migration, database write, all-page crawl, quote-report parser, or OHLCV parser is part of this dry run.
 
 #### `bond_instruments`
 
