@@ -175,15 +175,17 @@ Dry-run note:
 
 #### HOSE listed-universe dry-run outputs
 
-The first HOSE listed-universe dry run uses only the saved page-1 sample and writes local CSV outputs:
+The first HOSE listed-universe dry run used only the saved page-1 sample. The follow-up all-pages dry run fetches pages `1..totalPages`, preserves raw page payloads under the dry-run output, and writes combined local CSV outputs:
 
 - `securities_master.csv`
 - `exchange_listings.csv`
 - `symbol_universe.csv`
 - `validation_report.md`
 - `validation_summary.json`
+- `raw_pages/page_001.json ... page_<N>.json`
+- `raw_pages/page_manifest.json`
 
-No database migration, database write, all-page crawl, quote-report parser, or OHLCV parser is part of this dry run.
+No database migration, database write, quote-report parser, or OHLCV parser is part of this dry run.
 
 #### `bond_instruments`
 
