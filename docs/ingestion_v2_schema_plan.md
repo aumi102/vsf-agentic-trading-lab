@@ -167,6 +167,11 @@ Unique key:
 
 - `series_id + observation_date + realtime_start + source_payload_id`
 
+Dry-run note:
+
+- The first FRED dry run writes local CSV outputs only: `macro_series.csv`, `macro_observations.csv`, `validation_report.md`, and `validation_summary.json`.
+- No database migration or database write is part of the FRED observations parser dry run.
+
 #### `bond_instruments`
 
 | Column | Type | Required | Notes |
