@@ -19,6 +19,12 @@ The latest HOSE source-probe run is:
 
 `run_id=20260603T042853Z`
 
+Supersession note:
+
+- The quote-report findings in this document reflect the earlier rejected `GET` probe artifacts.
+- A later verified `POST` probe run, `run_id=20260603T091759Z`, captured usable quote-report JSON for completed-day and current-day targets.
+- Use `docs/hose_quote_report_mapping_review.md` and `docs/hose_quote_report_parser_review.md` for current quote-report parser planning.
+
 The run contains three configured HOSE targets:
 
 - `hose_listed_stock_universe_api_candidate`

@@ -9,7 +9,7 @@ toc_max_heading_level: 3
 ### 1. Executive Summary
 
 <details open>
-<summary>VBMA and FRED are ready for parser planning; HOSE and Vietcap IQ still need row-level endpoint discovery.</summary>
+<summary>VBMA, FRED, and selected HOSE dry-run parsers are available; Vietcap IQ still needs row-level endpoint discovery.</summary>
 
 ---
 
@@ -17,11 +17,11 @@ toc_max_heading_level: 3
 
 - **VBMA** is ready for ingestion v2 planning for government bond auction results. The verified raw sample is row-level and parses as an XLSX spreadsheet even though the endpoint path ends in `.csv`.
 - **FRED** is ready for macro-context ingestion planning. The verified raw sample is structured JSON with top-level series metadata and nested observations.
-- **HOSE listed-stock universe** is ready for parser dry-run planning from the saved page-1 JSON sample. It is listing metadata only, not OHLCV.
+- **HOSE listed-stock universe** has page-1 and all-pages dry-run parser coverage. It is listing metadata only, not OHLCV.
+- **HOSE quote-report** has a completed-day dry-run parser from the later verified `POST` JSON probe. It is OHLCV-like quote data, but source units, final EOD semantics, and `tradingBy=VNINDEX` coverage are not fully confirmed.
 
 #### What is not ready yet
 
-- **HOSE quote-report market data** is not ready for ingestion. The current saved quote-report samples are HTML request-rejection bodies, not row-level quote JSON.
 - **Vietcap IQ** is not ready for ingestion. The current verified sample is an HTML/report surface that points toward IQ/report pages, but it does not contain report-list rows or document metadata.
 
 #### Why VBMA plus FRED first
@@ -49,7 +49,7 @@ toc_max_heading_level: 3
 
 #### Out of scope for now
 
-- HOSE quote-report/OHLCV ingestion until actual row-level quote JSON is captured.
+- HOSE quote-report database ingestion and backtest use until parser dry-run results, source units, final EOD semantics, and coverage are reviewed.
 - Vietcap IQ ingestion until report-list and document APIs are captured.
 - Stock OHLCV ingestion.
 - Price board/order book ingestion.
@@ -490,7 +490,8 @@ raw fetch -> raw store -> parse -> normalize -> validate -> canonical write
    - Use the parser outputs and quality results to finalize schema types and keys.
 
 5. Continue HOSE/Vietcap manual endpoint discovery.
-   - Do not plan their ingestion until row-level raw samples are captured.
+   - HOSE listed-universe and quote-report parser dry runs can proceed from verified samples.
+   - Vietcap IQ ingestion should not be planned until row-level report-list or document metadata samples are captured.
 
 ---
 
@@ -510,7 +511,8 @@ raw fetch -> raw store -> parse -> normalize -> validate -> canonical write
 - Canonical table columns and keys are accepted for parser proof.
 - Parser behavior for XLSX-via-`.csv`, `-`, `.`, and missing values is defined.
 - Dry-run output paths and report names are agreed before writing code.
-- No HOSE, Vietcap IQ, stock OHLCV, database, or backtest scope is mixed into the parser task.
+- No database or backtest scope is mixed into parser dry-run tasks.
+- HOSE quote-report parser output remains dry-run only until source units, final EOD semantics, and coverage are reviewed.
 
 #### Tests needed later
 
@@ -521,6 +523,8 @@ raw fetch -> raw store -> parse -> normalize -> validate -> canonical write
 - VBMA parser normalizes Vietnamese headers with whitespace/newlines.
 - VBMA parser converts `-` numeric fields to null with a warning.
 - VBMA parser computes `bid_to_cover_ratio` only when denominator is valid.
+- HOSE quote-report parser extracts trading date from request metadata.
+- HOSE quote-report parser keeps completed-day `final_candidate` rows separate from current-day `provisional` rows.
 - Quality validator detects duplicate macro and bond auction keys.
 - Quality validator fails missing required identifiers and dates.
 - Reports include raw path, metadata path, content hash, parser version, and schema version.
