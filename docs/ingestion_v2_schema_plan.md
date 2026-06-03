@@ -179,6 +179,7 @@ Unique key:
 | `maturity_date` | date | no | Missing in current sample. |
 | `coupon_rate_pct` | decimal | no | Missing in current sample. |
 | `currency` | string | yes | Default `VND` unless later evidence says otherwise. |
+| `source_name` | string | yes | `vbma`. Required by the proposed unique key. |
 | `source_payload_id` | string | yes | Raw lineage. |
 | `created_at` | timestamp | yes | Canonical write time. |
 | `schema_version` | string | yes | Bond schema version. |
@@ -190,6 +191,11 @@ Primary key:
 Unique key:
 
 - `source_name + bond_code`
+
+Dry-run note:
+
+- The first dry run writes local CSV outputs only: `bond_instruments.csv`, `bond_auction_results.csv`, `validation_report.md`, and `validation_summary.json`.
+- No database migration or database write is part of the VBMA parser dry run.
 
 #### `bond_auction_results`
 
