@@ -28,6 +28,7 @@ class ProbeTarget:
     expected_body_startswith_json: bool = False
     reject_body_contains: list[str] = field(default_factory=list)
     min_body_bytes: int = 0
+    body_json: dict[str, Any] | None = None
     config_file: str = ""
 
     def auth_token_from_env(self) -> str | None:
@@ -81,6 +82,7 @@ def _target_from_dict(path: Path, source_name: str, index: int, entry: Any) -> P
     expected_body_startswith_json = _bool_field(entry, "expected_body_startswith_json", default=False)
     reject_body_contains = _string_list_field(entry, "reject_body_contains")
     min_body_bytes = _int_field(entry, "min_body_bytes", default=0)
+    body_json = _optional_dict_field(entry, "body_json")
     return ProbeTarget(
         source_name=source_name,
         name=name,
@@ -101,6 +103,7 @@ def _target_from_dict(path: Path, source_name: str, index: int, entry: Any) -> P
         expected_body_startswith_json=expected_body_startswith_json,
         reject_body_contains=reject_body_contains,
         min_body_bytes=min_body_bytes,
+        body_json=body_json,
         config_file=str(path),
     )
 
@@ -118,6 +121,17 @@ def _dict_field(entry: dict[str, Any], key: str) -> dict[str, Any]:
     value = entry.get(key, {})
     if value is None:
         return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"Invalid source probe target field `{key}`: expected object.")
+    return value
+
+
+def _optional_dict_field(entry: dict[str, Any], key: str) -> dict[str, Any] | None:
+    if key not in entry:
+        return None
+    value = entry.get(key)
+    if value is None:
+        return None
     if not isinstance(value, dict):
         raise ValueError(f"Invalid source probe target field `{key}`: expected object.")
     return value

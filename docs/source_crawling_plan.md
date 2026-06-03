@@ -99,6 +99,7 @@ Configured source targets may include optional response validation fields:
 | `expected_body_startswith_json` | boolean | If `true`, the body must start with `{` or `[` after leading whitespace. |
 | `reject_body_contains` | list of strings | If any marker appears in the response body, reject the sample even when HTTP status is 200. |
 | `min_body_bytes` | integer | Minimum acceptable response size in bytes. |
+| `body_json` | object | Optional JSON request body for configured `POST` probes. |
 
 If a response violates these rules:
 
@@ -108,6 +109,14 @@ If a response violates these rules:
 - the sample must not be treated as verified usable data.
 
 Use this for HSX/HOSE quote-report endpoints, where HTTP 200 can still return an HTML `Request Rejected` body.
+
+Configured target method behavior:
+
+- `GET` sends no request body.
+- `POST` serializes `body_json` to UTF-8 JSON bytes. Use `{}` when the source expects an empty JSON object.
+- Methods other than `GET` and `POST` are rejected as unsupported.
+- Metadata may record `method`, `body_present`, `body_size_bytes`, and `body_json_keys`.
+- Metadata must not store full header values, cookies, or sensitive body values.
 
 ---
 

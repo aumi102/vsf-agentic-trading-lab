@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+import json
 import os
 import ssl
 from typing import Any
@@ -120,7 +121,7 @@ class SourceAdapter:
         config_file = str(getattr(target, "config_file", "") or "")
         method = str(getattr(target, "method", "GET") or "GET").upper()
 
-        if method != "GET":
+        if method not in {"GET", "POST"}:
             return self._configured_target_not_run(
                 target=target,
                 symbols=symbols,
@@ -129,7 +130,19 @@ class SourceAdapter:
                 access_status=AccessStatus.NOT_CONFIGURED,
                 auth_status="unsupported_method",
                 reason=f"unsupported_method:{method}",
-                next_action="Only GET source probes are supported for now.",
+                next_action="Only GET and POST source probes are supported for now.",
+            )
+        body_json = getattr(target, "body_json", None)
+        if method == "POST" and body_json is not None and not isinstance(body_json, dict):
+            return self._configured_target_not_run(
+                target=target,
+                symbols=symbols,
+                start=start,
+                end=end,
+                access_status=AccessStatus.NOT_CONFIGURED,
+                auth_status="invalid_body_json",
+                reason="invalid_body_json",
+                next_action="Set body_json to an object for POST probes.",
             )
 
         lower_url = url.lower()
@@ -185,7 +198,22 @@ class SourceAdapter:
 
         request_params = dict(getattr(target, "request_params", {}) or {})
         request_params.update({"target_name": target_name, "config_file": config_file})
+        request_params["method"] = method
         request_params["verify_ssl"] = verify_ssl
+        body_bytes = None
+        if method == "POST":
+            body_json = body_json if body_json is not None else {}
+            body_bytes = json.dumps(body_json, ensure_ascii=False).encode("utf-8")
+            request_params["body_present"] = True
+            request_params["body_size_bytes"] = len(body_bytes)
+            request_params["body_json_keys"] = sorted(str(key) for key in body_json.keys())
+            sensitive_body_keys = sorted(str(key) for key in body_json if _is_sensitive_key(str(key)))
+            if sensitive_body_keys:
+                request_params["body_json_sensitive_keys_redacted"] = sensitive_body_keys
+            headers.setdefault("Content-Type", "application/json")
+        else:
+            request_params["body_present"] = False
+            request_params["body_size_bytes"] = 0
         request_params["header_names"] = sorted(headers.keys())
         response_validation = {
             "expected_content_type_contains": list(getattr(target, "expected_content_type_contains", []) or []),
@@ -211,6 +239,8 @@ class SourceAdapter:
             likely_canonical_tables=likely_tables,
             request_params=request_params,
             headers=headers or None,
+            method=method,
+            body_bytes=body_bytes,
             verify_ssl=verify_ssl,
             auth_status="configured_target",
             terms_notes=terms_notes,
@@ -324,6 +354,8 @@ class SourceAdapter:
         likely_canonical_tables: list[str],
         request_params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
+        method: str = "GET",
+        body_bytes: bytes | None = None,
         verify_ssl: bool = True,
         auth_status: str = "configured",
         terms_notes: str = "",
@@ -333,7 +365,12 @@ class SourceAdapter:
         auth_param: str = "",
         response_validation: dict[str, Any] | None = None,
     ) -> SourceProbeResult:
-        request = Request(url, headers=headers or {"User-Agent": "vsf-source-probe/0.1"})
+        request = Request(
+            url,
+            data=body_bytes,
+            headers=headers or {"User-Agent": "vsf-source-probe/0.1"},
+            method=method,
+        )
         ssl_context = None if verify_ssl else ssl._create_unverified_context()
         try:
             with urlopen(request, timeout=10, context=ssl_context) as response:
@@ -477,11 +514,15 @@ def _redact_sensitive_url(url: str) -> str:
     parts = urlsplit(url)
     query_items = []
     for existing_key, existing_value in parse_qsl(parts.query, keep_blank_values=True):
-        if any(token in existing_key.lower() for token in ("api_key", "token", "secret", "password", "auth", "key")):
+        if _is_sensitive_key(existing_key):
             query_items.append((existing_key, "<redacted>"))
         else:
             query_items.append((existing_key, existing_value))
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query_items), parts.fragment))
+
+
+def _is_sensitive_key(key: str) -> bool:
+    return any(token in key.lower() for token in ("api_key", "token", "secret", "password", "auth", "key", "cookie"))
 
 
 def _validate_response_payload(*, payload: bytes, content_type: str, validation: dict[str, Any]) -> list[str]:

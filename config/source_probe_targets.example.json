@@ -28,7 +28,8 @@
       "name": "hose_daily_quote_report_completed_day_candidate",
       "dataset": "hose_daily_quote_report",
       "url": "https://api.hsx.vn/mk/api/v1/market/quote-report?tradingBy=VNINDEX&date=2026-06-02",
-      "method": "GET",
+      "method": "POST",
+      "body_json": {},
       "headers": {
         "Accept": "application/json,text/plain,*/*",
         "Referer": "https://www.hsx.vn/",
@@ -52,7 +53,8 @@
       "name": "hose_daily_quote_report_current_day_candidate",
       "dataset": "hose_daily_quote_report_current_day",
       "url": "https://api.hsx.vn/mk/api/v1/market/quote-report?tradingBy=VNINDEX&date=2026-06-03",
-      "method": "GET",
+      "method": "POST",
+      "body_json": {},
       "headers": {
         "Accept": "application/json,text/plain,*/*",
         "Referer": "https://www.hsx.vn/",

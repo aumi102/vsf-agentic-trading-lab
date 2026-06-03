@@ -16,6 +16,21 @@ from trading_agent.source_adapters.base import SourceFetchResult
 PARSER_VERSION = "source_probe_parser_v1"
 SCHEMA_VERSION = "source_probe_schema_v1"
 SECRET_HINTS = ("token", "secret", "password", "key", "authorization")
+SAFE_METADATA_KEYS = {
+    "auth_env",
+    "auth_in",
+    "auth_param",
+    "body_json_keys",
+    "body_json_sensitive_keys_redacted",
+    "body_present",
+    "body_size_bytes",
+    "config_file",
+    "header_names",
+    "method",
+    "response_validation",
+    "target_name",
+    "verify_ssl",
+}
 
 
 class RawProbeStore:
@@ -96,7 +111,9 @@ def _safe_name(value: str) -> str:
 def _scrub_secrets(params: dict[str, Any]) -> dict[str, Any]:
     scrubbed: dict[str, Any] = {}
     for key, value in params.items():
-        if any(hint in key.lower() for hint in SECRET_HINTS):
+        if key in SAFE_METADATA_KEYS:
+            scrubbed[key] = value
+        elif any(hint in key.lower() for hint in SECRET_HINTS):
             scrubbed[key] = "<redacted>"
         else:
             scrubbed[key] = value

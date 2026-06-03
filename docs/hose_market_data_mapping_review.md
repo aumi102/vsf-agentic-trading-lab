@@ -31,6 +31,7 @@ The run contains three configured HOSE targets:
 - The completed-day quote-report target returned HTTP 200, but the saved payload body is an HTML `Request Rejected` page, not row-level JSON.
 - The current-day quote-report target also returned HTTP 200 with an HTML `Request Rejected` page, not row-level JSON.
 - Future quote-report probes must pass body-shape validation before they are treated as usable samples: JSON content type, JSON-looking body, and no rejection markers such as `Request Rejected`.
+- Browser investigation shows the quote-report endpoint expects `POST` with an empty JSON body `{}` rather than plain `GET`.
 
 #### Parser planning readiness
 
@@ -286,12 +287,16 @@ Do not implement quote-report parser dry run from these saved quote-report artif
 
 The quote-report probe target should require response validation before parser planning:
 
+- `method: POST`
+- `body_json: {}`
 - `expected_content_type_contains: application/json`
 - `expected_body_startswith_json: true`
 - `reject_body_contains: Request Rejected`
 - `reject_body_contains: The requested URL was rejected`
 
 HTTP 200 alone is not sufficient evidence of a usable quote-report sample.
+
+The browser-derived `type` header appears necessary for local probing, but its value should stay only in `config/source_probe_targets.local.json`. Do not commit the live header value or cookies.
 
 ---
 
@@ -341,6 +346,7 @@ Why this matters:
 - The saved quote-report bodies are request rejection HTML, despite HTTP 200.
 - Content type may not be enough to decide success; parser/probe must inspect body shape.
 - Source probe validation should mark HTTP 200 rejection HTML as `rejected_response`, not `verified`.
+- The quote-report endpoint may reject probes that omit POST body `{}` or required browser-derived local-only headers.
 - `tradingBy` parameter semantics are not confirmed.
 - Date parameter may not equal actual trading calendar date if the date is holiday/weekend/non-trading day.
 - Current-day values may be provisional.

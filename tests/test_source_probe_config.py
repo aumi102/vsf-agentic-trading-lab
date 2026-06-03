@@ -24,6 +24,8 @@ def test_example_config_loads() -> None:
     assert set(targets) == {"hose", "vietcap_iq", "vbma", "fred"}
     assert targets["hose"][0].name == "hose_listed_stock_universe_api_candidate"
     assert targets["hose"][1].name == "hose_daily_quote_report_completed_day_candidate"
+    assert targets["hose"][1].method == "POST"
+    assert targets["hose"][1].body_json == {}
     assert targets["hose"][1].expected_content_type_contains == ["application/json"]
     assert targets["hose"][1].expected_body_startswith_json is True
     assert "Request Rejected" in targets["hose"][1].reject_body_contains
@@ -82,6 +84,70 @@ def test_http_200_json_body_passes_when_expected_json_configured(monkeypatch, tm
     assert metadata["status"] == "success"
 
 
+def test_post_target_sends_body_json_as_request_body_bytes(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(request, timeout, context=None):
+        captured["method"] = request.get_method()
+        captured["data"] = request.data
+        captured["content_type"] = request.get_header("Content-type")
+        return _fake_response(body=b'{"rows":[]}', content_type="application/json; charset=utf-8")
+
+    monkeypatch.setattr("trading_agent.source_adapters.base.urlopen", fake_urlopen)
+    target = ProbeTarget(
+        source_name="hose",
+        name="quote_report_post",
+        dataset="hose_daily_quote_report",
+        url="https://api.hsx.vn/mk/api/v1/market/quote-report?tradingBy=VNINDEX&date=2026-06-02",
+        method="POST",
+        body_json={},
+        headers={"Accept": "application/json"},
+        expected_content_type_contains=["application/json"],
+        expected_body_startswith_json=True,
+    )
+
+    result = HoseAdapter(raw_store=RawProbeStore(tmp_path)).probe_configured_targets(
+        [target], ["FPT"], "2024-01-01", "2024-01-02", "run1"
+    )[0]
+
+    assert result.access_status == AccessStatus.VERIFIED
+    assert captured["method"] == "POST"
+    assert captured["data"] == b"{}"
+    assert captured["content_type"] == "application/json"
+    metadata = json.loads(Path(result.metadata_paths[0]).read_text(encoding="utf-8"))
+    assert metadata["request_params"]["method"] == "POST"
+    assert metadata["request_params"]["body_present"] is True
+    assert metadata["request_params"]["body_size_bytes"] == 2
+    assert metadata["request_params"]["body_json_keys"] == []
+
+
+def test_get_target_remains_without_request_body(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(request, timeout, context=None):
+        captured["method"] = request.get_method()
+        captured["data"] = request.data
+        return _fake_response(body=b'{"ok": true}', content_type="application/json")
+
+    monkeypatch.setattr("trading_agent.source_adapters.base.urlopen", fake_urlopen)
+    target = ProbeTarget(
+        source_name="hose",
+        name="listed_get",
+        dataset="hose_listed_stock_universe",
+        url="https://api.hsx.vn/l/api/v1/1/securities/stock?pageIndex=1&pageSize=30",
+        method="GET",
+        expected_body_startswith_json=True,
+    )
+
+    result = HoseAdapter(raw_store=RawProbeStore(tmp_path)).probe_configured_targets(
+        [target], ["FPT"], "2024-01-01", "2024-01-02", "run1"
+    )[0]
+
+    assert result.access_status == AccessStatus.VERIFIED
+    assert captured["method"] == "GET"
+    assert captured["data"] is None
+
+
 def test_http_200_rejection_html_is_rejected_when_marker_configured(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         "trading_agent.source_adapters.base.urlopen",
@@ -113,6 +179,51 @@ def test_http_200_rejection_html_is_rejected_when_marker_configured(monkeypatch,
     assert metadata["access_status"] == "rejected_response"
     assert metadata["status"] == "rejected_response"
     assert "requested URL was rejected" in metadata["error"]
+
+
+def test_post_html_rejection_becomes_rejected_response(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "trading_agent.source_adapters.base.urlopen",
+        _fake_urlopen_factory(
+            body=b"<html><body>Request Rejected</body></html>",
+            content_type="text/html; charset=utf-8",
+        ),
+    )
+    target = ProbeTarget(
+        source_name="hose",
+        name="quote_report_post",
+        dataset="hose_daily_quote_report",
+        url="https://api.hsx.vn/mk/api/v1/market/quote-report?tradingBy=VNINDEX&date=2026-06-02",
+        method="POST",
+        body_json={},
+        expected_content_type_contains=["application/json"],
+        expected_body_startswith_json=True,
+        reject_body_contains=["Request Rejected"],
+    )
+
+    result = HoseAdapter(raw_store=RawProbeStore(tmp_path)).probe_configured_targets(
+        [target], ["FPT"], "2024-01-01", "2024-01-02", "run1"
+    )[0]
+
+    assert result.access_status == AccessStatus.REJECTED_RESPONSE
+    assert "response_body_not_json" in result.errors
+    assert any("response_body_contains_rejected_marker:Request Rejected" == error for error in result.errors)
+
+
+def test_unsupported_methods_still_return_unsupported_method() -> None:
+    target = ProbeTarget(
+        source_name="hose",
+        name="bad_method",
+        dataset="bad",
+        url="https://api.hsx.vn/test",
+        method="PUT",
+    )
+
+    result = HoseAdapter().probe_configured_targets([target], ["FPT"], "2024-01-01", "2024-01-02", "run1")[0]
+
+    assert result.access_status == AccessStatus.NOT_CONFIGURED
+    assert result.auth_status == "unsupported_method"
+    assert result.target_skipped_reason == "unsupported_method:PUT"
 
 
 def test_simple_target_without_validation_remains_backward_compatible(monkeypatch, tmp_path: Path) -> None:
@@ -241,6 +352,36 @@ def test_sensitive_query_params_redacted_even_without_auth_param(monkeypatch, tm
     assert "safe=value" in result.endpoint_or_surface
 
 
+def test_post_metadata_does_not_leak_header_values_or_sensitive_body_values(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "trading_agent.source_adapters.base.urlopen",
+        _fake_urlopen_factory(body=b'{"ok": true}', content_type="application/json"),
+    )
+    target = ProbeTarget(
+        source_name="hose",
+        name="post_secret_body",
+        dataset="test",
+        url="https://api.hsx.vn/test",
+        method="POST",
+        headers={"Cookie": "SESSION=SECRETCOOKIE", "type": "SECRET_TYPE_HEADER", "Accept": "application/json"},
+        body_json={"token": "SECRET_BODY_TOKEN", "query": "not-secret"},
+        expected_body_startswith_json=True,
+    )
+
+    result = HoseAdapter(raw_store=RawProbeStore(tmp_path)).probe_configured_targets(
+        [target], ["FPT"], "2024-01-01", "2024-01-02", "run1"
+    )[0]
+
+    metadata = json.loads(Path(result.metadata_paths[0]).read_text(encoding="utf-8"))
+    metadata_text = json.dumps(metadata)
+    assert "SECRETCOOKIE" not in metadata_text
+    assert "SECRET_TYPE_HEADER" not in metadata_text
+    assert "SECRET_BODY_TOKEN" not in metadata_text
+    assert metadata["request_params"]["header_names"] == ["Accept", "Content-Type", "Cookie", "User-Agent", "type"]
+    assert metadata["request_params"]["body_json_keys"] == ["query", "token"]
+    assert metadata["request_params"]["body_json_sensitive_keys_redacted"] == ["token"]
+
+
 def test_vbma_configured_target_passes_verify_false_and_headers(monkeypatch, tmp_path: Path) -> None:
     class FakeHeaders:
         def get(self, key: str, default: str = "") -> str:
@@ -313,3 +454,24 @@ def _fake_urlopen_factory(body: bytes, content_type: str):
         return FakeResponse()
 
     return fake_urlopen
+
+
+def _fake_response(body: bytes, content_type: str):
+    class FakeHeaders:
+        def get(self, key: str, default: str = "") -> str:
+            return content_type if key.lower() == "content-type" else default
+
+    class FakeResponse:
+        status = 200
+        headers = FakeHeaders()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self) -> bytes:
+            return body
+
+    return FakeResponse()
