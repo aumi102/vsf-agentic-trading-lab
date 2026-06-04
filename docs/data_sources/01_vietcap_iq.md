@@ -238,6 +238,78 @@ This confirms that the verified Vietcap IQ search-bar payload covers all current
 
 </details>
 
+### Field Semantics Review
+
+<details open>
+<summary>The current tradable-universe rule looks reasonable, but key field meanings still need mentor/source confirmation.</summary>
+
+---
+
+#### Field distribution summary
+
+| Field | Observed distribution |
+|---|---|
+| `exchange_or_floor` / `floor` | `HOSE=454`, `HNX=310`, `UPCOM=868`, `OTC=294`, `OTHER=152`, `STOP=2` |
+| `company_type_code` / `comTypeCode` | `CT=1778`, `QU=181`, `CK=43`, `UNKNOWN=34`, `NH=30`, `BH=14` |
+| `is_index` / `isIndex` | `false=2046`, `true=34` |
+| `is_bank` / `isBank` | `false=2052`, `true=28` |
+| `bank_raw` | Boolean-like: `false=2052`, `true=28` |
+| `index_raw` | Boolean-like: `false=2046`, `true=34` |
+| `icb_lv1_raw` / `icb_lv2_raw` | Available on 1931 rows; missing on 149 rows |
+| `icb_lv3_raw` / `icb_lv4_raw` | Available on 1931 rows; missing on 149 rows |
+| `quality_status` | `pass=1598`, `warn=480`, `fail=2` |
+
+Quality reasons:
+
+| Reason | Count | Interpretation |
+|---|---:|---|
+| `warning_non_listed_or_special_floor_candidate` | 448 | `OTC`, `OTHER`, and `STOP` rows are preserved but excluded from the first tradable candidate set. |
+| `warning_stop_floor_status_candidate` | 2 | `STOP` looks like a special status/category, not a normal exchange. |
+| `warning_non_stock_index_candidate` | 34 | Index rows are preserved but excluded from the stock universe. |
+| `duplicate_symbol_exchange_or_floor` | 2 | Duplicate `VVDIF + OTHER` rows fail parser quality and are excluded. |
+
+---
+
+#### Excluded listed-floor rows
+
+The filter excludes 34 rows from otherwise listed floors because they are index candidates:
+
+| Floor | Excluded rows | Reason |
+|---|---:|---|
+| `HOSE` | 26 | `excluded_index_candidate` |
+| `HNX` | 7 | `excluded_index_candidate` |
+| `UPCOM` | 1 | `excluded_index_candidate` |
+
+The two quality-fail rows are duplicate `VVDIF + OTHER`, not HOSE/HNX/UPCOM tradable candidates.
+
+---
+
+#### Current recommended MVP universe rule
+
+For the first MVP tradable universe dry run:
+
+- Include rows where `floor` is `HOSE`, `HNX`, or `UPCOM`.
+- Exclude rows where `floor` is `OTC`, `OTHER`, or `STOP`.
+- Exclude rows where `isIndex` or `index` indicates an index candidate.
+- Exclude rows with `quality_status=fail`.
+- Preserve every excluded row in audit output; do not silently drop anything.
+
+This rule is still a dry-run rule, not a final database/backtest rule. It remains valid for review because it produces 1598 tradable candidates, which aligns with the mentor's expected full-market universe size after removing special and index rows.
+
+---
+
+#### Mentor questions
+
+- `floor` có phải sàn giao dịch/listing venue không?
+- `comTypeCode` có ý nghĩa cụ thể như thế nào?
+- `isIndex`/`index` có đủ để loại index khỏi universe cổ phiếu không?
+- `OTC`/`OTHER`/`STOP` có nên loại khỏi MVP không?
+- Có cần giữ `bank` flag để phân nhóm sector/risk không?
+
+---
+
+</details>
+
 ### Tradable Universe Filter Dry-Run Result
 
 <details open>
