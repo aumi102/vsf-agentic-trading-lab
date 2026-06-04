@@ -162,6 +162,82 @@ Observed `floor` values include `HOSE`, `HNX`, `UPCOM`, `OTC`, `OTHER`, and `STO
 
 </details>
 
+### Universe Parser Dry-Run Result
+
+<details open>
+<summary>The saved search-bar payload parses into four local dry-run universe tables.</summary>
+
+---
+
+#### Dry-run inputs and outputs
+
+| Item | Value |
+|---|---|
+| input raw path | `data/raw/source_probe/source=vietcap_iq/run_id=20260604T081901Z/vietcap_iq_company_search_bar/payload.json` |
+| input metadata path | `data/raw/source_probe/source=vietcap_iq/run_id=20260604T081901Z/vietcap_iq_company_search_bar/metadata.json` |
+| output directory | `data/processed/dry_run/vietcap_iq_universe/20260604T083600Z/` |
+| output files | `securities_master.csv`, `exchange_listings.csv`, `symbol_universe.csv`, `instrument_universe.csv`, `validation_report.md`, `validation_summary.json` |
+
+---
+
+#### Counts
+
+| Metric | Count |
+|---|---:|
+| JSON rows | 2080 |
+| Unique symbols | 2078 |
+| Securities master rows | 2080 |
+| Exchange listing rows | 2080 |
+| Symbol universe rows | 2080 |
+| Instrument universe rows | 2080 |
+| Quality pass rows | 1598 |
+| Quality warn rows | 480 |
+| Quality fail rows | 2 |
+
+Floor counts:
+
+| Floor | Count |
+|---|---:|
+| `HNX` | 310 |
+| `HOSE` | 454 |
+| `OTC` | 294 |
+| `OTHER` | 152 |
+| `STOP` | 2 |
+| `UPCOM` | 868 |
+
+Quality notes:
+
+- The two fail rows are duplicate `VVDIF + OTHER` rows.
+- Warning rows mainly preserve `OTC`, `OTHER`, `STOP`, and index candidates instead of dropping them.
+- `STOP` is treated as a status/special-category candidate until source semantics are confirmed.
+
+---
+
+#### HOSE overlap
+
+| Metric | Count |
+|---|---:|
+| Vietcap unique symbols | 2078 |
+| HOSE listed-universe symbols | 403 |
+| Overlap count | 403 |
+| HOSE symbols missing from Vietcap | 0 |
+| Vietcap symbols not in HOSE | 1675 |
+
+This confirms that the verified Vietcap IQ search-bar payload covers all current HOSE listed-stock symbols from the local HOSE dry run, while also containing a much broader universe. It is consistent with the mentor direction to use Vietcap IQ as the main full-market universe candidate and keep HOSE as HOSE-specific market data.
+
+---
+
+#### Readiness decision
+
+- Ready for review as a full-market universe parser dry run.
+- Ready for a mapping review of `floor`, `comTypeCode`, `isIndex`, `bank`, `index`, and nested `icbLv*` sector fields.
+- Not DB/backtest-ready.
+- Do not filter out non-stock/special rows until instrument classification rules are reviewed.
+
+---
+
+</details>
+
 ### Canonical Mapping Target
 
 <details open>
