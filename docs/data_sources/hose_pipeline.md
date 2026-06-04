@@ -363,6 +363,25 @@ The script uses the configured HOSE quote-report target, rewrites only the `date
 
 It still does not write to a database or run a backtest. Local browser-derived headers remain local-only through the source-probe config and must not be printed or committed.
 
+Latest historical audit result:
+
+Run `20260604T030039Z` tested two completed-date candidates and one likely non-trading-day/weekend candidate:
+
+| Date | Status | Full rows | Stock-only rows | Fail count | Notes |
+|---|---|---:|---:|---:|---|
+| `2026-06-02` | `verified_json` | 662 | 403 | 0 | Stable row coverage; all rows still warn on unconfirmed source units. |
+| `2026-06-03` | `verified_json` | 662 | 403 | 0 | Stable row coverage; all rows still warn on unconfirmed source units. |
+| `2026-05-30` | `rejected_response` | n/a | n/a | n/a | Likely useful non-trading-day/weekend signal, but more samples are needed before treating this as confirmed behavior. |
+
+The audit behavior looks healthy for the tested completed-date candidates: full row count, stock-only coverage, and zero parser failures were stable across `2026-06-02` and `2026-06-03`. The `2026-05-30` result should not be overinterpreted yet; it shows that a weekend/non-trading candidate did not return a normal usable quote-report JSON body under the current validation rules.
+
+Remaining blockers:
+
+- Source units remain unconfirmed.
+- Final EOD timing remains unconfirmed.
+- Non-trading-day behavior needs more samples.
+- `tradingBy=VNINDEX` coverage should be tested across more dates.
+
 ---
 
 </details>
