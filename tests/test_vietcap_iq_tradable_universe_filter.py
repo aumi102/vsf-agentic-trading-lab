@@ -70,10 +70,13 @@ def test_build_tradable_universe_preserves_excluded_rows_and_counts(tmp_path: Pa
     result = build_tradable_universe(input_dir=input_dir, output_dir=input_dir / "tradable_universe")
     summary = result["summary"]
     excluded = pd.read_csv(input_dir / "tradable_universe" / "excluded_universe_rows.csv")
+    report_text = (input_dir / "tradable_universe" / "tradable_universe_report.md").read_text(encoding="utf-8")
 
     assert summary["run_status"] == "warn"
     assert summary["tradable_row_count"] == 3
     assert summary["tradable_unique_symbols"] == 3
+    assert summary["listed_market_fetch_row_count"] == 3
+    assert summary["listed_market_fetch_unique_symbols"] == 3
     assert summary["excluded_row_count"] == 3
     assert summary["excluded_unique_symbols"] == 3
     assert summary["included_floor_counts"] == {"HNX": 1, "HOSE": 1, "UPCOM": 1}
@@ -82,6 +85,8 @@ def test_build_tradable_universe_preserves_excluded_rows_and_counts(tmp_path: Pa
     assert summary["excluded_reason_counts"]["excluded_index_candidate"] == 1
     assert summary["excluded_reason_counts"]["excluded_quality_fail"] == 1
     assert set(excluded["symbol"]) == {"OTC1", "VNINDEX", "BAD"}
+    assert "Listed-Market Fetch Universe" in report_text
+    assert "not the final tradable asset list" in report_text
 
 
 def test_duplicate_after_filter_fails_run(tmp_path: Path) -> None:

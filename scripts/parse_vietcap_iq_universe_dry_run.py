@@ -45,6 +45,7 @@ def main() -> int:
     listings_path = output_dir / "exchange_listings.csv"
     universe_path = output_dir / "symbol_universe.csv"
     instruments_path = output_dir / "instrument_universe.csv"
+    indexes_path = output_dir / "index_universe.csv"
     report_path = output_dir / "validation_report.md"
     summary_path = output_dir / "validation_summary.json"
 
@@ -52,6 +53,7 @@ def main() -> int:
     result.exchange_listings.to_csv(listings_path, index=False)
     result.symbol_universe.to_csv(universe_path, index=False)
     result.instrument_universe.to_csv(instruments_path, index=False)
+    result.index_universe.to_csv(indexes_path, index=False)
 
     hose_dir = Path(args.hose_listed_universe_dir) if args.hose_listed_universe_dir else discover_latest_hose_listed_universe_dir()
     overlap_summary = build_hose_overlap_summary(vietcap_symbols=result.symbol_universe["symbol"], hose_listed_universe_dir=hose_dir)
@@ -76,6 +78,7 @@ def main() -> int:
     print(f"exchange_listings={listings_path}")
     print(f"symbol_universe={universe_path}")
     print(f"instrument_universe={instruments_path}")
+    print(f"index_universe={indexes_path}")
     print(f"validation_report={report_path}")
     print(f"validation_summary={summary_path}")
     print(f"row_count={summary['symbol_universe_count']}")
@@ -198,6 +201,7 @@ def build_validation_report(
     universe_path: Path,
     instruments_path: Path,
 ) -> str:
+    indexes_path = Path(str(instruments_path).replace("instrument_universe.csv", "index_universe.csv"))
     lines = [
         "# Vietcap IQ Universe Dry-Run Validation Report",
         "",
@@ -213,6 +217,7 @@ def build_validation_report(
         f"- exchange_listings: `{listings_path}`",
         f"- symbol_universe: `{universe_path}`",
         f"- instrument_universe: `{instruments_path}`",
+        f"- index_universe: `{indexes_path}`",
         "",
         "## Counts",
         "",
@@ -224,6 +229,7 @@ def build_validation_report(
         f"| Exchange listing rows | {summary['exchange_listings_count']} |",
         f"| Symbol universe rows | {summary['symbol_universe_count']} |",
         f"| Instrument universe rows | {summary['instrument_universe_count']} |",
+        f"| Index universe rows | {summary['index_universe_count']} |",
         f"| Quality pass rows | {summary['quality_pass_count']} |",
         f"| Quality warn rows | {summary['quality_warn_count']} |",
         f"| Quality fail rows | {summary['quality_fail_count']} |",

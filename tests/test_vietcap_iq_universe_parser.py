@@ -25,6 +25,7 @@ def test_parses_top_level_data_list_and_normalizes_symbol_floor(tmp_path: Path) 
     result = parse_vietcap_iq_universe_payload(raw_path, metadata_path)
 
     assert len(result.symbol_universe) == 1
+    assert len(result.index_universe) == 0
     row = result.symbol_universe.iloc[0]
     assert row["symbol"] == "FPT"
     assert row["exchange_or_floor"] == "HOSE"
@@ -55,6 +56,9 @@ def test_index_and_special_floors_are_warnings_not_dropped(tmp_path: Path) -> No
     result = parse_vietcap_iq_universe_payload(raw_path, metadata_path)
 
     assert len(result.instrument_universe) == 4
+    assert len(result.index_universe) == 1
+    assert result.index_universe.iloc[0]["symbol"] == "VNINDEX"
+    assert result.validation_summary["index_universe_count"] == 1
     assert result.validation_summary["quality_warn_count"] == 4
     reasons = ";".join(result.instrument_universe["quality_reasons"])
     assert "warning_non_stock_index_candidate" in reasons
@@ -90,6 +94,11 @@ def test_deterministic_ids_are_stable(tmp_path: Path) -> None:
     assert first.securities_master.iloc[0]["security_id"] == "vietcap_iq:FPT"
     assert first.exchange_listings.iloc[0]["listing_id"] == second.exchange_listings.iloc[0]["listing_id"]
     assert first.instrument_universe.iloc[0]["instrument_id"] == second.instrument_universe.iloc[0]["instrument_id"]
+
+    raw_path, metadata_path = write_fixture(tmp_path, [vietcap_row("VNINDEX", floor="HOSE", source_id="idx-1", is_index=True)])
+    first_index = parse_vietcap_iq_universe_payload(raw_path, metadata_path)
+    second_index = parse_vietcap_iq_universe_payload(raw_path, metadata_path)
+    assert first_index.index_universe.iloc[0]["index_id"] == second_index.index_universe.iloc[0]["index_id"]
 
 
 def test_hose_overlap_summary_computes_counts(tmp_path: Path) -> None:

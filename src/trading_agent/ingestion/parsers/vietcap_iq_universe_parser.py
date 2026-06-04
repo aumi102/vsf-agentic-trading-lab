@@ -102,6 +102,25 @@ INSTRUMENT_UNIVERSE_COLUMNS = [
     "quality_reasons",
 ]
 
+INDEX_UNIVERSE_COLUMNS = [
+    "index_id",
+    "symbol",
+    "exchange_or_floor",
+    "index_name",
+    "short_name",
+    "organ_code",
+    "company_type_code",
+    "source_name",
+    "source_row_id",
+    "source_payload_id",
+    "raw_content_hash",
+    "raw_row_index",
+    "parser_version",
+    "schema_version",
+    "quality_status",
+    "quality_reasons",
+]
+
 NUMERIC_FIELD_MAP = {
     "currentPrice": "current_price",
     "targetPrice": "target_price",
@@ -119,6 +138,7 @@ class VietcapIqUniverseParseResult:
     exchange_listings: pd.DataFrame
     symbol_universe: pd.DataFrame
     instrument_universe: pd.DataFrame
+    index_universe: pd.DataFrame
     validation_summary: dict[str, Any]
 
 
@@ -146,6 +166,7 @@ def parse_vietcap_iq_universe_payload(raw_path: str | Path, metadata_path: str |
         exchange_listings=validated[EXCHANGE_LISTINGS_COLUMNS].copy(),
         symbol_universe=validated[SYMBOL_UNIVERSE_COLUMNS].copy(),
         instrument_universe=validated[INSTRUMENT_UNIVERSE_COLUMNS].copy(),
+        index_universe=validated[validated["is_index"] == True][INDEX_UNIVERSE_COLUMNS].copy(),  # noqa: E712
         validation_summary=summary,
     )
 
@@ -179,9 +200,11 @@ def _normalize_rows(rows: list[dict[str, Any]], *, raw_content_hash: str, source
             "listing_id": make_listing_id(SOURCE_NAME, symbol, exchange_or_floor),
             "universe_row_id": make_universe_row_id(SOURCE_NAME, symbol, exchange_or_floor),
             "instrument_id": make_instrument_id(SOURCE_NAME, symbol, exchange_or_floor, source_row_id, index),
+            "index_id": make_index_id(SOURCE_NAME, symbol, exchange_or_floor, source_row_id, index),
             "symbol": symbol,
             "company_name": company_name,
             "security_name": company_name,
+            "index_name": company_name,
             "short_name": short_name,
             "display_name": short_name or company_name,
             "exchange_or_floor": exchange_or_floor,
@@ -317,6 +340,7 @@ def _build_validation_summary(
         "exchange_listings_count": int(len(rows)),
         "symbol_universe_count": int(len(rows)),
         "instrument_universe_count": int(len(rows)),
+        "index_universe_count": int((rows["is_index"] == True).sum()) if not rows.empty else 0,  # noqa: E712
         "unique_symbol_count": int(rows["symbol"].nunique(dropna=True)) if not rows.empty else 0,
         "floor_counts": floor_counts,
         "quality_pass_count": int((rows["quality_status"] == "pass").sum()) if not rows.empty else 0,
@@ -414,6 +438,10 @@ def make_universe_row_id(source_name: str, symbol: str | None, exchange_or_floor
 
 def make_instrument_id(source_name: str, symbol: str | None, exchange_or_floor: str | None, source_row_id: str | None, raw_row_index: int) -> str:
     return _make_id("instrument", source_name, symbol, exchange_or_floor, source_row_id or str(raw_row_index))
+
+
+def make_index_id(source_name: str, symbol: str | None, exchange_or_floor: str | None, source_row_id: str | None, raw_row_index: int) -> str:
+    return _make_id("index", source_name, symbol, exchange_or_floor, source_row_id or str(raw_row_index))
 
 
 def _make_id(kind: str, *parts: Any) -> str:

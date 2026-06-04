@@ -175,8 +175,8 @@ Observed `floor` values include `HOSE`, `HNX`, `UPCOM`, `OTC`, `OTHER`, and `STO
 |---|---|
 | input raw path | `data/raw/source_probe/source=vietcap_iq/run_id=20260604T081901Z/vietcap_iq_company_search_bar/payload.json` |
 | input metadata path | `data/raw/source_probe/source=vietcap_iq/run_id=20260604T081901Z/vietcap_iq_company_search_bar/metadata.json` |
-| output directory | `data/processed/dry_run/vietcap_iq_universe/20260604T083600Z/` |
-| output files | `securities_master.csv`, `exchange_listings.csv`, `symbol_universe.csv`, `instrument_universe.csv`, `validation_report.md`, `validation_summary.json` |
+| output directory | `data/processed/dry_run/vietcap_iq_universe/20260604T101513Z/` |
+| output files | `securities_master.csv`, `exchange_listings.csv`, `symbol_universe.csv`, `instrument_universe.csv`, `index_universe.csv`, `validation_report.md`, `validation_summary.json` |
 
 ---
 
@@ -190,6 +190,7 @@ Observed `floor` values include `HOSE`, `HNX`, `UPCOM`, `OTC`, `OTHER`, and `STO
 | Exchange listing rows | 2080 |
 | Symbol universe rows | 2080 |
 | Instrument universe rows | 2080 |
+| Index universe rows | 34 |
 | Quality pass rows | 1598 |
 | Quality warn rows | 480 |
 | Quality fail rows | 2 |
@@ -229,10 +230,33 @@ This confirms that the verified Vietcap IQ search-bar payload covers all current
 
 #### Readiness decision
 
-- Ready for review as a full-market universe parser dry run.
+- Ready for review as a broad full-market universe parser dry run.
 - Ready for a mapping review of `floor`, `comTypeCode`, `isIndex`, `bank`, `index`, and nested `icbLv*` sector fields.
 - Not DB/backtest-ready.
-- Do not filter out non-stock/special rows until instrument classification rules are reviewed.
+- Do not treat the broad universe as final tradable assets; fetch broadly first, then apply dynamic liquidity and data-completeness filters later.
+
+---
+
+</details>
+
+### Mentor Feedback: Fetch Universe Versus Tradable Assets
+
+<details open>
+<summary>The Vietcap IQ universe should drive broad fetching, not define the final tradable asset list.</summary>
+
+---
+
+#### Updated interpretation
+
+- Vietcap IQ's broad universe is for fetchers to collect enough market, fundamental, and instrument data.
+- The 1598 listed-market candidate rows are not final tradable assets.
+- Final tradable assets should be selected later by dynamic filters, especially liquidity, data completeness, exchange eligibility, and strategy-specific constraints.
+- Index rows must be separated into their own output/table. The parser now writes `index_universe.csv` with 34 index candidates.
+- OHLCV tradable universe selection should be dynamic and can change over time.
+- Fundamental data should be fetched as broadly and completely as possible before filtering.
+- Ingestion should re-fetch/re-ingest daily where practical, because historical market data can be restated after dividends, splits, or adjustments.
+- QuestDB dedup can tolerate repeated ingestion if primary/dedup keys are designed correctly.
+- This remains pre-DB and pre-backtest work.
 
 ---
 
@@ -241,7 +265,7 @@ This confirms that the verified Vietcap IQ search-bar payload covers all current
 ### Field Semantics Review
 
 <details open>
-<summary>The current tradable-universe rule looks reasonable, but key field meanings still need mentor/source confirmation.</summary>
+<summary>The current listed-market fetch rule looks reasonable, but key field meanings still need mentor/source confirmation.</summary>
 
 ---
 
@@ -263,7 +287,7 @@ Quality reasons:
 
 | Reason | Count | Interpretation |
 |---|---:|---|
-| `warning_non_listed_or_special_floor_candidate` | 448 | `OTC`, `OTHER`, and `STOP` rows are preserved but excluded from the first tradable candidate set. |
+| `warning_non_listed_or_special_floor_candidate` | 448 | `OTC`, `OTHER`, and `STOP` rows are preserved but excluded from the first listed-market fetch candidate set. |
 | `warning_stop_floor_status_candidate` | 2 | `STOP` looks like a special status/category, not a normal exchange. |
 | `warning_non_stock_index_candidate` | 34 | Index rows are preserved but excluded from the stock universe. |
 | `duplicate_symbol_exchange_or_floor` | 2 | Duplicate `VVDIF + OTHER` rows fail parser quality and are excluded. |
@@ -280,13 +304,13 @@ The filter excludes 34 rows from otherwise listed floors because they are index 
 | `HNX` | 7 | `excluded_index_candidate` |
 | `UPCOM` | 1 | `excluded_index_candidate` |
 
-The two quality-fail rows are duplicate `VVDIF + OTHER`, not HOSE/HNX/UPCOM tradable candidates.
+The two quality-fail rows are duplicate `VVDIF + OTHER`, not HOSE/HNX/UPCOM listed-market fetch candidates.
 
 ---
 
-#### Current recommended MVP universe rule
+#### Current recommended MVP fetch-universe rule
 
-For the first MVP tradable universe dry run:
+For the first MVP listed-market fetch universe dry run:
 
 - Include rows where `floor` is `HOSE`, `HNX`, or `UPCOM`.
 - Exclude rows where `floor` is `OTC`, `OTHER`, or `STOP`.
@@ -294,7 +318,7 @@ For the first MVP tradable universe dry run:
 - Exclude rows with `quality_status=fail`.
 - Preserve every excluded row in audit output; do not silently drop anything.
 
-This rule is still a dry-run rule, not a final database/backtest rule. It remains valid for review because it produces 1598 tradable candidates, which aligns with the mentor's expected full-market universe size after removing special and index rows.
+This rule is still a dry-run fetch-universe rule, not a final database/backtest rule. It remains valid for review because it produces 1598 listed-market fetch candidates, while preserving special floors, index rows, and quality-fail rows for audit. A later liquidity/data-completeness layer may reduce the final tradable asset list substantially.
 
 ---
 
@@ -310,10 +334,10 @@ This rule is still a dry-run rule, not a final database/backtest rule. It remain
 
 </details>
 
-### Tradable Universe Filter Dry-Run Result
+### Listed-Market Fetch Universe Filter Dry-Run Result
 
 <details open>
-<summary>The first MVP universe candidate keeps listed floors and quarantines special/index/fail rows.</summary>
+<summary>The first MVP fetch-universe candidate keeps listed floors and quarantines special/index/fail rows.</summary>
 
 ---
 
@@ -322,7 +346,7 @@ This rule is still a dry-run rule, not a final database/backtest rule. It remain
 | Item | Value |
 |---|---|
 | input dry-run directory | `data/processed/dry_run/vietcap_iq_universe/20260604T085258Z/` |
-| output directory | `data/processed/dry_run/vietcap_iq_universe/20260604T085258Z/tradable_universe/` |
+| output directory | `data/processed/dry_run/vietcap_iq_universe/20260604T101513Z/tradable_universe/` |
 | output files | `securities_master_tradable.csv`, `exchange_listings_tradable.csv`, `symbol_universe_tradable.csv`, `instrument_universe_tradable.csv`, `excluded_universe_rows.csv`, `tradable_universe_summary.json`, `tradable_universe_report.md` |
 
 ---
@@ -333,8 +357,8 @@ This rule is still a dry-run rule, not a final database/backtest rule. It remain
 |---|---:|
 | Full rows | 2080 |
 | Full unique symbols | 2078 |
-| Tradable candidate rows | 1598 |
-| Tradable candidate unique symbols | 1598 |
+| Listed-market fetch candidate rows | 1598 |
+| Listed-market fetch candidate unique symbols | 1598 |
 | Excluded rows | 482 |
 | Excluded unique symbols | 481 |
 | Duplicate symbol + floor after filter | 0 |
@@ -367,15 +391,15 @@ Exclusion reasons:
 | `excluded_index_candidate` | 34 |
 | `excluded_quality_fail` | 2 |
 
-The raw `HOSE + HNX + UPCOM` floor count is 1632, which matches the mentor expectation of around 1600 listed-market symbols. The tradable candidate subset is 1598 because 34 index candidates are quarantined. `OTC`, `OTHER`, `STOP`, and duplicate/fail rows are preserved in `excluded_universe_rows.csv` for audit instead of being silently dropped.
+The raw `HOSE + HNX + UPCOM` floor count is 1632, which matches the mentor expectation of around 1600 listed-market symbols. The listed-market fetch candidate subset is 1598 because 34 index candidates are separated into `index_universe.csv` and quarantined from stock fetching. `OTC`, `OTHER`, `STOP`, and duplicate/fail rows are preserved in `excluded_universe_rows.csv` for audit instead of being silently dropped.
 
 ---
 
 #### Readiness decision
 
-- Ready for review as an MVP tradable-universe candidate.
+- Ready for review as an MVP listed-market fetch-universe candidate.
 - Not DB/backtest-ready until `floor`, `comTypeCode`, `isIndex`, and trading eligibility semantics are confirmed.
-- The filter should remain a dry-run decision layer until mentor/source review approves which floors and instrument classes are tradable for the first MVP.
+- The filter should remain a dry-run fetch layer until mentor/source review approves which floors and instrument classes can proceed into dynamic tradable-asset selection.
 
 ---
 
@@ -394,7 +418,7 @@ The raw `HOSE + HNX + UPCOM` floor count is 1632, which matches the mentor expec
 |---|---|---|
 | `securities_master` | one row per security/instrument | symbol, exchange, company name, short name, ISIN, instrument type, industry, status |
 | `exchange_listings` | listing-level metadata | symbol, exchange, listed status, listed date, security type |
-| `symbol_universe` | normalized tradable universe | symbol, exchange, display name, active flag, instrument category |
+| `symbol_universe` | normalized broad/fetch universe | symbol, exchange, display name, active flag, instrument category |
 | `instrument_universe` | broader instrument set | stocks, bonds, ETFs, funds, covered warrants, indexes if present |
 
 ---

@@ -23,7 +23,7 @@ REQUIRED_INPUTS = [
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build a Vietcap IQ tradable-universe candidate dry-run subset.")
+    parser = argparse.ArgumentParser(description="Build a Vietcap IQ listed-market fetch-universe candidate dry-run subset.")
     parser.add_argument("--vietcap-universe-dir", default="", help="Input Vietcap IQ universe dry-run directory. Defaults to latest.")
     parser.add_argument("--output-dir", default="", help="Output directory. Defaults to <vietcap-universe-dir>/tradable_universe.")
     return parser.parse_args()
@@ -43,8 +43,8 @@ def main() -> int:
     print(f"input_dir={input_dir}")
     print(f"output_dir={output_dir}")
     print(f"run_status={summary['run_status']}")
-    print(f"tradable_row_count={summary['tradable_row_count']}")
-    print(f"tradable_unique_symbols={summary['tradable_unique_symbols']}")
+    print(f"listed_market_fetch_row_count={summary['listed_market_fetch_row_count']}")
+    print(f"listed_market_fetch_unique_symbols={summary['listed_market_fetch_unique_symbols']}")
     print(f"excluded_row_count={summary['excluded_row_count']}")
     print(f"excluded_unique_symbols={summary['excluded_unique_symbols']}")
     print(f"included_floor_counts={json.dumps(summary['included_floor_counts'], ensure_ascii=False, sort_keys=True)}")
@@ -193,6 +193,8 @@ def build_summary(
         "full_unique_symbols": int(_unique_count(symbols.get("symbol"))),
         "tradable_row_count": int(len(symbols_tradable)),
         "tradable_unique_symbols": int(_unique_count(symbols_tradable.get("symbol"))),
+        "listed_market_fetch_row_count": int(len(symbols_tradable)),
+        "listed_market_fetch_unique_symbols": int(_unique_count(symbols_tradable.get("symbol"))),
         "excluded_row_count": int(len(excluded)),
         "excluded_unique_symbols": int(_unique_count(excluded.get("symbol"))),
         "included_floor_counts": _value_counts(symbols_tradable.get("exchange_or_floor")),
@@ -214,7 +216,9 @@ def build_summary(
         },
         "limitations": [
             "This is a dry run only. No database write or backtest was performed.",
+            "This listed-market fetch universe is not the final tradable asset list.",
             "OTC, OTHER, STOP, index, and quality-fail rows are preserved in excluded_universe_rows.csv.",
+            "Final tradable assets should be selected later by dynamic liquidity and data-completeness filters.",
             "Trading eligibility and Vietcap IQ field semantics still need review before canonical promotion.",
         ],
     }
@@ -222,7 +226,7 @@ def build_summary(
 
 def build_report(summary: dict[str, Any], output_paths: dict[str, Path]) -> str:
     lines = [
-        "# Vietcap IQ Tradable Universe Dry-Run Report",
+        "# Vietcap IQ Listed-Market Fetch Universe Dry-Run Report",
         "",
         f"- run_id: `{summary['run_id']}`",
         f"- run_status: `{summary['run_status']}`",
@@ -244,8 +248,8 @@ def build_report(summary: dict[str, Any], output_paths: dict[str, Path]) -> str:
             "|---|---:|",
             f"| Full rows | {summary['full_row_count']} |",
             f"| Full unique symbols | {summary['full_unique_symbols']} |",
-            f"| Tradable rows | {summary['tradable_row_count']} |",
-            f"| Tradable unique symbols | {summary['tradable_unique_symbols']} |",
+            f"| Listed-market fetch rows | {summary['listed_market_fetch_row_count']} |",
+            f"| Listed-market fetch unique symbols | {summary['listed_market_fetch_unique_symbols']} |",
             f"| Excluded rows | {summary['excluded_row_count']} |",
             f"| Excluded unique symbols | {summary['excluded_unique_symbols']} |",
             f"| Duplicate symbol + floor rows after filter | {summary['duplicate_symbol_floor_after_filter_count']} |",
