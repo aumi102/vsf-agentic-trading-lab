@@ -9,7 +9,7 @@ toc_max_heading_level: 3
 ### 1. Executive Summary
 
 <details open>
-<summary>VBMA, FRED, and selected HOSE dry-run parsers are available; detailed HOSE status lives in the canonical HOSE pipeline doc.</summary>
+<summary>VBMA, FRED, HOSE, and Vietcap IQ dry-run parsers are available, but DB/backtest use still needs source-semantics review.</summary>
 
 ---
 
@@ -18,16 +18,71 @@ toc_max_heading_level: 3
 - **VBMA** is ready for ingestion v2 planning for government bond auction results. The verified raw sample is row-level and parses as an XLSX spreadsheet even though the endpoint path ends in `.csv`.
 - **FRED** is ready for macro-context ingestion planning. The verified raw sample is structured JSON with top-level series metadata and nested observations.
 - **HOSE** listed-universe, quote-report, stock-only filter, and saved-output audits are summarized in `docs/data_sources/hose_pipeline.md`.
+- **Vietcap IQ** search-bar universe parsing is ready for review as a broad full-market fetch universe candidate. The current dry run writes `index_universe.csv` separately and produces a 1598-row listed-market fetch candidate, but this is not final tradable assets.
 
 #### What is not ready yet
 
-- **Vietcap IQ** is not ready for ingestion. The current verified sample is an HTML/report surface that points toward IQ/report pages, but it does not contain report-list rows or document metadata.
+- **Stock OHLCV DB/backtest use** is not ready until units, adjustment policy, EOD semantics, historical availability, and dynamic universe filters are confirmed.
+- **Vietcap IQ reports/fundamentals** still need row-level financial/report payloads and source-field mapping before parser planning.
+- **Final tradable assets** are not defined yet. They must be selected later from broad fetch outputs using dynamic liquidity, data-quality, and strategy filters.
 
 #### Why VBMA plus FRED first
 
 - They are the only sources with verified row-level or observation-level payloads.
 - They are context sources, so they can be implemented without blocking the still-open stock-market source discovery work.
 - They exercise the ingestion architecture needed later: raw payload preservation, parser versioning, canonical schema mapping, point-in-time fields, and quality reports.
+
+---
+
+</details>
+
+### Daily Re-Fetch, Dedup, And Dynamic Universe Policy
+
+<details open>
+<summary>Market-data ingestion should fetch broadly, re-fetch repeatably, and let later filters define tradable assets.</summary>
+
+---
+
+#### Broad fetch universe versus final tradable assets
+
+- Vietcap IQ's listed-market fetch universe is for fetching enough market and fundamental data.
+- It is not the final tradable asset list.
+- Final tradable assets will be selected later by dynamic liquidity, data-quality, exchange-eligibility, and strategy-specific filters.
+- Dynamic filters may change over time, so the tradable universe can change by date or rebalance period.
+- Index rows belong in a separate index universe, not in the stock tradable universe.
+
+#### Daily re-fetch and re-ingest policy
+
+- For OHLCV and adjusted market data, prefer re-fetching the full relevant historical window or full available dataset daily when practical.
+- Reason: dividends, stock splits, and corporate actions can cause historical prices, volumes, and adjustment factors to be restated.
+- Re-fetching reduces the risk of stale adjusted data.
+- Do not assume append-only ingestion is enough for Vietnamese stock OHLCV.
+- Fundamental data should also be fetched broadly so later FA filters and evidence agents are not starved by an overly narrow starting universe.
+
+#### Dedup and upsert design expectation
+
+- QuestDB dedup can be used later if table timestamps, symbols, and dedup keys are designed correctly.
+- Until database implementation, this is a design assumption to verify against official QuestDB docs and mentor guidance.
+- Candidate OHLCV dedup keys should include `source_name`, `symbol`, `exchange`, `trading_date`, `data_status`, and `adjustment_type` where applicable.
+- Raw payloads should preserve `content_hash`, `source_payload_id`, raw path, metadata path, parser version, and schema version for lineage.
+- Repeated ingestion is acceptable only if duplicate business rows either collapse deterministically or remain distinguishable by payload/version lineage.
+
+#### Data layers
+
+| Layer | Purpose | Example output |
+|---|---|---|
+| raw payload layer | Preserve the exact source response and non-secret request metadata. | `payload.json`, `metadata.json`, `content_hash` |
+| parsed canonical layer | Normalize source rows with lineage and quality status. | `daily_quote_reports.csv`, `symbol_universe.csv` |
+| fetch universe layer | Maintain the broad set used by fetchers to collect enough data. | Vietcap IQ listed-market fetch universe |
+| dynamic tradable universe layer | Select assets later based on liquidity, data completeness, and strategy constraints. | date-specific/rebalance-specific tradable candidates |
+
+#### Open questions for mentor
+
+- How long of a historical OHLCV window should be re-fetched daily?
+- Should the first MVP use adjusted or unadjusted OHLCV?
+- What should be the canonical QuestDB dedup key for daily stock bars?
+- Should dividend, split, and corporate-action data be stored separately from prices from the start?
+- Which liquidity filters should define final tradable assets?
 
 ---
 
@@ -44,12 +99,13 @@ toc_max_heading_level: 3
 
 - VBMA government bond auction results.
 - FRED macro series and observations.
+- Vietcap IQ broad universe and index-universe dry-run outputs as source discovery artifacts.
 - Raw payload provenance, parser outputs, canonical table proposals, and validation gates.
 
 #### Out of scope for now
 
 - HOSE database ingestion and backtest use until the gates in `docs/data_sources/hose_pipeline.md` are satisfied.
-- Vietcap IQ ingestion until report-list and document APIs are captured.
+- Vietcap IQ reports, financial statements, ratios, and document ingestion until row-level APIs are captured.
 - Stock OHLCV ingestion.
 - Price board/order book ingestion.
 - Backtest engine.

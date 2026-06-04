@@ -256,6 +256,7 @@ This confirms that the verified Vietcap IQ search-bar payload covers all current
 - Fundamental data should be fetched as broadly and completely as possible before filtering.
 - Ingestion should re-fetch/re-ingest daily where practical, because historical market data can be restated after dividends, splits, or adjustments.
 - QuestDB dedup can tolerate repeated ingestion if primary/dedup keys are designed correctly.
+- The canonical daily re-fetch, dedup, and dynamic-universe policy lives in `docs/ingestion_v2_schema_plan.md`.
 - This remains pre-DB and pre-backtest work.
 
 ---
