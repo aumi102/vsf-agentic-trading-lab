@@ -29,7 +29,7 @@ def test_parse_source_names_supports_focused_comma_list() -> None:
     assert parse_source_names("hose,fred,vietcap_iq") == ["hose", "fred", "vietcap_iq"]
 
 
-def test_vietcap_iq_likely_tables_are_company_financial_report_tables(monkeypatch) -> None:
+def test_vietcap_iq_likely_tables_include_universe_and_company_financial_tables(monkeypatch) -> None:
     monkeypatch.delenv("VIETCAP_IQ_PROBE_URL", raising=False)
     monkeypatch.delenv("VIETCAP_PROBE_URL", raising=False)
 
@@ -37,6 +37,10 @@ def test_vietcap_iq_likely_tables_are_company_financial_report_tables(monkeypatc
 
     assert result.source_name == "vietcap_iq"
     assert set(result.likely_canonical_tables) == {
+        "securities_master",
+        "exchange_listings",
+        "symbol_universe",
+        "instrument_universe",
         "company_profiles",
         "financial_statement_items",
         "financial_ratios",

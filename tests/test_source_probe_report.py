@@ -30,7 +30,7 @@ def test_report_writer_includes_all_source_statuses(tmp_path: Path) -> None:
             access_status=AccessStatus.NOT_CONFIGURED,
             auth_status="missing_url",
             endpoint_or_surface="VIETCAP_IQ_PROBE_URL not configured",
-            likely_canonical_tables=["company_profiles", "financial_statement_items", "financial_ratios", "company_reports", "report_documents"],
+            likely_canonical_tables=["securities_master", "exchange_listings", "symbol_universe", "instrument_universe", "company_profiles", "financial_statement_items", "financial_ratios", "company_reports", "report_documents"],
             next_action="configure Vietcap IQ target",
         ),
         SourceProbeResult(
@@ -68,7 +68,7 @@ def test_report_writer_includes_all_source_statuses(tmp_path: Path) -> None:
     text = report_path.read_text(encoding="utf-8")
     assert "targets_config" in text
     assert "Canonical Stock Data Readiness For HSX/HOSE" in text
-    assert "Company/Financial Reports Readiness For Vietcap IQ" in text
+    assert "Full-Market Universe And Company/Financial Readiness For Vietcap IQ" in text
     assert "Bonds/Macro Local Readiness For VBMA" in text
     assert "Global Macro Readiness For FRED" in text
     assert "`hose`" in text

@@ -20,6 +20,7 @@ toc_max_heading_level: 3
 - HOSE quote-report parser dry run works for saved verified JSON samples.
 - HOSE quote-report stock-only filter works.
 - Full quote-report rows are preserved, and non-stock-like rows are excluded only in derived stock-only outputs.
+- Mentor recommends Vietcap IQ as the main full-market universe provider. HOSE listed universe remains HOSE-specific and should not be treated as full-market universe.
 
 #### What is still blocked
 

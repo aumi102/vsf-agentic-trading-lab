@@ -77,6 +77,77 @@
   ],
   "vietcap_iq": [
     {
+      "name": "vietcap_iq_company_search_bar_universe_candidate",
+      "dataset": "vietcap_iq_company_search_bar",
+      "url": "https://iq.vietcap.com.vn/api/iq-insight-service/v2/company/search-bar?language=1",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json,text/plain,*/*",
+        "User-Agent": "vsf-source-probe/0.1"
+      },
+      "expected_content_type_contains": "application/json",
+      "expected_body_startswith_json": true,
+      "reject_body_contains": [
+        "Request Rejected",
+        "Access Denied",
+        "Forbidden"
+      ],
+      "min_body_bytes": 100,
+      "likely_canonical_tables": [
+        "securities_master",
+        "exchange_listings",
+        "symbol_universe",
+        "instrument_universe"
+      ],
+      "terms_notes": "Public browser-observed Vietcap IQ search-bar candidate. Verify row-level symbol payload and access/terms before parser planning."
+    },
+    {
+      "name": "vietcap_iq_stock_asset_secondary_candidate",
+      "dataset": "vietcap_iq_stock_asset",
+      "url": "https://trading.vietcap.com.vn/order/locales/vi/stock-asset.json?v=1780043897253",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json,text/plain,*/*",
+        "User-Agent": "vsf-source-probe/0.1"
+      },
+      "expected_content_type_contains": "application/json",
+      "expected_body_startswith_json": true,
+      "reject_body_contains": [
+        "Request Rejected",
+        "Access Denied",
+        "Forbidden"
+      ],
+      "min_body_bytes": 100,
+      "likely_canonical_tables": [
+        "symbol_universe",
+        "instrument_universe"
+      ],
+      "terms_notes": "Public browser-observed stock-asset JSON candidate. Probe only as a secondary universe candidate if it contains symbol rows."
+    },
+    {
+      "name": "vietcap_iq_stock_asset_bond_secondary_candidate",
+      "dataset": "vietcap_iq_stock_asset_bond",
+      "url": "https://trading.vietcap.com.vn/order/locales/vi/stock-asset-bond.json?v=1780043897253",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json,text/plain,*/*",
+        "User-Agent": "vsf-source-probe/0.1"
+      },
+      "expected_content_type_contains": "application/json",
+      "expected_body_startswith_json": true,
+      "reject_body_contains": [
+        "Request Rejected",
+        "Access Denied",
+        "Forbidden"
+      ],
+      "min_body_bytes": 100,
+      "likely_canonical_tables": [
+        "symbol_universe",
+        "instrument_universe"
+      ],
+      "terms_notes": "Public browser-observed stock-asset-bond JSON candidate. Probe only as a secondary instrument-universe candidate if it contains symbol rows."
+    },
+    {
       "name": "vietcap_iq_reports_candidate",
       "dataset": "vietcap_iq_financial_reports_probe",
       "url": "https://example.com/replace-with-vietcap-iq-url",

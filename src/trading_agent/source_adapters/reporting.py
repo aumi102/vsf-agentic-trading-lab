@@ -120,8 +120,23 @@ def write_source_probe_report(
         reason = "verified daily_prices target with raw sample" if is_candidate else _readiness_reason(result)
         lines.append(f"| `{result.source_name}` | `{result.target_name or 'default'}` | `{str(is_candidate).lower()}` | {_cell(reason)} |")
 
-    lines.extend(["", "## Company/Financial Reports Readiness For Vietcap IQ", ""])
-    _append_source_readiness(lines, results, "vietcap_iq", {"company_profiles", "financial_statement_items", "financial_ratios", "company_reports", "report_documents"})
+    lines.extend(["", "## Full-Market Universe And Company/Financial Readiness For Vietcap IQ", ""])
+    _append_source_readiness(
+        lines,
+        results,
+        "vietcap_iq",
+        {
+            "securities_master",
+            "exchange_listings",
+            "symbol_universe",
+            "instrument_universe",
+            "company_profiles",
+            "financial_statement_items",
+            "financial_ratios",
+            "company_reports",
+            "report_documents",
+        },
+    )
 
     lines.extend(["", "## Bonds/Macro Local Readiness For VBMA", ""])
     _append_source_readiness(lines, results, "vbma", {"bond_auctions", "bond_instruments", "yield_curve_points", "bond_reports", "macro_context_events"})
