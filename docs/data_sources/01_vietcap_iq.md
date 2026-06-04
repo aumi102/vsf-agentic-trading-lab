@@ -59,6 +59,109 @@ toc_max_heading_level: 3
 
 </details>
 
+### Verified Search-Bar Probe Result
+
+<details open>
+<summary>The Vietcap IQ search-bar probe returned row-level symbol and instrument data.</summary>
+
+---
+
+#### Probe classification
+
+| Target | Dataset | Classification | Notes |
+|---|---|---|---|
+| `vietcap_iq_research_center_candidate` | `vietcap_iq_research_reports` | verified HTML/non-universe | Useful research/report surface, but not a row-level universe payload. |
+| `vietcap_iq_company_search_bar_universe_candidate` | `vietcap_iq_company_search_bar` | verified usable JSON | Strong full-market universe candidate with row-level symbol and instrument fields. |
+
+---
+
+#### Search-bar evidence
+
+| Item | Value |
+|---|---|
+| run_id | `20260604T081901Z` |
+| target name | `vietcap_iq_company_search_bar_universe_candidate` |
+| dataset | `vietcap_iq_company_search_bar` |
+| raw path | `data/raw/source_probe/source=vietcap_iq/run_id=20260604T081901Z/vietcap_iq_company_search_bar/payload.json` |
+| metadata path | `data/raw/source_probe/source=vietcap_iq/run_id=20260604T081901Z/vietcap_iq_company_search_bar/metadata.json` |
+| content type | `application/json` |
+| top-level JSON fields | `serverDateTime`, `traceId`, `status`, `code`, `msg`, `exception`, `successful`, `data` |
+| list/container field | `data` |
+| observed data rows | 2080 |
+| source-probe metadata row count | 1 top-level envelope row |
+
+---
+
+#### Observed row fields
+
+Observed row fields include:
+
+- `id`
+- `name`
+- `floor`
+- `phone`
+- `fax`
+- `code`
+- `shortName`
+- `logoUrl`
+- `tax`
+- `organCode`
+- `icbLv1`
+- `icbLv2`
+- `icbLv3`
+- `icbLv4`
+- `isBank`
+- `isIndex`
+- `comTypeCode`
+- `inCu`
+- `upsideToTpPercentage`
+- `projectedTsrPercentage`
+- `currentPrice`
+- `dividendPerShareTsr`
+- `targetPrice`
+- `bank`
+- `index`
+
+Example row shape, shortened:
+
+| Field | Example |
+|---|---|
+| `code` | `STK` |
+| `name` | `Công ty Cổ phần Sợi Thế Kỷ` |
+| `shortName` | `Sợi Thế Kỷ` |
+| `floor` | `HOSE` |
+| `organCode` | `CENTURY` |
+| `comTypeCode` | `CT` |
+| `isIndex` | `false` |
+| `isBank` | `false` |
+
+Observed `floor` values include `HOSE`, `HNX`, `UPCOM`, `OTC`, `OTHER`, and `STOP`. This is broader than the HOSE-specific 403-symbol listed universe and is consistent with mentor guidance that Vietcap IQ can expose a much larger full-market universe. The observed 2080 rows are above the rough 1600-symbol expectation, likely because the search-bar universe includes non-common-stock instruments, indexes, OTC/other entries, or inactive/status-specific rows.
+
+---
+
+#### Likely canonical mapping
+
+| Canonical table | Mapping notes |
+|---|---|
+| `securities_master` | Use `code` as symbol candidate, `name` as company/security name, `shortName`, `organCode`, `tax`, sector fields, and flags. |
+| `exchange_listings` | Use `floor` as exchange/listing venue candidate; verify whether `STOP` is a venue, status, or special category before canonical mapping. |
+| `symbol_universe` | Use row-level `code`, `floor`, `name`, `shortName`, `comTypeCode`, `isIndex`, and `isBank` for normalized universe membership. |
+| `instrument_universe` | Use `comTypeCode`, `isIndex`, `index`, `bank`, and sector objects to classify stocks, banks, indexes, and other instrument classes where possible. |
+
+---
+
+#### Readiness decision
+
+- Ready for a dedicated mapping review and parser dry-run planning.
+- Not yet DB/backtest-ready.
+- Before parser implementation, confirm exact meanings for `floor`, `comTypeCode`, `inCu`, `isIndex`, `bank`, `index`, and nested `icbLv*` sector objects.
+- Compare the parsed Vietcap IQ universe against HOSE's 403-symbol exchange universe after a parser dry run.
+- Preserve raw payloads and terms/access notes; do not use local browser headers, cookies, or tokens in committed config or docs.
+
+---
+
+</details>
+
 ### Canonical Mapping Target
 
 <details open>
