@@ -94,6 +94,24 @@ def test_rejected_response_date_is_recorded(monkeypatch, tmp_path: Path) -> None
     assert result["errors"] == ["response_body_contains_rejected_marker:Request Rejected"]
 
 
+def test_rejected_small_empty_json_is_classified_as_empty_data(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(historical.HoseAdapter, "_probe_configured_target", fake_probe_rejected_empty_json)
+
+    summary = historical.run_historical_audit(
+        dates=["2026-05-30"],
+        base_target=base_target(),
+        output_dir=tmp_path / "audit",
+        run_id="test_run",
+        listed_universe_dir=None,
+    )
+
+    result = summary["date_results"][0]
+    assert result["status"] == "empty_data"
+    assert result["access_status"] == "rejected_response"
+    assert result["errors"] == ["response_body_too_small:41<100"]
+    assert result["full_row_count"] == 0
+
+
 def test_report_and_summary_do_not_include_secret_header_values(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(historical.HoseAdapter, "_probe_configured_target", fake_probe)
     target = base_target()
@@ -184,6 +202,31 @@ def fake_probe(self, target: ProbeTarget, *, symbols: list[str], start: str, end
         http_status=200,
         content_type="text/html; charset=utf-8",
         errors=["response_body_contains_rejected_marker:Request Rejected"],
+    )
+
+
+def fake_probe_rejected_empty_json(self, target: ProbeTarget, *, symbols: list[str], start: str, end: str, run_id: str) -> SourceProbeResult:
+    base = Path(self.raw_store.base_dir) / f"source=hose" / f"run_id={run_id}" / f"{target.dataset}"
+    base.mkdir(parents=True, exist_ok=True)
+    raw_path = base / "payload.json"
+    metadata_path = base / "metadata.json"
+    raw_path.write_text(json.dumps({"data": [], "success": True, "message": None}), encoding="utf-8")
+    metadata_path.write_text(json.dumps(metadata_for(raw_path, target, start)), encoding="utf-8")
+    return SourceProbeResult(
+        source_name="hose",
+        adapter_name="HoseAdapter",
+        access_status=AccessStatus.REJECTED_RESPONSE,
+        auth_status="configured_target",
+        endpoint_or_surface=target.url,
+        datasets=[target.dataset],
+        sample_start=start,
+        sample_end=end,
+        http_status=200,
+        content_type="application/json; charset=utf-8",
+        raw_paths=[str(raw_path)],
+        metadata_paths=[str(metadata_path)],
+        errors=["response_body_too_small:41<100"],
+        warnings=["response_body_too_small:41<100"],
     )
 
 

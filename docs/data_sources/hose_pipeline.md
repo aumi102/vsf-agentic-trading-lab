@@ -382,6 +382,26 @@ Remaining blockers:
 - Non-trading-day behavior needs more samples.
 - `tradingBy=VNINDEX` coverage should be tested across more dates.
 
+Wider historical audit result:
+
+Run `20260604T031010Z` tested 10 requested dates:
+
+| Result group | Count | Evidence |
+|---|---:|---|
+| Verified JSON dates | 7 | `2026-05-26`, `2026-05-27`, `2026-05-28`, `2026-05-29`, `2026-06-01`, `2026-06-02`, `2026-06-03` |
+| Originally reported rejected responses | 3 | `2026-04-30`, `2026-05-30`, `2026-05-31` |
+
+The seven verified dates had stable stock-only coverage: 403 stock-only rows and 403 stock-only unique symbols on every verified date, with `fail_count=0` and duplicate `symbol + trading_date + data_status` count `0`. Full quote-report rows varied from 641 to 663, while the matched stock-only subset stayed fixed. The likely reason is date-to-date variation in non-stock-like instruments, while listed-stock coverage remains stable for this sample.
+
+Review of the raw payloads for the three originally reported `rejected_response` dates found valid small JSON bodies with `data: []`. The audit script now treats that shape as `empty_data` instead of rejected HTML. These dates are useful non-trading-day/weekend/holiday candidates, but they still require official trading-calendar confirmation before being encoded as final source behavior.
+
+Remaining blockers after the wider audit:
+
+- Source units remain unconfirmed.
+- Final EOD timing remains unconfirmed.
+- Official trading calendar integration is not done.
+- `tradingBy=VNINDEX` coverage should still be reviewed across a longer date range.
+
 ---
 
 </details>

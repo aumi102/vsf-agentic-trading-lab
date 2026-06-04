@@ -140,6 +140,8 @@ def run_historical_audit(
         date_result = summarize_probe_result(date=date, result=result)
         if result.access_status == AccessStatus.VERIFIED:
             date_result.update(parse_verified_payload(date=date, result=result, output_dir=output_dir, listed_symbols=listed_symbols))
+        elif result.access_status == AccessStatus.REJECTED_RESPONSE:
+            date_result.update(classify_empty_payload_if_present(result=result))
         date_results.append(date_result)
 
     return {
@@ -258,6 +260,26 @@ def parse_verified_payload(*, date: str, result: Any, output_dir: Path, listed_s
     date_dir.mkdir(parents=True, exist_ok=True)
     (date_dir / "parsed_summary.json").write_text(json.dumps(parsed_summary, indent=2, ensure_ascii=False), encoding="utf-8")
     return parsed_summary
+
+
+def classify_empty_payload_if_present(*, result: Any) -> dict[str, Any]:
+    if not result.raw_paths:
+        return {}
+    try:
+        payload = json.loads(Path(result.raw_paths[0]).read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    rows = payload.get("data") if isinstance(payload, dict) else None
+    if isinstance(rows, list) and len(rows) == 0:
+        return {
+            "status": "empty_data",
+            "full_row_count": 0,
+            "full_unique_symbol_count": 0,
+            "stock_only_row_count": 0,
+            "stock_only_unique_symbol_count": 0,
+            "excluded_symbol_count": 0,
+        }
+    return {}
 
 
 def load_listed_symbols(listed_universe_dir: Path | None) -> set[str]:
