@@ -17,7 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Audit HOSE quote-report dry-run symbols against the HOSE listed-universe dry-run output.")
     parser.add_argument("--quote-report-dir", default="", help="HOSE quote-report dry-run directory. Defaults to latest.")
     parser.add_argument("--listed-universe-dir", default="", help="HOSE listed-universe all-pages dry-run directory. Defaults to latest.")
-    parser.add_argument("--doc-out", default="docs/hose_quote_report_universe_coverage_audit.md")
+    parser.add_argument("--doc-out", default="", help="Optional Markdown report path. Defaults to <quote-report-dir>/universe_coverage_report.md.")
     return parser.parse_args()
 
 
@@ -28,9 +28,12 @@ def main() -> int:
 
     summary = build_audit_summary(quote_dir=quote_dir, listed_dir=listed_dir)
     summary_path = quote_dir / "universe_coverage_summary.json"
-    doc_path = ROOT / args.doc_out
+    doc_path = Path(args.doc_out) if args.doc_out else quote_dir / "universe_coverage_report.md"
+    if not doc_path.is_absolute():
+        doc_path = ROOT / doc_path
 
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    doc_path.parent.mkdir(parents=True, exist_ok=True)
     doc_path.write_text(build_audit_doc(summary), encoding="utf-8")
 
     print(f"quote_report_dir={quote_dir}")
@@ -159,13 +162,7 @@ def build_audit_doc(summary: dict[str, Any]) -> str:
     unmatched_examples = ", ".join(f"`{symbol}`" for symbol in instrument["unmatched_examples"][:40])
     prefix_top = ", ".join(f"`{prefix}`: {count}" for prefix, count in instrument["unmatched_prefix4_top"].items())
 
-    return f"""---
-title: hose_quote_report_universe_coverage_audit
-toc_min_heading_level: 2
-toc_max_heading_level: 3
----
-
-# HOSE Quote Report Universe Coverage Audit
+    return f"""# HOSE Quote Report Universe Coverage Audit
 
 ## A. Executive Summary
 
