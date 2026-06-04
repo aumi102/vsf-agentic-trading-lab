@@ -406,7 +406,40 @@ Remaining blockers after the wider audit:
 
 </details>
 
-## 7. Data-Quality Gates Before DB/Backtest
+## 7. Unit And EOD Confirmation Checklist
+
+<details open>
+<summary>These quote-report fields need mentor/source confirmation before DB/backtest use.</summary>
+
+---
+
+| Field | Current parser meaning | Suspected unit | Confirmation needed | Blocks DB/backtest |
+|---|---|---|---|---|
+| `priorClosePrice` | Previous close price. | Display price, likely thousand VND-style. | Confirm exact price unit and whether it is adjusted/unadjusted. | yes |
+| `openPrice` | Session open price. | Display price, likely thousand VND-style. | Confirm exact price unit and zero/no-trade behavior. | yes |
+| `highPrice` | Session high price. | Display price, likely thousand VND-style. | Confirm exact price unit and whether high is final after EOD. | yes |
+| `lowPrice` | Session low price. | Display price, likely thousand VND-style. | Confirm exact price unit and whether low is final after EOD. | yes |
+| `closePrice` | Session close or latest matched price. | Display price, likely thousand VND-style. | Confirm when this becomes final EOD close. | yes |
+| `averagePrice` | Average matched price. | Display price, likely thousand VND-style. | Confirm formula and unit. | yes |
+| `ceiling` | Ceiling price. | Display price, likely thousand VND-style. | Confirm unit and daily reference basis. | yes |
+| `floor` | Floor price. | Display price, likely thousand VND-style. | Confirm unit and daily reference basis. | yes |
+| `mainVolume` | Matched trading volume. | Unknown: shares, lots, or display-scaled volume. | Confirm exact volume unit. | yes |
+| `mainValue` | Matched trading value. | Unknown: VND, thousand VND, million VND, or display-scaled value. | Confirm exact value unit. | yes |
+| `changePriceRatio` | Percent price change. | Percent value. | Confirm whether `1.23` means `1.23%` or ratio form. | yes |
+
+Mentor questions:
+
+- Giá trong quote-report đang là nghìn đồng hay đơn vị nào?
+- `mainVolume` là cổ phiếu, lô, hay đơn vị hiển thị khác?
+- `mainValue` là đồng, nghìn đồng, triệu đồng, hay đơn vị khác?
+- Dữ liệu quote-report sau giờ nào thì được coi là cuối ngày?
+- Có nên dùng `tradingBy=VNINDEX` làm nguồn full HOSE stock universe cho MVP không?
+
+---
+
+</details>
+
+## 8. Data-Quality Gates Before DB/Backtest
 
 <details open>
 <summary>Database and backtest work should wait until source semantics are resolved.</summary>
@@ -430,7 +463,7 @@ Until these gates are satisfied, HOSE quote-report outputs should remain dry-run
 
 </details>
 
-## 8. Current Scripts
+## 9. Current Scripts
 
 <details open>
 <summary>These scripts support the current HOSE dry-run pipeline.</summary>
@@ -450,7 +483,7 @@ Until these gates are satisfied, HOSE quote-report outputs should remain dry-run
 
 </details>
 
-## 9. Current Tests
+## 10. Current Tests
 
 <details open>
 <summary>These tests cover the current HOSE parser and audit utilities.</summary>
@@ -469,7 +502,7 @@ Until these gates are satisfied, HOSE quote-report outputs should remain dry-run
 
 </details>
 
-## 10. Recommended Next Step
+## 11. Recommended Next Step
 
 <details open>
 <summary>The next step is unit or historical availability confirmation, still without DB/backtest work.</summary>
@@ -494,7 +527,7 @@ Still do not implement:
 
 </details>
 
-## 11. Appendix: Old Docs Merged
+## 12. Appendix: Old Docs Merged
 
 <details open>
 <summary>The following old HOSE docs were merged into this canonical document.</summary>
