@@ -238,6 +238,77 @@ This confirms that the verified Vietcap IQ search-bar payload covers all current
 
 </details>
 
+### Tradable Universe Filter Dry-Run Result
+
+<details open>
+<summary>The first MVP universe candidate keeps listed floors and quarantines special/index/fail rows.</summary>
+
+---
+
+#### Inputs and outputs
+
+| Item | Value |
+|---|---|
+| input dry-run directory | `data/processed/dry_run/vietcap_iq_universe/20260604T085258Z/` |
+| output directory | `data/processed/dry_run/vietcap_iq_universe/20260604T085258Z/tradable_universe/` |
+| output files | `securities_master_tradable.csv`, `exchange_listings_tradable.csv`, `symbol_universe_tradable.csv`, `instrument_universe_tradable.csv`, `excluded_universe_rows.csv`, `tradable_universe_summary.json`, `tradable_universe_report.md` |
+
+---
+
+#### Filter result
+
+| Metric | Count |
+|---|---:|
+| Full rows | 2080 |
+| Full unique symbols | 2078 |
+| Tradable candidate rows | 1598 |
+| Tradable candidate unique symbols | 1598 |
+| Excluded rows | 482 |
+| Excluded unique symbols | 481 |
+| Duplicate symbol + floor after filter | 0 |
+| Run status | `warn` |
+
+Included floors:
+
+| Floor | Count |
+|---|---:|
+| `HNX` | 303 |
+| `HOSE` | 428 |
+| `UPCOM` | 867 |
+
+Excluded floors:
+
+| Floor | Count |
+|---|---:|
+| `HNX` | 7 |
+| `HOSE` | 26 |
+| `OTC` | 294 |
+| `OTHER` | 152 |
+| `STOP` | 2 |
+| `UPCOM` | 1 |
+
+Exclusion reasons:
+
+| Reason | Count |
+|---|---:|
+| `excluded_non_tradable_floor` | 448 |
+| `excluded_index_candidate` | 34 |
+| `excluded_quality_fail` | 2 |
+
+The raw `HOSE + HNX + UPCOM` floor count is 1632, which matches the mentor expectation of around 1600 listed-market symbols. The tradable candidate subset is 1598 because 34 index candidates are quarantined. `OTC`, `OTHER`, `STOP`, and duplicate/fail rows are preserved in `excluded_universe_rows.csv` for audit instead of being silently dropped.
+
+---
+
+#### Readiness decision
+
+- Ready for review as an MVP tradable-universe candidate.
+- Not DB/backtest-ready until `floor`, `comTypeCode`, `isIndex`, and trading eligibility semantics are confirmed.
+- The filter should remain a dry-run decision layer until mentor/source review approves which floors and instrument classes are tradable for the first MVP.
+
+---
+
+</details>
+
 ### Canonical Mapping Target
 
 <details open>
