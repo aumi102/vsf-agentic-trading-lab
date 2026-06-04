@@ -316,7 +316,7 @@ For a future report-list/document endpoint:
 
 ### Readiness Decision
 
-Vietcap IQ is not ready for ingestion v2 planning from the current sample alone. It is ready for another manual source investigation pass focused on the IQ report-list API and document download endpoints. It remains a research/evidence source, not an OHLCV source.
+This older Vietcap IQ report-surface sample was not ready for report/document ingestion planning by itself. Later work verified the Vietcap IQ search-bar JSON as the broad full-market fetch universe candidate; report-list, document, financial-statement, and OHLCV ingestion still need separate source discovery before DB/backtest use.
 
 ## Final Recommendation
 
