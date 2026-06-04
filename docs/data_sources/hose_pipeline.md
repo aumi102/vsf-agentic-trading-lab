@@ -348,6 +348,21 @@ Historical availability audit design:
 - Record statuses as `verified_json`, `empty_data`, `rejected_response`, or `error`.
 - Compare full row count, stock-only coverage, duplicate counts, and quality counts across dates.
 
+Historical audit script:
+
+```bash
+python scripts/audit_hose_quote_report_historical_dates.py --dates 2026-06-02,2026-06-03,2026-05-30 --targets-config config/source_probe_targets.local.json
+```
+
+The script uses the configured HOSE quote-report target, rewrites only the `date` query parameter for each requested date, stores per-date raw payloads and metadata under `data/processed/dry_run/hose_quote_report_historical_audit/<run_id>/`, and writes:
+
+- `historical_audit_summary.json`
+- `historical_audit_report.md`
+- per-date raw payload and metadata files
+- per-date parser summaries when JSON is verified
+
+It still does not write to a database or run a backtest. Local browser-derived headers remain local-only through the source-probe config and must not be printed or committed.
+
 ---
 
 </details>
