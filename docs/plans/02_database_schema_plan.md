@@ -58,6 +58,7 @@ toc_max_heading_level: 3
 - No backtest result should exist without `strategy_config_id`, `data_version`, and `cost_config_id`.
 - No report should be used for point-in-time analysis without `published_at`.
 - No macro observation should be used in a historical strategy without release or vintage handling.
+- QuestDB OHLCV dedup/upsert design is not finalized here; use `docs/ingestion_v2_schema_plan.md` for the current daily re-fetch and `DEDUP UPSERT KEYS` policy note.
 
 ---
 </details>

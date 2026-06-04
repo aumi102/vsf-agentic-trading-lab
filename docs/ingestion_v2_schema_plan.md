@@ -67,6 +67,35 @@ toc_max_heading_level: 3
 - Raw payloads should preserve `content_hash`, `source_payload_id`, raw path, metadata path, parser version, and schema version for lineage.
 - Repeated ingestion is acceptable only if duplicate business rows either collapse deterministically or remain distinguishable by payload/version lineage.
 
+#### QuestDB dedup design notes for OHLCV
+
+- This is a design note, not a migration.
+- Dedup is planned only for future QuestDB WAL tables.
+- QuestDB dedup uses `DEDUP UPSERT KEYS`.
+- The designated timestamp column must be included in the `UPSERT KEYS`.
+- On matching `UPSERT KEYS`, QuestDB compares full row content: identical rows are skipped, while changed rows replace old rows.
+- Enabling dedup on an existing table does not remove already-existing duplicates; it applies to newly inserted data.
+- Candidate timestamp for daily OHLCV should be a canonical trading-day timestamp, such as `bar_ts` derived from `trading_date`.
+- Candidate OHLCV dedup key:
+  - `bar_ts`
+  - `source_name`
+  - `symbol`
+  - `exchange`
+  - `bar_interval`
+  - `adjustment_type`
+  - `data_status`
+- `ingested_at` should not be part of the dedup key because every re-ingest has a new ingestion timestamp and would prevent duplicate/restated business rows from matching.
+- `source_payload_id` and `content_hash` should be lineage fields, not default dedup keys, because a restated source payload should be allowed to replace the same business bar when its OHLCV content changes.
+- Re-fetching can replace changed adjusted rows when source historical data is restated after dividends, splits, or corporate-action adjustments.
+
+#### Adjusted versus unadjusted OHLCV open questions
+
+- The first MVP must decide whether strategy features and backtests use adjusted prices, unadjusted prices, or both.
+- Corporate actions, dividends, splits, and rights issues may need separate canonical tables instead of being hidden inside price rows.
+- Adjusted data can change historically, so append-only ingestion is risky for stock OHLCV.
+- Backtest outputs must record which price basis they used, such as `adjusted`, `unadjusted`, or `source_reported`.
+- If both adjusted and unadjusted bars are stored, `adjustment_type` should be part of the canonical identity and QuestDB dedup key.
+
 #### Data layers
 
 | Layer | Purpose | Example output |
