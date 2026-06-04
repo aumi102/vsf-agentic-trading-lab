@@ -9,7 +9,7 @@ toc_max_heading_level: 3
 ### 1. Executive Summary
 
 <details open>
-<summary>VBMA, FRED, and selected HOSE dry-run parsers are available; Vietcap IQ still needs row-level endpoint discovery.</summary>
+<summary>VBMA, FRED, and selected HOSE dry-run parsers are available; detailed HOSE status lives in the canonical HOSE pipeline doc.</summary>
 
 ---
 
@@ -17,8 +17,7 @@ toc_max_heading_level: 3
 
 - **VBMA** is ready for ingestion v2 planning for government bond auction results. The verified raw sample is row-level and parses as an XLSX spreadsheet even though the endpoint path ends in `.csv`.
 - **FRED** is ready for macro-context ingestion planning. The verified raw sample is structured JSON with top-level series metadata and nested observations.
-- **HOSE listed-stock universe** has page-1 and all-pages dry-run parser coverage. It is listing metadata only, not OHLCV.
-- **HOSE quote-report** has a completed-day dry-run parser from the later verified `POST` JSON probe. It is OHLCV-like quote data, but source units, final EOD semantics, and `tradingBy=VNINDEX` coverage are not fully confirmed.
+- **HOSE** listed-universe, quote-report, stock-only filter, and saved-output audits are summarized in `docs/data_sources/hose_pipeline.md`.
 
 #### What is not ready yet
 
@@ -49,7 +48,7 @@ toc_max_heading_level: 3
 
 #### Out of scope for now
 
-- HOSE quote-report database ingestion and backtest use until parser dry-run results, source units, final EOD semantics, and coverage are reviewed.
+- HOSE database ingestion and backtest use until the gates in `docs/data_sources/hose_pipeline.md` are satisfied.
 - Vietcap IQ ingestion until report-list and document APIs are captured.
 - Stock OHLCV ingestion.
 - Price board/order book ingestion.
@@ -173,19 +172,13 @@ Dry-run note:
 - The first FRED dry run writes local CSV outputs only: `macro_series.csv`, `macro_observations.csv`, `validation_report.md`, and `validation_summary.json`.
 - No database migration or database write is part of the FRED observations parser dry run.
 
-#### HOSE listed-universe dry-run outputs
+#### HOSE dry-run outputs
 
-The first HOSE listed-universe dry run used only the saved page-1 sample. The follow-up all-pages dry run fetches pages `1..totalPages`, preserves raw page payloads under the dry-run output, and writes combined local CSV outputs:
+HOSE listed-universe, quote-report, stock-only filter, and saved-output audit details are intentionally consolidated in:
 
-- `securities_master.csv`
-- `exchange_listings.csv`
-- `symbol_universe.csv`
-- `validation_report.md`
-- `validation_summary.json`
-- `raw_pages/page_001.json ... page_<N>.json`
-- `raw_pages/page_manifest.json`
+`docs/data_sources/hose_pipeline.md`
 
-No database migration, database write, quote-report parser, or OHLCV parser is part of this dry run.
+Keep this schema plan high-level and use the HOSE pipeline document for current endpoint notes, dry-run result counts, scripts, tests, and DB/backtest gates.
 
 #### `bond_instruments`
 
