@@ -524,9 +524,27 @@ Comparison with countBack=250, 500, 1000, and 2000:
 - `accumulatedValue` nulls increased from 1,073 to 3,925 and remain limited to older dates through `2022-09-14`; OHLC, volume, timestamps, and `accumulatedVolume` remain complete in this saved FPT sample.
 - FPT full-history exploration can stop here. Next safe step is to repeat `countBack=5000` for `VNM` and `VCB` only, then compare coverage, caps, and value completeness across the three small symbols.
 
+VNM and VCB countBack=5000 result:
+
+| Symbol | Run ID | Status | Rows returned | Coverage from `t` | Raw payload size | Cap / available-history decision | `accumulatedValue` nulls |
+|---|---|---|---:|---|---:|---|---|
+| `FPT` | `20260605T094714Z` | verified usable JSON | 4,852 | `2006-12-13` to `2026-06-05` | 323,966 bytes | Below requested 5,000; appears capped by available FPT history. | 3,925 nulls from `2006-12-13` to `2022-09-14` |
+| `VNM` | `20260605T095611Z` | verified usable JSON | 5,000 | `2006-05-18` to `2026-06-05` | 332,755 bytes | Returned requested 5,000 rows; no cap observed at this request size. | 4,073 nulls from `2006-05-18` to `2022-09-14` |
+| `VCB` | `20260605T095611Z` | verified usable JSON | 4,227 | `2009-06-30` to `2026-06-05` | 282,980 bytes | Below requested 5,000; appears capped by available VCB history. | 3,300 nulls from `2009-06-30` to `2022-09-14` |
+
+Cross-symbol conclusion:
+
+- VNM and VCB preserved the same top-level JSON array shape and the same fields as FPT: `symbol`, `o`, `h`, `l`, `c`, `v`, `t`, `accumulatedVolume`, `accumulatedValue`, and `minBatchTruncTime`.
+- No aligned-array length mismatches were observed for FPT, VNM, or VCB at `countBack=5000`.
+- No adjusted/unadjusted price split, dividend, split, or corporate-action fields were observed for any of the three.
+- OHLC, `v`, `t`, and `accumulatedVolume` are complete across all three saved `countBack=5000` payloads.
+- `accumulatedValue` has substantial older null coverage for all three symbols, ending consistently on `2022-09-14`; treat trading-value completeness before `2022-09-15` as an open quality caveat.
+- Response sizes remain manageable for small-symbol saved-payload work.
+- Next safe implementation step is a limited full-history parser dry run over the saved FPT, VNM, and VCB `countBack=5000` payloads, with no full-universe fetch, database migration, database write, or backtest.
+
 Escalation rule:
 
-- Only after FPT works at a larger countBack should the same small-symbol probe be repeated for `VNM` and `VCB`.
+- FPT, VNM, and VCB are enough for this full-history exploration stage; do not probe additional symbols yet.
 - Do not run this over the full 1598-symbol listed-market universe.
 - Do not implement a production fetcher from this exploration.
 - Do not perform database migrations, database writes, or backtests.
