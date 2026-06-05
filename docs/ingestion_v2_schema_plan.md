@@ -64,6 +64,20 @@ toc_max_heading_level: 3
 - Add a local fetch cache, progress file, or checkpoint so failed/crashed fetch jobs can resume without starting from the beginning.
 - QuestDB dedup design remains future DB work and is not implemented yet.
 
+#### OHLCV fetch plan dry-run
+
+- `scripts/build_ohlcv_fetch_plan_dry_run.py` builds a local planning artifact only; it does not call live OHLCV endpoints.
+- Input is the Vietcap IQ listed-market fetch universe dry-run output, currently stored under `tradable_universe/` file names for compatibility.
+- The rows are treated as listed-market fetch universe rows, not final tradable assets.
+- The plan orders symbols by sector group and then symbol so fetchers can process one sector batch at a time.
+- Missing sector fields are assigned `sector_group=UNKNOWN` and reported as warnings when common.
+- Every planned row uses `fetch_scope=full_history`.
+- Every planned row uses `price_bases=adjusted_and_unadjusted_if_available`.
+- The plan records a random sleep range for later fetchers; this script does not sleep because it does not fetch.
+- The script writes `fetch_plan.csv`, `fetch_checkpoint.json`, `fetch_plan_summary.json`, and `fetch_plan_report.md`.
+- The checkpoint records completed, failed, and pending symbols so a future fetch job can resume after a crash.
+- Still no database migration, database write, live fetch, or backtest is part of this dry run.
+
 #### Daily re-fetch and re-ingest policy
 
 - For OHLCV and adjusted market data, prefer re-fetching full available history daily when practical.
