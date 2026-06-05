@@ -235,6 +235,84 @@ Null/empty-value review:
 
 </details>
 
+### Gap-Chart OHLCV Mapping Review
+
+<details open>
+<summary>The verified gap-chart payload can be mapped into row-level daily OHLCV bars by exploding aligned arrays.</summary>
+
+---
+
+#### Source payload shape
+
+- The top-level JSON payload is an array.
+- Each top-level object represents one requested symbol.
+- The object contains aligned arrays: `o`, `h`, `l`, `c`, `v`, `t`, `accumulatedVolume`, and `accumulatedValue`.
+- Each array index becomes one daily bar row.
+- The verified FPT, VNM, and VCB samples each contain one symbol object and 250 aligned bars from `2025-06-05` to `2026-06-05`.
+
+Row explosion rule:
+
+```text
+for each symbol object:
+  for i in range(len(t)):
+    create one daily bar from o[i], h[i], l[i], c[i], v[i], t[i], accumulatedVolume[i], accumulatedValue[i]
+```
+
+--- 
+
+#### Canonical field mapping
+
+| Source field | Canonical field | Notes |
+|---|---|---|
+| `symbol` | `symbol` | Strip and uppercase. |
+| `t[i]` | `bar_ts` | Parse as epoch seconds. |
+| `t[i]` converted to date | `trading_date` | Use a documented timezone conversion; current samples align to UTC dates. |
+| `o[i]` | `open_price` | Source-reported price basis. |
+| `h[i]` | `high_price` | Source-reported price basis. |
+| `l[i]` | `low_price` | Source-reported price basis. |
+| `c[i]` | `close_price` | Source-reported price basis. |
+| `v[i]` | `volume_candidate` | Appears to match `accumulatedVolume[i]` in the small-symbol samples; confirm semantics before DB use. |
+| `accumulatedVolume[i]` | `accumulated_volume_candidate` | Candidate daily volume field. |
+| `accumulatedValue[i]` | `trading_value_candidate` | Candidate daily trading value field; unit still needs confirmation. |
+| request `timeFrame` | `bar_interval` | `ONE_DAY` for the verified small-symbol probes. |
+| inferred constant | `price_basis` | Use `source_reported` until adjusted/unadjusted semantics are confirmed. |
+| inferred constant | `adjustment_type` | Use `unknown` or `source_reported` until source adjustment semantics are confirmed. |
+| raw metadata | lineage fields | Include `source_name`, `source_payload_id`, `raw_content_hash`, `parser_version`, and `schema_version`. |
+
+--- 
+
+#### Validation gates
+
+- All aligned arrays must have equal length before row explosion.
+- Required arrays: `t`, `o`, `h`, `l`, and `c`.
+- `v`, `accumulatedVolume`, and `accumulatedValue` are strongly preferred for OHLCV and should be present for this endpoint to remain useful.
+- `t` must parse as epoch seconds.
+- `high_price >= low_price` when both are present.
+- `open_price` and `close_price` should be within `high_price` and `low_price` when values are present.
+- Duplicate `symbol + bar_ts + price_basis + bar_interval` should fail.
+- Zero, empty, and null handling must be explicit; do not silently convert missing values to zero.
+- `countBack=250` gives recent history only, not full-history re-fetch.
+- Full-history support still needs `countBack`, pagination, or window-parameter exploration.
+
+--- 
+
+#### Known limitations
+
+- Adjusted and unadjusted price values are not separated in the observed payload.
+- Dividend, split, corporate-action, and adjustment-factor fields are not visible.
+- `accumulatedValue` unit is not confirmed.
+- Timezone conversion from `t` to `trading_date` must be fixed before parser output is promoted.
+- The verified payload is enough for a small-symbol OHLCV mapping review, but not enough for a full 1598-symbol fetch, database migration, or backtest.
+
+Next decision:
+
+- If this mapping is accepted, the next safe implementation step is a small-symbol parser dry run using only the saved FPT, VNM, and VCB payloads.
+- Parser output should remain local dry-run CSV/report artifacts until adjustment semantics, full-history behavior, and value units are confirmed.
+
+---
+
+</details>
+
 ### Price-Chart Small-Symbol Probe Result
 
 <details open>
