@@ -165,6 +165,84 @@
       "terms_notes": "Browser-observed Vietcap Trading gap-chart endpoint. Probe only explicit small symbols first. Verify row-level OHLCV shape, volume, value, and adjustment fields before parser/fetcher planning."
     },
     {
+      "name": "vietcap_iq_gap_chart_fpt_countback_1000_candidate",
+      "dataset": "vietcap_iq_gap_chart_fpt_countback_1000",
+      "url": "https://trading.vietcap.com.vn/api/chart/OHLCChart/gap-chart",
+      "method": "POST",
+      "body_json": {
+        "symbols": [
+          "FPT"
+        ],
+        "timeFrame": "ONE_DAY",
+        "countBack": 1000,
+        "to": 1780633564
+      },
+      "headers": {
+        "Accept": "application/json",
+        "Accept-Language": "vi,en-US;q=0.9,en;q=0.8",
+        "Content-Type": "application/json",
+        "Origin": "https://trading.vietcap.com.vn",
+        "Referer": "https://trading.vietcap.com.vn/iq/company?ticker=FPT&tab=overview&isIndex=false",
+        "User-Agent": "browser-like user agent",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin"
+      },
+      "expected_content_type_contains": "application/json",
+      "expected_body_startswith_json": true,
+      "reject_body_contains": [
+        "Request Rejected",
+        "Access Denied",
+        "Forbidden"
+      ],
+      "min_body_bytes": 100,
+      "likely_canonical_tables": [
+        "daily_price_bars",
+        "ohlcv_bars",
+        "market_observations"
+      ],
+      "terms_notes": "Non-secret FPT-only full-history exploration candidate. Use to test whether gap-chart can return more than the verified countBack=250 recent-history window before any multi-symbol or full-universe fetch."
+    },
+    {
+      "name": "vietcap_iq_gap_chart_fpt_countback_2000_candidate",
+      "dataset": "vietcap_iq_gap_chart_fpt_countback_2000",
+      "url": "https://trading.vietcap.com.vn/api/chart/OHLCChart/gap-chart",
+      "method": "POST",
+      "body_json": {
+        "symbols": [
+          "FPT"
+        ],
+        "timeFrame": "ONE_DAY",
+        "countBack": 2000,
+        "to": 1780633564
+      },
+      "headers": {
+        "Accept": "application/json",
+        "Accept-Language": "vi,en-US;q=0.9,en;q=0.8",
+        "Content-Type": "application/json",
+        "Origin": "https://trading.vietcap.com.vn",
+        "Referer": "https://trading.vietcap.com.vn/iq/company?ticker=FPT&tab=overview&isIndex=false",
+        "User-Agent": "browser-like user agent",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin"
+      },
+      "expected_content_type_contains": "application/json",
+      "expected_body_startswith_json": true,
+      "reject_body_contains": [
+        "Request Rejected",
+        "Access Denied",
+        "Forbidden"
+      ],
+      "min_body_bytes": 100,
+      "likely_canonical_tables": [
+        "daily_price_bars",
+        "ohlcv_bars",
+        "market_observations"
+      ],
+      "terms_notes": "Non-secret FPT-only full-history exploration candidate. Use only after a smaller countBack probe succeeds; do not run this over the full listed-market universe."
+    },
+    {
       "name": "vietcap_iq_stock_asset_secondary_candidate",
       "dataset": "vietcap_iq_stock_asset",
       "url": "https://trading.vietcap.com.vn/order/locales/vi/stock-asset.json?v=1780043897253",

@@ -371,6 +371,54 @@ Readiness decision:
 
 </details>
 
+### Gap-Chart Full-History Exploration Plan
+
+<details open>
+<summary>Next probe should test whether larger FPT gap-chart windows can return more than the current 250 recent bars.</summary>
+
+---
+
+Current parser status:
+
+- The saved-payload gap-chart parser dry run currently uses the verified `countBack=250` FPT, VNM, and VCB payloads only.
+- Each current small-symbol payload contains 250 daily bars covering `2025-06-05` to `2026-06-05`.
+- All parsed rows warn because `countBack=250` is limited recent history, not full available OHLCV history.
+
+Mentor direction:
+
+- OHLCV ingestion should target full available history when practical.
+- Full-history feasibility is still an endpoint capability question, not a parser, database, or backtest task.
+
+Next safe probe sequence:
+
+| Step | Symbol scope | countBack | Decision rule |
+|---|---|---:|---|
+| 1 | `FPT` only | 500 | Confirm access, row count above 250 if available, coverage, payload size, and stable shape. |
+| 2 | `FPT` only | 1000 | Run only if 500 works without access or shape regression. |
+| 3 | `FPT` only | 2000 | Run only if 1000 works and payload size remains manageable. |
+| 4 | `FPT` only | 5000 | Run only if 2000 works and the endpoint appears stable. |
+
+Inspect for each probe:
+
+- Access status and HTTP/content-type stability.
+- Top-level payload shape and aligned-array field consistency.
+- Row count returned versus requested `countBack`.
+- Coverage start/end dates from `t`.
+- Raw payload byte size.
+- Whether volume, accumulated volume, and accumulated value remain present.
+- Whether any adjusted/unadjusted or corporate-action fields appear.
+
+Escalation rule:
+
+- Only after FPT works at a larger countBack should the same small-symbol probe be repeated for `VNM` and `VCB`.
+- Do not run this over the full 1598-symbol listed-market universe.
+- Do not implement a production fetcher from this exploration.
+- Do not perform database migrations, database writes, or backtests.
+
+---
+
+</details>
+
 ### Price-Chart Small-Symbol Probe Result
 
 <details open>

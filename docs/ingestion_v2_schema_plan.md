@@ -72,6 +72,7 @@ toc_max_heading_level: 3
 - Vietcap IQ OHLCV endpoint payload verification is still the next gate before parser or fetcher work.
 - The browser-observed Vietcap Trading `gap-chart` endpoint is the next small-symbol OHLCV candidate to verify before any full sector-batched fetch.
 - Full sector-batched OHLCV fetch must wait until a few explicit-symbol probes, such as `FPT`, `VNM`, and `VCB`, return verified row-level OHLCV payloads.
+- Full-history feasibility is still an open gate: the verified `countBack=250` gap-chart payload is recent history only, so larger FPT-only `countBack` probes must confirm whether full-history or large-window re-fetch is practical before sector-batched OHLCV fetching.
 - The plan orders symbols by sector group and then symbol so fetchers can process one sector batch at a time.
 - Missing sector fields are assigned `sector_group=UNKNOWN` and reported as warnings when common.
 - Every planned row uses `fetch_scope=full_history`.
