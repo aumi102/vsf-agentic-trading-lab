@@ -609,6 +609,61 @@ Review conclusion:
 
 </details>
 
+### Gap-Chart OHLCV Ingestion Readiness Closeout
+
+<details open>
+<summary>The gap-chart endpoint is ready for safe fetcher planning, but not full-universe ingestion, DB writes, or backtesting.</summary>
+
+---
+
+#### Proven
+
+- Small-symbol endpoint reachability is verified for FPT, VNM, and VCB.
+- `countBack=5000` can approximate full available history for the tested symbols:
+  - FPT: 4,852 bars, `2006-12-13` to `2026-06-05`.
+  - VNM: 5,000 bars, `2006-05-18` to `2026-06-05`.
+  - VCB: 4,227 bars, `2009-06-30` to `2026-06-05`.
+- Payload shape is stable across FPT/VNM/VCB: `symbol`, `o`, `h`, `l`, `c`, `v`, `t`, `accumulatedVolume`, `accumulatedValue`, `minBatchTruncTime`.
+- The saved-payload parser dry run works on full-history samples and writes local CSV/report/summary outputs.
+- Quality gates separate pass, warn, and fail rows.
+- Source OHLC inconsistencies are quarantined as fail rows, not treated as parser bugs.
+
+#### Not Proven
+
+- Full 1,598-symbol fetch safety.
+- Rate-limit, retry, access, and response-stability behavior at scale.
+- Adjusted versus unadjusted price semantics.
+- Dividend, split, or other corporate-action fields.
+- QuestDB table, migration, or upsert behavior.
+- Backtest readiness.
+
+#### Data-Quality Policy
+
+- OHLC, timestamp, and volume are required for usable bars.
+- Missing `accumulatedValue` / `trading_value` in older history is warning-only.
+- OHLC range inconsistency remains fail.
+- Failed rows must stay quarantined and visible in reports; do not silently drop or downgrade them.
+
+#### Next Implementation Steps
+
+1. Build a safe gap-chart fetcher in dry-run/controlled mode only.
+2. Fetch only a very small controlled batch first, not the full universe.
+3. Use sector-batched ordering from `scripts/build_ohlcv_fetch_plan_dry_run.py`.
+4. Add checkpoint/resume state before broader runs.
+5. Add random sleep and avoid aggressive async/high concurrency.
+6. Save raw payloads and metadata before parsing.
+7. Parse to local dry-run CSV/report/summary only.
+8. Do not write DB, implement migrations, run backtests, or fetch the full universe yet.
+
+Readiness decision:
+
+- Ready for safe fetcher planning and a tiny controlled dry-run fetch design.
+- Not ready for full-universe ingestion, canonical DB ingestion, or backtesting.
+
+---
+
+</details>
+
 ### Price-Chart Small-Symbol Probe Result
 
 <details open>
