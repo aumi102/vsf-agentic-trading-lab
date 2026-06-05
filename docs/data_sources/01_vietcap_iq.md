@@ -408,6 +408,34 @@ Inspect for each probe:
 - Whether volume, accumulated volume, and accumulated value remain present.
 - Whether any adjusted/unadjusted or corporate-action fields appear.
 
+CountBack=500 result:
+
+| Item | Value |
+|---|---|
+| run_id | `20260605T084151Z` |
+| target | `vietcap_iq_gap_chart_fpt_countback_500_candidate` |
+| dataset | `vietcap_iq_gap_chart_fpt_countback_500` |
+| status | verified usable JSON, HTTP `200`, content type `application/json; charset=utf-8` |
+| raw path | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T084151Z/vietcap_iq_gap_chart_fpt_countback_500/payload.json` |
+| metadata path | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T084151Z/vietcap_iq_gap_chart_fpt_countback_500/metadata.json` |
+| raw payload size | 37,821 bytes |
+| top-level shape | JSON array with 1 object for `FPT` |
+| rows returned | 500 aligned daily bars |
+| coverage from `t` | `2024-06-04` to `2026-06-05` |
+| fields | `symbol`, `o`, `h`, `l`, `c`, `v`, `t`, `accumulatedVolume`, `accumulatedValue`, `minBatchTruncTime` |
+| null or empty values in aligned arrays | 0 observed |
+| length mismatches | none observed |
+| adjusted/unadjusted fields | none observed |
+| dividend/split/corporate-action fields | none observed |
+
+Comparison with countBack=250:
+
+- Row count increased from 250 to 500.
+- Coverage expanded earlier than `2025-06-05`, back to `2024-06-04`.
+- Payload shape remained stable with the same aligned arrays and no extra adjustment or corporate-action fields.
+- Response size remains manageable for a small-symbol probe.
+- This is enough evidence to proceed to an FPT-only `countBack=1000` probe.
+
 Escalation rule:
 
 - Only after FPT works at a larger countBack should the same small-symbol probe be repeated for `VNM` and `VCB`.
