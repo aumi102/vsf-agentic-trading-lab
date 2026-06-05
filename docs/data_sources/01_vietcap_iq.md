@@ -59,6 +59,54 @@ toc_max_heading_level: 3
 
 </details>
 
+### OHLCV Price-Chart Candidate
+
+<details open>
+<summary>The price-chart endpoint is browser-observed and needs small-symbol probe verification before parser planning.</summary>
+
+---
+
+#### Candidate endpoint pattern
+
+`https://iq.vietcap.com.vn/api/iq-insight-service/v1/company/{symbol}/price-chart?lengthReport=3&toCurrent=true`
+
+Current status:
+
+- Browser-observed candidate only.
+- Not yet verified for stock OHLCV row shape.
+- Do not run over the full 1598-symbol listed-market fetch universe.
+- Probe only a few explicit symbols first, such as `FPT`, `VNM`, and `VCB`.
+- The current source-probe target config does not support `{symbol}` URL templating; add explicit local-only targets for each test symbol.
+- Do not promote this endpoint to parser or fetcher work until row-level OHLCV payload fields are verified.
+
+Fields to inspect in the raw payload:
+
+- Date or timestamp field.
+- Open, high, low, close fields.
+- Volume field.
+- Adjusted and unadjusted values, if both are present.
+- Corporate-action or adjustment-related fields.
+- History coverage controlled by `lengthReport=3` and `toCurrent=true`.
+
+Likely canonical mapping after verification:
+
+| Candidate table | Notes |
+|---|---|
+| `daily_price_bars` | Use only if daily OHLCV rows are present. |
+| `ohlcv_bars` | Candidate generic bar table if interval metadata is available. |
+| `market_observations` | Use only if the payload is chart/market observation data rather than canonical bars. |
+
+Manual local-target approach:
+
+- Keep committed example config to one non-secret `FPT` target.
+- In `config/source_probe_targets.local.json`, duplicate the target for `VNM` and `VCB` if local headers are required.
+- Keep browser-derived headers, cookies, and tokens local-only.
+- Run source probe with `--sources vietcap_iq --symbols FPT,VNM,VCB`, but understand that configured URLs are explicit targets, not symbol-templated requests.
+
+---
+
+</details>
+
 ### Verified Search-Bar Probe Result
 
 <details open>

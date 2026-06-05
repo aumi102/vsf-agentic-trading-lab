@@ -33,7 +33,11 @@ def test_example_config_loads() -> None:
     assert targets["vietcap_iq"][0].name == "vietcap_iq_company_search_bar_universe_candidate"
     assert targets["vietcap_iq"][0].expected_content_type_contains == ["application/json"]
     assert "securities_master" in targets["vietcap_iq"][0].likely_canonical_tables
-    assert targets["vietcap_iq"][3].auth_env == "VIETCAP_IQ_TOKEN"
+    price_chart_target = next(target for target in targets["vietcap_iq"] if target.name == "vietcap_iq_company_price_chart_fpt_candidate")
+    assert "FPT/price-chart" in price_chart_target.url
+    assert "ohlcv_bars" in price_chart_target.likely_canonical_tables
+    reports_target = next(target for target in targets["vietcap_iq"] if target.name == "vietcap_iq_reports_candidate")
+    assert reports_target.auth_env == "VIETCAP_IQ_TOKEN"
     assert targets["fred"][0].auth_env == "FRED_API_KEY"
     assert targets["fred"][0].auth_in == "query"
     assert targets["fred"][0].auth_param == "api_key"
@@ -254,7 +258,7 @@ def test_simple_target_without_validation_remains_backward_compatible(monkeypatc
 def test_auth_env_missing_returns_not_configured(monkeypatch) -> None:
     monkeypatch.delenv("VIETCAP_IQ_TOKEN", raising=False)
     targets = load_probe_targets(ROOT / "config" / "source_probe_targets.example.json")
-    target = targets["vietcap_iq"][3]
+    target = next(target for target in targets["vietcap_iq"] if target.name == "vietcap_iq_reports_candidate")
     target = target.__class__(
         **{
             **target.__dict__,

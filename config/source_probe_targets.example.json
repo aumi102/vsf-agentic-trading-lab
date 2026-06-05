@@ -102,6 +102,30 @@
       "terms_notes": "Public browser-observed Vietcap IQ search-bar candidate. Verify row-level symbol payload and access/terms before parser planning."
     },
     {
+      "name": "vietcap_iq_company_price_chart_fpt_candidate",
+      "dataset": "vietcap_iq_company_price_chart",
+      "url": "https://iq.vietcap.com.vn/api/iq-insight-service/v1/company/FPT/price-chart?lengthReport=3&toCurrent=true",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json,text/plain,*/*",
+        "User-Agent": "vsf-source-probe/0.1"
+      },
+      "expected_content_type_contains": "application/json",
+      "expected_body_startswith_json": true,
+      "reject_body_contains": [
+        "Request Rejected",
+        "Access Denied",
+        "Forbidden"
+      ],
+      "min_body_bytes": 100,
+      "likely_canonical_tables": [
+        "daily_price_bars",
+        "ohlcv_bars",
+        "market_observations"
+      ],
+      "terms_notes": "Browser-observed Vietcap IQ price-chart candidate for one explicit symbol only. Verify access/terms and row-level OHLCV shape before parser or fetcher planning."
+    },
+    {
       "name": "vietcap_iq_stock_asset_secondary_candidate",
       "dataset": "vietcap_iq_stock_asset",
       "url": "https://trading.vietcap.com.vn/order/locales/vi/stock-asset.json?v=1780043897253",
