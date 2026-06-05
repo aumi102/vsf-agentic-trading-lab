@@ -465,6 +465,35 @@ Comparison with countBack=250 and countBack=500:
 - The 73 older null `accumulatedValue` entries are a data-quality caveat for trading-value completeness, but they are not a shape regression.
 - This is enough evidence to proceed to an FPT-only `countBack=2000` probe.
 
+CountBack=2000 result:
+
+| Item | Value |
+|---|---|
+| run_id | `20260605T093633Z` |
+| target | `vietcap_iq_gap_chart_fpt_countback_2000_candidate` |
+| dataset | `vietcap_iq_gap_chart_fpt_countback_2000` |
+| status | verified usable JSON, HTTP `200`, content type `application/json; charset=utf-8` |
+| raw path | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T093633Z/vietcap_iq_gap_chart_fpt_countback_2000/payload.json` |
+| metadata path | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T093633Z/vietcap_iq_gap_chart_fpt_countback_2000/metadata.json` |
+| raw payload size | 141,113 bytes |
+| top-level shape | JSON array with 1 object for `FPT` |
+| rows returned | 2,000 aligned daily bars |
+| coverage from `t` | `2018-06-04` to `2026-06-05` |
+| fields | `symbol`, `o`, `h`, `l`, `c`, `v`, `t`, `accumulatedVolume`, `accumulatedValue`, `minBatchTruncTime` |
+| null or empty values in aligned arrays | `accumulatedValue` has 1,073 null values from `2018-06-04` to `2022-09-14`; `o`, `h`, `l`, `c`, `v`, `t`, and `accumulatedVolume` have 0 observed null or empty values |
+| length mismatches | none observed |
+| adjusted/unadjusted fields | none observed |
+| dividend/split/corporate-action fields | none observed |
+
+Comparison with countBack=250, 500, and 1000:
+
+- Row count increased again from 1,000 to 2,000.
+- Coverage expanded earlier than `2022-06-02`, back to `2018-06-04`.
+- Payload shape remained stable with the same aligned arrays and no extra adjustment or corporate-action fields.
+- Response size remains manageable for a single-symbol probe.
+- `accumulatedValue` nulls increased from 73 to 1,073 and remain limited to older dates through `2022-09-14`; OHLC, volume, timestamps, and `accumulatedVolume` remain complete in this saved FPT sample.
+- This is enough endpoint-capability evidence to proceed to one FPT-only `countBack=5000` probe before repeating large windows for `VNM` or `VCB`.
+
 Escalation rule:
 
 - Only after FPT works at a larger countBack should the same small-symbol probe be repeated for `VNM` and `VCB`.
