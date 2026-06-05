@@ -313,6 +313,64 @@ Next decision:
 
 </details>
 
+### Gap-Chart Parser Dry-Run Result
+
+<details open>
+<summary>The saved FPT, VNM, and VCB gap-chart payloads parse into local daily price bars with limited-history warnings only.</summary>
+
+---
+
+#### Inputs and outputs
+
+| Item | Value |
+|---|---|
+| input run_id | `20260605T045715Z` |
+| input raw paths | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T045715Z/vietcap_iq_gap_chart_fpt/payload.json`; `data/raw/source_probe/source=vietcap_iq/run_id=20260605T045715Z/vietcap_iq_gap_chart_vnm/payload.json`; `data/raw/source_probe/source=vietcap_iq/run_id=20260605T045715Z/vietcap_iq_gap_chart_vcb/payload.json` |
+| output directory | `data/processed/dry_run/vietcap_iq_gap_chart/20260605T080850Z/` |
+| output files | `daily_price_bars.csv`, `validation_report.md`, `validation_summary.json` |
+
+---
+
+#### Coverage and quality
+
+| Symbol | Bars | Coverage | Quality pass | Quality warn | Quality fail |
+|---|---:|---|---:|---:|---:|
+| `FPT` | 250 | `2025-06-05` to `2026-06-05` | 0 | 250 | 0 |
+| `VNM` | 250 | `2025-06-05` to `2026-06-05` | 0 | 250 | 0 |
+| `VCB` | 250 | `2025-06-05` to `2026-06-05` | 0 | 250 | 0 |
+
+Totals:
+
+| Metric | Count |
+|---|---:|
+| Parsed symbols | 3 |
+| Daily price bars | 750 |
+| Quality pass rows | 0 |
+| Quality warn rows | 750 |
+| Quality fail rows | 0 |
+
+Quality note:
+
+- All rows are warnings because `countBack=250` is recorded as limited recent history, not full history.
+- No duplicate bar keys or OHLC range failures were observed in the saved small-symbol payloads.
+
+Known limitations:
+
+- No adjusted/unadjusted price split is visible in the payload.
+- No dividend, split, corporate-action, or adjustment-factor fields are visible.
+- `countBack=250` covers only recent history.
+- No full-universe fetch was performed.
+- No database migration, database write, or backtest was performed.
+
+Readiness decision:
+
+- Ready for review as a small-symbol parser dry run over saved gap-chart payloads only.
+- Not ready for full-universe fetch, canonical database ingestion, or backtesting.
+
+---
+
+</details>
+
 ### Price-Chart Small-Symbol Probe Result
 
 <details open>
