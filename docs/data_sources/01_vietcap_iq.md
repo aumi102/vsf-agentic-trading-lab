@@ -553,6 +553,62 @@ Escalation rule:
 
 </details>
 
+### Full-History Parser Dry-Run Failure Review
+
+<details open>
+<summary>The saved countBack=5000 parser dry run is usable, with eight OHLC data-quality failures kept quarantined.</summary>
+
+---
+
+#### Dry-run result
+
+| Item | Value |
+|---|---|
+| output directory | `data/processed/dry_run/vietcap_iq_gap_chart/20260605T100326Z/` |
+| daily price bars | `data/processed/dry_run/vietcap_iq_gap_chart/20260605T100326Z/daily_price_bars.csv` |
+| validation report | `data/processed/dry_run/vietcap_iq_gap_chart/20260605T100326Z/validation_report.md` |
+| validation summary | `data/processed/dry_run/vietcap_iq_gap_chart/20260605T100326Z/validation_summary.json` |
+| total rows | 14,079 |
+| quality pass rows | 2,781 |
+| quality warn rows | 11,290 |
+| quality fail rows | 8 |
+
+Coverage and quality by symbol:
+
+| Symbol | Rows | Coverage | Pass | Warn | Fail |
+|---|---:|---|---:|---:|---:|
+| `FPT` | 4,852 | `2006-12-13` to `2026-06-05` | 927 | 3,922 | 3 |
+| `VNM` | 5,000 | `2006-05-18` to `2026-06-05` | 927 | 4,068 | 5 |
+| `VCB` | 4,227 | `2009-06-30` to `2026-06-05` | 927 | 3,300 | 0 |
+
+Failure reason counts:
+
+| Reason | Count | Policy decision |
+|---|---:|---|
+| `close_price_outside_high_low` | 6 | Keep as fail. Raw source values have close outside the high/low range. |
+| `open_price_outside_high_low` | 2 | Keep as fail. Raw source values have open outside the high/low range. |
+
+Failed-row scope:
+
+| Symbol | Failed rows | Failed date range |
+|---|---:|---|
+| `FPT` | 3 | `2007-08-17` to `2009-12-07` |
+| `VNM` | 5 | `2006-06-14` to `2009-06-11` |
+| `VCB` | 0 | none |
+
+Review conclusion:
+
+- The eight failed rows are source data-quality failures, not a parser bug.
+- No failed rows are caused by `high_price < low_price`, invalid timestamps, duplicate bar keys, missing required OHLC/timestamp fields, or required numeric conversion errors.
+- All eight failed rows also have missing `accumulatedValue`, but missing `trading_value` remains warning-only as intended for older history.
+- Do not silently downgrade these OHLC inconsistencies without source evidence; keep them quarantined as `quality_status=fail`.
+- The dry run is usable for review, but parser output is still pre-DB and pre-backtest.
+- No full-universe fetch, database migration, database write, production fetcher, or backtest should proceed from this result yet.
+
+---
+
+</details>
+
 ### Price-Chart Small-Symbol Probe Result
 
 <details open>
