@@ -110,7 +110,7 @@ Manual local-target approach:
 ### Price-Chart Small-Symbol Probe Result
 
 <details open>
-<summary>The small-symbol price-chart probe verified JSON access, but the payload is not yet enough for canonical OHLCV ingestion.</summary>
+<summary>The rerun preserved separate FPT, VNM, and VCB raw payloads; all three are OHLC-only chart JSON, not full OHLCV.</summary>
 
 ---
 
@@ -118,81 +118,71 @@ Manual local-target approach:
 
 | Item | Value |
 |---|---|
-| run_id | `20260605T024302Z` |
+| run_id | `20260605T040654Z` |
 | symbols probed | `FPT`, `VNM`, `VCB` |
 | command scope | Small-symbol probe only; no full 1598-symbol fetch. |
-| raw directory | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T024302Z/` |
+| raw directory | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T040654Z/` |
 | report | `reports/source_probe_report.md` |
 
-Status by target:
+The rerun used separate dataset names, so each symbol has its own raw payload and metadata instead of overwriting the previous symbol.
 
-| Target | Symbol | Classification | Notes |
-|---|---|---|---|
-| `vietcap_iq_company_price_chart_fpt_candidate` | `FPT` | verified OHLC-like chart JSON | Probe report shows verified JSON access, but the retained raw artifact was overwritten by the later same-dataset target. |
-| `vietcap_iq_company_price_chart_vnm_candidate` | `VNM` | verified OHLC-like chart JSON | Probe report shows verified JSON access, but the retained raw artifact was overwritten by the later same-dataset target. |
-| `vietcap_iq_company_price_chart_vcb_candidate` | `VCB` | verified OHLC-like chart JSON | Retained raw artifact was inspected. |
+Per-symbol evidence:
 
-Important raw-storage note:
-
-- All three local targets used the same dataset name: `vietcap_iq_company_price_chart`.
-- The source probe raw store writes by dataset folder, so the retained payload and metadata are for the last target, `VCB`.
-- For the next manual probe, use unique local dataset names such as `vietcap_iq_company_price_chart_fpt`, `vietcap_iq_company_price_chart_vnm`, and `vietcap_iq_company_price_chart_vcb` so raw samples are preserved separately.
+| Symbol | Target | Classification | Raw path | Metadata path | Rows | Coverage from `tradingTime` |
+|---|---|---|---|---|---:|---|
+| `FPT` | `vietcap_iq_company_price_chart_fpt_candidate` | verified OHLC-only chart JSON | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T040654Z/vietcap_iq_company_price_chart_fpt/payload.json` | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T040654Z/vietcap_iq_company_price_chart_fpt/metadata.json` | 749 | `2023-06-05` to `2026-06-05` |
+| `VNM` | `vietcap_iq_company_price_chart_vnm_candidate` | verified OHLC-only chart JSON | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T040654Z/vietcap_iq_company_price_chart_vnm/payload.json` | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T040654Z/vietcap_iq_company_price_chart_vnm/metadata.json` | 749 | `2023-06-05` to `2026-06-05` |
+| `VCB` | `vietcap_iq_company_price_chart_vcb_candidate` | verified OHLC-only chart JSON | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T040654Z/vietcap_iq_company_price_chart_vcb/payload.json` | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T040654Z/vietcap_iq_company_price_chart_vcb/metadata.json` | 749 | `2023-06-05` to `2026-06-05` |
 
 --- 
 
-#### Observed retained VCB payload
+#### Observed payload shape
+
+All three symbol payloads have the same shape.
 
 | Item | Value |
 |---|---|
-| raw path | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T024302Z/vietcap_iq_company_price_chart/payload.json` |
-| metadata path | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T024302Z/vietcap_iq_company_price_chart/metadata.json` |
 | content type | `application/json` |
 | top-level fields | `serverDateTime`, `traceId`, `status`, `code`, `msg`, `exception`, `successful`, `data` |
 | row/container field | `data` |
-| row count | 749 |
-| date coverage from `tradingTime` | `2023-06-05` to `2026-06-05` |
+| observed row fields | `tradingTime`, `openPrice`, `highPrice`, `lowPrice`, `closingPrice` |
+| null counts for observed fields | 0 nulls for all five observed row fields in FPT, VNM, and VCB |
 
-Observed row fields:
-
-- `tradingTime`
-- `openPrice`
-- `highPrice`
-- `lowPrice`
-- `closingPrice`
-
-Field interpretation:
+Field interpretation across FPT, VNM, and VCB:
 
 | Requirement | Observed? | Notes |
 |---|---|---|
 | date/time | yes | `tradingTime` appears to be epoch seconds. |
 | open/high/low/close | yes | `openPrice`, `highPrice`, `lowPrice`, `closingPrice`. |
-| volume | no | No volume field observed in the retained VCB payload. |
-| adjusted and unadjusted values | no | Only one price basis was observed; adjusted/unadjusted semantics are not exposed. |
+| volume | no | No volume or trading-value field observed. |
+| adjusted and unadjusted values | no | Only one price basis is exposed; adjusted/unadjusted semantics are not separated. |
 | corporate-action or adjustment fields | no | No dividend, split, adjustment factor, or corporate-action fields observed. |
-| consistent shape across FPT/VNM/VCB | partially confirmed | Probe report says all three targets verified, but only the retained VCB raw payload can be inspected because same-dataset raw files were overwritten. |
+| consistent shape across FPT/VNM/VCB | yes | Same top-level structure, same `data` container, same row fields, and same 749-row coverage. |
 
 --- 
 
 #### Readiness decision
 
-- The endpoint is verified as a small-symbol OHLC-like chart JSON candidate.
-- It is ready for a limited price-chart mapping review.
-- It is not yet sufficient for canonical OHLCV ingestion because volume is missing.
+- The endpoint is sufficient for OHLC-only chart mapping review.
+- It is not sufficient for canonical OHLCV ingestion because volume and trading value are missing.
 - It is not enough to satisfy the mentor direction to store all useful adjusted and unadjusted price bases, because only one price basis is visible.
-- It does not provide corporate-action or adjustment-related fields needed for the planned one-table OHLCV MVP design.
+- It does not provide dividend, split, corporate-action, or adjustment-related fields needed for the planned one-table OHLCV MVP design.
 - Do not implement an OHLCV parser or fetcher from this payload yet.
 - Do not fetch the full 1598-symbol universe yet.
 - No DB/backtest work should proceed from this endpoint alone.
 
-Next DevTools discovery should search for endpoints or payload fields containing:
+Next DevTools discovery should search for endpoints, request payloads, or response fields containing:
 
-- volume or matched volume
-- trading value
-- adjusted price or adjustment factor
-- unadjusted/raw price
-- dividend, split, rights, or corporate-action indicators
-- explicit daily bar interval metadata
-- longer/full-history parameters beyond `lengthReport=3`
+- `volume`
+- `value`
+- `ohlcv`
+- `historical-price`
+- `trading-history`
+- `quote`
+- `adjusted`
+- `dividend`
+- `split`
+- `corporate-action`
 
 ---
 
