@@ -107,6 +107,60 @@ Manual local-target approach:
 
 </details>
 
+### Gap-Chart OHLCV Candidate
+
+<details open>
+<summary>The Vietcap Trading gap-chart endpoint is the next small-symbol OHLCV candidate to probe.</summary>
+
+---
+
+#### Candidate endpoint
+
+`https://trading.vietcap.com.vn/api/chart/OHLCChart/gap-chart`
+
+Observed request pattern:
+
+| Field | Value |
+|---|---|
+| method | `POST` |
+| body field | `symbols`, for example `["FPT"]` |
+| body field | `timeFrame`, for example `ONE_DAY` |
+| body field | `countBack`, for example `250` |
+| body field | `to`, epoch-like request timestamp |
+
+This endpoint is more promising than the IQ `price-chart` endpoint because the browser request is explicitly named `OHLCChart` and uses chart parameters that may return richer bar data. It is still only a browser-observed candidate until raw payload fields are verified.
+
+Initial probe scope:
+
+- Probe only explicit small symbols first: `FPT`, `VNM`, and `VCB`.
+- Use unique dataset names so raw payloads are preserved separately:
+  - `vietcap_iq_gap_chart_fpt`
+  - `vietcap_iq_gap_chart_vnm`
+  - `vietcap_iq_gap_chart_vcb`
+- Start without cookies in committed/example config.
+- If the endpoint returns `403` or a rejected response, use local-only browser-derived headers/cookies as needed, but never commit or print cookies, tokens, or local secrets.
+- Do not fetch the full 1598-symbol listed-market fetch universe from this endpoint yet.
+
+Fields to inspect before parser planning:
+
+- Date or timestamp.
+- Open, high, low, close.
+- Volume.
+- Trading value.
+- Adjusted and unadjusted values.
+- Dividend, split, corporate-action, or adjustment-related fields.
+- History coverage and whether `countBack` can support full-history re-fetch.
+
+Readiness rule:
+
+- If the response has row-level OHLCV plus enough price-basis or adjustment context, proceed to a mapping review.
+- If it only has OHLC or chart-only fields, continue DevTools discovery.
+- No parser, fetcher, database migration, or backtest should be implemented from this endpoint until the small-symbol payload is reviewed.
+
+---
+
+</details>
+
 ### Price-Chart Small-Symbol Probe Result
 
 <details open>

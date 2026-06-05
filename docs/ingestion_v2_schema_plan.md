@@ -70,6 +70,7 @@ toc_max_heading_level: 3
 - Input is the Vietcap IQ listed-market fetch universe dry-run output, currently stored under `tradable_universe/` file names for compatibility.
 - The rows are treated as listed-market fetch universe rows, not final tradable assets.
 - Vietcap IQ OHLCV endpoint payload verification is still the next gate before parser or fetcher work.
+- The browser-observed Vietcap Trading `gap-chart` endpoint is the next small-symbol OHLCV candidate to verify before any full sector-batched fetch.
 - Full sector-batched OHLCV fetch must wait until a few explicit-symbol probes, such as `FPT`, `VNM`, and `VCB`, return verified row-level OHLCV payloads.
 - The plan orders symbols by sector group and then symbol so fetchers can process one sector batch at a time.
 - Missing sector fields are assigned `sector_group=UNKNOWN` and reported as warnings when common.
