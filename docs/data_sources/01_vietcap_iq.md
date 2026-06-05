@@ -664,6 +664,34 @@ Readiness decision:
 
 </details>
 
+### Controlled Gap-Chart Fetcher Plan
+
+<details open>
+<summary>The controlled fetcher skeleton is intended for tiny, sequential raw-fetch dry runs only.</summary>
+
+---
+
+- Script: `scripts/fetch_vietcap_iq_gap_chart_controlled.py`.
+- Default behavior is plan-only: it writes `fetch_plan.json` and `fetch_plan_report.md` and makes no network requests unless `--execute` is supplied.
+- Default symbol scope is the verified tiny batch `FPT,VNM,VCB`; execute mode fails fast if the requested symbol count exceeds `--max-symbols`.
+- Request body is one symbol at a time: `symbols`, `timeFrame`, `countBack`, and `to`.
+- The script does not read `config/source_probe_targets.local.json` and does not require secrets/cookies for plan-only mode.
+- Execute mode is sequential only, with concurrency fixed at one and random sleep between symbol requests.
+- Checkpoint/resume uses `fetch_checkpoint.json`; completed symbols are skipped on rerun unless `--force` is supplied.
+- Raw payloads are saved before parsing, with one folder per symbol containing `payload.json` and `metadata.json`.
+- The fetcher does not parse, write DB tables, run migrations, run backtests, or fetch the full universe.
+
+Safe next step:
+
+1. Run plan-only mode for the tiny verified symbol set and inspect the planned requests.
+2. If approved, run one tiny controlled execute pass for `FPT,VNM,VCB` with conservative sleep.
+3. Parse only the saved raw payloads into local dry-run CSV/report outputs.
+4. Keep full-universe, sector-batched fetching, DB writes, and backtests blocked until controlled-fetch and rate-limit behavior are reviewed.
+
+---
+
+</details>
+
 ### Price-Chart Small-Symbol Probe Result
 
 <details open>
