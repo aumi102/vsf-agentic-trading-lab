@@ -161,6 +161,80 @@ Readiness rule:
 
 </details>
 
+### Gap-Chart Small-Symbol Probe Result
+
+<details open>
+<summary>The gap-chart probe returns aligned OHLCV/value arrays for FPT, VNM, and VCB.</summary>
+
+---
+
+#### Probe evidence
+
+| Item | Value |
+|---|---|
+| run_id | `20260605T045715Z` |
+| symbols probed | `FPT`, `VNM`, `VCB` |
+| command scope | Small-symbol probe only; no full 1598-symbol fetch. |
+| raw directory | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T045715Z/` |
+| report | `reports/source_probe_report.md` |
+
+Per-symbol evidence:
+
+| Symbol | Target | Status | Raw path | Metadata path | Top-level rows | Bar count | Coverage from `t` |
+|---|---|---|---|---|---:|---:|---|
+| `FPT` | `vietcap_iq_gap_chart_fpt_candidate` | verified | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T045715Z/vietcap_iq_gap_chart_fpt/payload.json` | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T045715Z/vietcap_iq_gap_chart_fpt/metadata.json` | 1 | 250 | `2025-06-05` to `2026-06-05` |
+| `VNM` | `vietcap_iq_gap_chart_vnm_candidate` | verified | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T045715Z/vietcap_iq_gap_chart_vnm/payload.json` | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T045715Z/vietcap_iq_gap_chart_vnm/metadata.json` | 1 | 250 | `2025-06-05` to `2026-06-05` |
+| `VCB` | `vietcap_iq_gap_chart_vcb_candidate` | verified | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T045715Z/vietcap_iq_gap_chart_vcb/payload.json` | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T045715Z/vietcap_iq_gap_chart_vcb/metadata.json` | 1 | 250 | `2025-06-05` to `2026-06-05` |
+
+--- 
+
+#### Observed payload shape
+
+The payload is a top-level JSON array. For each probed symbol, the array contains one object with aligned arrays:
+
+- `symbol`
+- `o`
+- `h`
+- `l`
+- `c`
+- `v`
+- `t`
+- `accumulatedVolume`
+- `accumulatedValue`
+- `minBatchTruncTime`
+
+Observed field interpretation:
+
+| Requirement | Observed? | Notes |
+|---|---|---|
+| date/time | yes | `t` is an array of epoch-second strings; `minBatchTruncTime` is also present. |
+| open/high/low/close | yes | `o`, `h`, `l`, `c` arrays. |
+| volume | yes | `v` and `accumulatedVolume` arrays. |
+| trading value | yes | `accumulatedValue` array. |
+| adjusted and unadjusted values | no | No separate adjusted/unadjusted fields are visible. |
+| corporate-action or adjustment fields | no | No dividend, split, adjustment factor, or corporate-action fields are visible. |
+| consistent shape across FPT/VNM/VCB | yes | Same top-level array shape, same object fields, same 250-bar count, and same date coverage. |
+
+Null/empty-value review:
+
+- No null or empty values were observed in the important aligned arrays for `o`, `h`, `l`, `c`, `v`, `t`, `accumulatedVolume`, or `accumulatedValue`.
+- Parser planning must still validate that all aligned arrays have equal length before exploding them into one row per bar.
+
+--- 
+
+#### Readiness decision
+
+- The endpoint is sufficient for a dedicated OHLCV mapping review using small-symbol saved payloads.
+- It is more useful than the previous IQ `price-chart` endpoint because it includes volume and trading value.
+- It is not yet enough for full canonical ingestion or full-universe fetching because adjusted/unadjusted price bases and corporate-action/adjustment fields are not visible.
+- Next mapping review should define how to explode aligned arrays into row-level bars and how to label the visible price basis, likely `source_reported` until adjustment semantics are confirmed.
+- Do not fetch the full 1598-symbol universe yet.
+- Do not implement a parser, fetcher, database migration, or backtest yet.
+
+---
+
+</details>
+
 ### Price-Chart Small-Symbol Probe Result
 
 <details open>
