@@ -436,6 +436,35 @@ Comparison with countBack=250:
 - Response size remains manageable for a small-symbol probe.
 - This is enough evidence to proceed to an FPT-only `countBack=1000` probe.
 
+CountBack=1000 result:
+
+| Item | Value |
+|---|---|
+| run_id | `20260605T092311Z` |
+| target | `vietcap_iq_gap_chart_fpt_countback_1000_candidate` |
+| dataset | `vietcap_iq_gap_chart_fpt_countback_1000` |
+| status | verified usable JSON, HTTP `200`, content type `application/json; charset=utf-8` |
+| raw path | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T092311Z/vietcap_iq_gap_chart_fpt_countback_1000/payload.json` |
+| metadata path | `data/raw/source_probe/source=vietcap_iq/run_id=20260605T092311Z/vietcap_iq_gap_chart_fpt_countback_1000/metadata.json` |
+| raw payload size | 72,147 bytes |
+| top-level shape | JSON array with 1 object for `FPT` |
+| rows returned | 1,000 aligned daily bars |
+| coverage from `t` | `2022-06-02` to `2026-06-05` |
+| fields | `symbol`, `o`, `h`, `l`, `c`, `v`, `t`, `accumulatedVolume`, `accumulatedValue`, `minBatchTruncTime` |
+| null or empty values in aligned arrays | `accumulatedValue` has 73 null values from `2022-06-02` to `2022-09-14`; `o`, `h`, `l`, `c`, `v`, `t`, and `accumulatedVolume` have 0 observed null or empty values |
+| length mismatches | none observed |
+| adjusted/unadjusted fields | none observed |
+| dividend/split/corporate-action fields | none observed |
+
+Comparison with countBack=250 and countBack=500:
+
+- Row count increased again from 500 to 1,000.
+- Coverage expanded earlier than `2024-06-04`, back to `2022-06-02`.
+- Payload shape remained stable with the same aligned arrays and no extra adjustment or corporate-action fields.
+- Response size remains manageable for a small-symbol probe.
+- The 73 older null `accumulatedValue` entries are a data-quality caveat for trading-value completeness, but they are not a shape regression.
+- This is enough evidence to proceed to an FPT-only `countBack=2000` probe.
+
 Escalation rule:
 
 - Only after FPT works at a larger countBack should the same small-symbol probe be repeated for `VNM` and `VCB`.
