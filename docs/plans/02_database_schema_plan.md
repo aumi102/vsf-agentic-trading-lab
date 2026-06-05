@@ -59,6 +59,7 @@ toc_max_heading_level: 3
 - No report should be used for point-in-time analysis without `published_at`.
 - No macro observation should be used in a historical strategy without release or vintage handling.
 - QuestDB OHLCV dedup/upsert design is not finalized here; use `docs/ingestion_v2_schema_plan.md` for the current daily re-fetch and `DEDUP UPSERT KEYS` policy note.
+- Per mentor clarification, MVP OHLCV storage should start as one OHLCV table/dataset with adjustment-related columns; do not split corporate actions into separate tables before the ingestion path is stable.
 
 ---
 </details>

@@ -47,13 +47,26 @@ toc_max_heading_level: 3
 
 - Vietcap IQ's listed-market fetch universe is for fetching enough market and fundamental data.
 - It is not the final tradable asset list.
-- Final tradable assets will be selected later by dynamic liquidity, data-quality, exchange-eligibility, and strategy-specific filters.
+- Final tradable assets will be selected later by dynamic liquidity, data-quality, exchange-eligibility, and strategy-specific filters during the strategy phase.
 - Dynamic filters may change over time, so the tradable universe can change by date or rebalance period.
 - Index rows belong in a separate index universe, not in the stock tradable universe.
 
+#### Mentor clarification: OHLCV full re-fetch and safe fetching
+
+- Daily OHLCV re-fetch should target full available history when practical, not only a one-year or three-year rolling window.
+- Store all useful OHLCV price bases if the source provides them, especially adjusted and unadjusted values.
+- For MVP ingestion, keep one OHLCV table or dataset and add adjustment/corporate-action columns there instead of creating separate corporate-action tables immediately.
+- Final tradable asset selection is deferred to the strategy phase; the current focus is ingestion reliability, broad coverage, and source semantics.
+- Fetch broad universe data by sector batches where the source supports sector grouping.
+- Process sectors sequentially, then move to the next sector after the current batch completes.
+- Use random sleep between requests and batches to reduce rate-limit and IP-ban risk.
+- Avoid aggressive async or high-concurrency fetching; prefer sequential or very low-concurrency fetches.
+- Add a local fetch cache, progress file, or checkpoint so failed/crashed fetch jobs can resume without starting from the beginning.
+- QuestDB dedup design remains future DB work and is not implemented yet.
+
 #### Daily re-fetch and re-ingest policy
 
-- For OHLCV and adjusted market data, prefer re-fetching the full relevant historical window or full available dataset daily when practical.
+- For OHLCV and adjusted market data, prefer re-fetching full available history daily when practical.
 - Reason: dividends, stock splits, and corporate actions can cause historical prices, volumes, and adjustment factors to be restated.
 - Re-fetching reduces the risk of stale adjusted data.
 - Do not assume append-only ingestion is enough for Vietnamese stock OHLCV.
@@ -90,11 +103,12 @@ toc_max_heading_level: 3
 
 #### Adjusted versus unadjusted OHLCV open questions
 
-- The first MVP must decide whether strategy features and backtests use adjusted prices, unadjusted prices, or both.
-- Corporate actions, dividends, splits, and rights issues may need separate canonical tables instead of being hidden inside price rows.
+- Mentor clarified that the first MVP should store all useful OHLCV price bases available from the source, including adjusted and unadjusted data.
+- Mentor clarified that MVP corporate-action handling can start as one OHLCV table or dataset with extra adjustment/corporate-action columns.
 - Adjusted data can change historically, so append-only ingestion is risky for stock OHLCV.
 - Backtest outputs must record which price basis they used, such as `adjusted`, `unadjusted`, or `source_reported`.
 - If both adjusted and unadjusted bars are stored, `adjustment_type` should be part of the canonical identity and QuestDB dedup key.
+- Separate dividend, split, and corporate-action tables can be revisited after the MVP ingestion path is stable.
 
 #### Data layers
 
@@ -107,11 +121,12 @@ toc_max_heading_level: 3
 
 #### Open questions for mentor
 
-- How long of a historical OHLCV window should be re-fetched daily?
-- Should the first MVP use adjusted or unadjusted OHLCV?
+- Exact OHLCV column names for all price bases and adjustment fields.
+- Exact source fields that distinguish adjusted, unadjusted, and corporate-action-related values.
+- Exact local cache/checkpoint format for resumable sector-batched fetch jobs.
+- Exact random sleep and retry policy to reduce rate-limit and IP-ban risk.
 - What should be the canonical QuestDB dedup key for daily stock bars?
-- Should dividend, split, and corporate-action data be stored separately from prices from the start?
-- Which liquidity filters should define final tradable assets?
+- Which liquidity filters should define final tradable assets later in the strategy phase?
 
 ---
 
