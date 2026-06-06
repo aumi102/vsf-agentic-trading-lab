@@ -8,10 +8,25 @@ toc_max_heading_level: 3
 
 ## Executive Summary
 
-- **Current focus:** làm rõ kiến trúc sản phẩm theo hướng `Trading Agent` là orchestrator chính, không coi hệ thống chỉ là một pipeline backtest.
-- **What has been completed:** Vietcap IQ broad universe đã verify, listed-market fetch candidate có `1598` symbols, index universe đã tách riêng, gap-chart OHLCV đã verify cho `FPT`, `VNM`, `VCB`, parser dry-run từ saved payload đã chạy, controlled fetcher plan-only đã pass.
-- **What is blocked:** full-universe fetch, DB ingestion, backtest, financial statement ingestion, và agent tool interface vẫn bị chặn cho đến khi mentor confirm source semantics, safe execution policy, data schema, và architecture direction.
-- **What will be done next:** review report này với mentor, chạy tiny controlled execute cho `FPT/VNM/VCB` nếu được duyệt, parse raw outputs từ tiny execute, bắt đầu discovery financial statement endpoint, và thiết kế agent tool interface.
+- **Current focus:** source discovery, OHLCV safety planning, và sửa lại framing sản phẩm theo hướng `Trading Agent` là orchestrator chính.
+- **Completed:** Vietcap IQ broad universe đã verify, listed-market fetch candidate có `1598` symbols, index universe đã tách riêng, gap-chart OHLCV đã verify cho `FPT/VNM/VCB`, parser dry-run từ saved payload đã chạy, controlled fetcher plan-only đã pass.
+- **Blocked:** full-universe fetch, DB ingestion, backtest, financial statement ingestion, và agent tool interface chưa thể tiến tiếp nếu chưa confirm source semantics, safe execution policy, và architecture direction.
+- **Next:** review architecture với mentor, chạy tiny controlled execute cho `FPT/VNM/VCB` nếu được duyệt, parse raw outputs, bắt đầu financial statement endpoint discovery, và thiết kế tool interface đầu tiên.
+
+---
+
+## TL;DR cho mentor
+
+- Hệ thống nên được hiểu là **agent/tool product**, không phải chỉ là backtest pipeline.
+- `Trading Agent Orchestrator` là trung tâm: nhận câu hỏi user, gọi tools, tổng hợp câu trả lời.
+- Backtest là một **tool/module** trong tool layer, không phải toàn bộ product.
+- Data layer phải phục vụ cả offline backtest/research và online ad-hoc analysis.
+- Vietcap IQ universe đã verify: `2080` rows, `2078` unique symbols, `1598` listed-market fetch candidates, `34` index candidates.
+- Gap-chart OHLCV `countBack=5000` đã verify cho `FPT/VNM/VCB`, coverage dài nhất hiện từ `2006-05-18` đến `2026-06-05`.
+- Parser saved-payload dry run đã chạy: `14,079` rows, `2,781` pass, `11,290` warn, `8` fail quarantined.
+- Controlled fetcher mới pass plan-only: `network_requests_made=False`, `planned_request_count=3`; tiny execute chưa chạy.
+- Blocker chính: full fetch safety, adjusted/unadjusted semantics, corporate actions, `accumulatedValue` missing trước `2022-09-15`, và agent tool contract.
+- Next action cần mentor confirm: kiến trúc agent/tool, tiny execute `FPT/VNM/VCB`, OHLCV full-history approach, FA endpoint priority, dynamic universe filters.
 
 ---
 
@@ -19,88 +34,64 @@ toc_max_heading_level: 3
 
 ### Data source discovery
 
-- [x] Lập source provider matrix và manual investigation log.
-- [x] Xác định Vietcap IQ là full-market universe candidate chính.
-- [x] Xác định HOSE/HSX là HOSE-specific source, không đại diện toàn thị trường.
-- [x] Verify một số macro/bond context sources ở mức dry-run.
-- [ ] Discover financial statement endpoints của Vietcap IQ.
-- [ ] Discover report-list/document endpoints cho RAG/evidence module.
+- [x] Vietcap IQ được xác định là full-market universe candidate chính.
+- [x] HOSE/HSX được giữ là HOSE-specific source, không đại diện toàn thị trường.
+- [x] Macro/bond context sources đã có một số dry-run proof.
+- [ ] Discover financial statement và report/document endpoints của Vietcap IQ.
 
 ### Vietcap IQ universe
 
 - [x] Verify `company/search-bar?language=1` trả row-level universe JSON.
-- [x] Parse saved search-bar payload ra local dry-run tables.
-- [x] Tách `index_universe.csv`.
-- [x] Tạo listed-market fetch candidate khoảng `1598` symbols.
-- [x] Preserve `OTC`, `OTHER`, `STOP`, duplicate/fail rows trong audit outputs.
+- [x] Parse saved payload ra local dry-run tables và tách `index_universe.csv`.
+- [x] Tạo listed-market fetch candidate `1598` symbols, preserve excluded rows for audit.
 - [ ] Mentor confirm semantics của `floor`, `comTypeCode`, `isIndex`, `bank`, `index`, `icbLv*`.
 
 ### Vietcap IQ OHLCV / gap-chart
 
 - [x] Verify endpoint `gap-chart` cho `FPT`, `VNM`, `VCB`.
-- [x] Verify payload có aligned arrays: `o`, `h`, `l`, `c`, `v`, `t`, `accumulatedVolume`, `accumulatedValue`.
-- [x] Test `countBack=5000` cho `FPT`, `VNM`, `VCB`.
-- [x] Parser dry-run từ saved payload hoàn tất.
-- [x] Quarantine `8` fail rows do OHLC inconsistency thật từ source.
-- [ ] Confirm adjusted/unadjusted price semantics.
-- [ ] Confirm corporate action/dividend/split handling.
+- [x] Verify aligned arrays và `countBack=5000` cho `FPT/VNM/VCB`.
+- [x] Parser dry-run hoàn tất; `8` fail rows do source OHLC inconsistency đang quarantine.
+- [ ] Confirm adjusted/unadjusted và corporate action/dividend/split handling.
 
 ### Controlled fetcher
 
 - [x] Skeleton có default plan-only mode.
-- [x] Plan-only smoke pass với `network_requests_made=False`.
-- [x] Có checkpoint/resume design.
-- [x] Có controlled batch và random sleep design.
+- [x] Plan-only smoke pass với `network_requests_made=False`, checkpoint/resume, controlled batch, random sleep design.
 - [ ] Tiny execute cho `FPT/VNM/VCB` chưa chạy.
 - [ ] Full `1598` symbol fetch chưa được duyệt.
 
 ### Data preprocessing pipeline
 
-- [x] Raw payload preservation pattern đã có.
-- [x] Parser dry-run pattern đã có.
-- [x] Quality split `pass/warn/fail` đã có.
+- [x] Raw payload preservation, parser dry-run, và quality split `pass/warn/fail` đã có.
 - [x] Fail rows được quarantine, không silent drop.
-- [ ] Canonical DB tables chưa implement.
-- [ ] Feature store chưa implement.
-- [ ] Dynamic universe layer chưa design chi tiết.
+- [ ] Canonical DB tables, feature store, dynamic universe layer chưa implement.
 
 ### Product architecture
 
 - [x] Mentor clarified backtest không phải toàn bộ product.
 - [x] Report này vẽ lại product architecture theo agent-orchestrated direction.
-- [ ] Mentor confirm final product architecture.
-- [ ] Decide module boundaries giữa Data Platform, Tool Layer, Agent Orchestrator, UI, Reports.
+- [ ] Mentor confirm final architecture và module boundaries.
 
 ### Agent/tool architecture
 
-- [x] Direction: agent gọi data tools, strategy tools, analysis tools trực tiếp.
+- [x] Direction: agent gọi data tools, strategy tools, risk tools, report tools trực tiếp.
 - [x] Report này mô tả online agent flow cho câu hỏi `HPG hôm nay thế nào?`.
-- [ ] Define first data tool functions.
-- [ ] Define feature tool and strategy tool contracts.
-- [ ] Define risk/report tool output schemas.
+- [ ] Define first data/feature/strategy/risk/report tool contracts.
 
 ### Backtest/research module
 
 - [x] Backtest được định vị lại là một module/tool.
-- [ ] Backtest engine chưa implement.
-- [ ] Backtest result schema chưa implement.
-- [ ] Strategy research loop chưa implement.
+- [ ] Backtest engine, result schema, và strategy research loop chưa implement.
 
 ### Financial statements / FA data
 
 - [x] Vietcap IQ được xác định là candidate cho company profile, statements, ratios, reports.
-- [ ] Financial statement endpoints chưa discover.
-- [ ] Full-history FA fetch chưa implement.
-- [ ] PIT availability date cho statements chưa design.
-- [ ] Statement/ratio schema chưa finalize.
+- [ ] Financial statement endpoints, full-history FA fetch, PIT availability, và statement/ratio schema chưa xong.
 
 ### RAG / text data future module
 
 - [x] Reports/news được xác định là evidence layer tương lai.
-- [ ] Report-list endpoint chưa discover.
-- [ ] Document download/chunking chưa implement.
-- [ ] Vector DB/RAG pipeline chưa implement.
-- [ ] Citation and timestamp safety chưa implement.
+- [ ] Report-list endpoint, document download/chunking, vector DB/RAG, citation/timestamp safety chưa implement.
 
 ---
 
@@ -109,48 +100,38 @@ toc_max_heading_level: 3
 ### Khái niệm / nội dung chính
 
 - Milestone hiện tại là **source discovery + architecture clarification**, chưa phải DB ingestion hay backtest.
-- Kết quả chính là chứng minh Vietcap IQ có thể làm broad universe candidate và gap-chart có thể cung cấp OHLCV daily history cho một số symbol nhỏ.
-- Mentor feedback mới yêu cầu chuyển framing từ `data -> feature -> signal -> backtest -> agent` sang `user -> agent -> tools -> answer/action`.
+- Mentor feedback mới đổi framing từ `data -> feature -> signal -> backtest -> agent` sang `user -> agent -> tools -> answer/action`.
 
 ### Vì sao quan trọng
 
-- Nếu chỉ nghĩ theo backtest pipeline, hệ thống sẽ bị hẹp: agent chỉ đọc kết quả backtest thay vì tự gọi data/strategy/analysis tools theo câu hỏi user.
-- Agent cần data tools độc lập để trả lời câu hỏi ad-hoc như `HPG hôm nay thế nào?`.
-- Data layer phải phục vụ cả backtest offline lẫn analysis online.
+- Nếu chỉ nghĩ theo backtest pipeline, agent sẽ bị hẹp thành người đọc kết quả backtest.
+- Product đúng cần agent có thể gọi data/feature/strategy/risk/report tools trực tiếp theo câu hỏi user.
+- Data layer phải dùng chung cho offline research và online analysis.
 
 ### Input
 
-- Mentor feedback về product architecture.
-- Vietcap IQ broad universe dry-run.
-- Gap-chart `countBack=5000` saved payloads cho `FPT`, `VNM`, `VCB`.
-- Parser dry-run results.
-- Controlled fetcher plan-only result.
+- Mentor feedback, Vietcap IQ universe dry-run, gap-chart `countBack=5000` saved payloads, parser dry-run, controlled fetcher plan-only result.
 
 ### Output
 
-- Một report mentor-readable tại `docs/reports/progress_report.md`.
-- Architecture diagram cho product và agent/tool flow.
-- Data preprocessing diagram từ raw source đến feature/dynamic universe.
-- Risk/blocker list rõ để tránh nhảy sớm sang full fetch, DB, hoặc backtest.
+- Report này tại `docs/reports/progress_report.md`.
+- Architecture diagrams, evidence numbers, blocker list, và mentor confirmation questions.
 
 ### Ví dụ
 
-- Câu hỏi user: `HPG hôm nay thế nào?`
-- Flow đúng: agent gọi market data tool, feature tool, strategy tool, risk tool, report generator rồi mới trả lời.
-- Flow chưa đúng: chỉ chạy backtest trước rồi để agent đọc kết quả backtest như toàn bộ product.
+- User hỏi `HPG hôm nay thế nào?`.
+- Flow đúng: agent gọi market data tool, feature tool, strategy tool, risk tool, report generator rồi trả lời.
+- Flow sai: bắt mọi câu hỏi đi qua backtest trước.
 
 ### Rủi ro / lưu ý
 
-- Không chạy live fetch trong bước report này.
-- Không chạy `--execute`.
-- Không modify parser/fetcher scripts.
-- Không inspect/print local config hoặc secrets.
-- Report phải giữ rõ trạng thái: đã verify small-symbol evidence, nhưng chưa đủ điều kiện full-universe ingestion.
+- Task này chỉ update docs, không chạy live fetch, không chạy `--execute`, không modify parser/fetcher scripts.
+- Small-symbol evidence đã tốt, nhưng chưa đủ để full-universe ingestion, DB, backtest, hoặc production agent tools.
 
 ### Câu hỏi / việc cần mentor confirm
 
 - Kiến trúc agent/tool hiện tại đã đúng hướng chưa?
-- Backtest nên expose thành tool như thế nào: research-only, user-callable, hay internal-only?
+- Backtest nên expose như research tool, user-callable tool, hay internal-only tool?
 - Data tools đầu tiên nên ưu tiên OHLCV, universe, features, hay financial statements?
 
 ---
@@ -159,55 +140,48 @@ toc_max_heading_level: 3
 
 ### Khái niệm / nội dung chính
 
-- Data ingestion hiện ở giai đoạn **verified dry-run artifacts**, chưa phải production ingestion.
-- Vietcap IQ universe đã có broad market coverage.
-- Vietcap gap-chart đã có daily OHLCV-like payload shape cho `FPT/VNM/VCB`.
-- Controlled fetcher mới pass plan-only, tiny execute chưa chạy.
+- Data ingestion hiện ở mức **verified dry-run artifacts**.
+- Vietcap IQ broad universe, HOSE overlap, gap-chart long-window behavior, parser dry-run, và fetcher plan-only đều đã có evidence.
 
 ### Vì sao quan trọng
 
-- Broad universe giúp không bị khóa trong HOSE-only coverage.
-- Gap-chart OHLCV cho phép tiến tới full-history daily bars nếu safety policy được duyệt.
-- Plan-only fetcher chứng minh logic lập kế hoạch không tạo network request và chưa làm side effect nguy hiểm.
+- Broad universe tránh bị giới hạn trong HOSE-only coverage.
+- Gap-chart là candidate chính cho daily OHLCV full-history exploration.
+- Plan-only fetcher chứng minh request planning an toàn trước khi có live execution.
 
 ### Input
 
-- Vietcap IQ search-bar saved payload.
-- HOSE/HSX listed-universe và quote-report exploration docs.
-- Vietcap gap-chart `countBack=5000` saved payloads.
-- Parser dry-run outputs từ saved payloads.
-- Controlled fetcher plan-only artifacts.
+- Vietcap IQ search-bar saved payload, HOSE/HSX exploration, gap-chart `countBack=5000` saved payloads, parser dry-run outputs, controlled fetcher plan-only artifacts.
 
 ### Output
 
-- Vietcap IQ universe: `2080` rows, `2078` unique symbols, `1598` listed-market fetch candidate rows, `34` index candidates.
-- HOSE overlap: `403/403` HOSE listed-universe symbols có trong Vietcap IQ universe.
-- Gap-chart coverage:
-  - `FPT`: `4,852` bars, `2006-12-13` to `2026-06-05`.
-  - `VNM`: `5,000` bars, `2006-05-18` to `2026-06-05`.
-  - `VCB`: `4,227` bars, `2009-06-30` to `2026-06-05`.
-- Parser dry-run: `14,079` total rows, `2,781` pass, `11,290` warn, `8` fail.
-- Plan-only controlled fetcher: `mode=plan_only`, `network_requests_made=False`, `planned_request_count=3`, không tạo payload/metadata symbol files.
+| Area | Evidence |
+|---|---|
+| Vietcap IQ universe | `2080` rows, `2078` unique symbols, `1598` listed-market fetch candidate rows, `34` index candidates |
+| HOSE overlap | `403/403` HOSE listed-universe symbols có trong Vietcap IQ universe |
+| Gap-chart `FPT` | `4,852` bars, `2006-12-13` to `2026-06-05` |
+| Gap-chart `VNM` | `5,000` bars, `2006-05-18` to `2026-06-05` |
+| Gap-chart `VCB` | `4,227` bars, `2009-06-30` to `2026-06-05` |
+| Parser dry-run | `14,079` total rows, `2,781` pass, `11,290` warn, `8` fail |
+| Controlled fetcher plan-only | `mode=plan_only`, `network_requests_made=False`, `planned_request_count=3`, no symbol payload/metadata files |
 
 ### Ví dụ
 
-- Với `FPT`, `countBack=5000` trả `4,852` bars vì có vẻ bị giới hạn bởi available FPT history.
-- Với `VNM`, endpoint trả đủ `5,000` bars nên có thể cần test cách lấy xa hơn nếu muốn tiến gần mục tiêu around `2000` to now.
-- Với `VCB`, coverage bắt đầu `2009-06-30`, hợp lý vì listing/available history có thể muộn hơn.
+- `FPT` trả ít hơn `5000` bars, có vẻ do available history.
+- `VNM` trả đủ `5000` bars, nên nếu muốn trước `2006-05-18` cần tìm `from/to` hoặc larger-window behavior.
+- `VCB` bắt đầu `2009-06-30`, có thể phản ánh listing/available history muộn hơn.
 
 ### Rủi ro / lưu ý
 
-- Tiny execute chưa chạy vì bước hiện tại ưu tiên architecture/report và không được phép chạy live fetch trong task này.
-- Full `1598` symbol fetch có rủi ro rate-limit/IP-ban nếu không checkpoint, sleep, batch nhỏ, và không có resume.
-- `accumulatedValue` thiếu trong older history trước `2022-09-15`, nên trading value completeness cần quality handling.
-- `8` OHLC fail rows là source inconsistency thật, vẫn quarantine.
-- Adjusted/unadjusted và corporate action semantics chưa rõ.
+- Full `1598` symbol fetch có rủi ro rate-limit/IP-ban nếu chưa có checkpoint, sleep, controlled batch, và resume.
+- `accumulatedValue` thiếu trong older history trước `2022-09-15`, nên trading value completeness là warning-level caveat.
+- `8` OHLC fail rows là source inconsistency thật; adjusted/unadjusted và corporate action semantics chưa rõ.
 
 ### Câu hỏi / việc cần mentor confirm
 
-- Tiny controlled execute cho `FPT/VNM/VCB` đã đủ an toàn để chạy bước kế tiếp chưa?
-- Với OHLCV, nên tiếp tục dùng `countBack` lớn hay tìm API có `from/to` date?
-- Có cần bắt buộc trading value cho full-history features không, hay cho phép warning trước `2022-09-15`?
+- Tiny controlled execute cho `FPT/VNM/VCB` đã đủ an toàn để chạy chưa?
+- Với OHLCV, nên tiếp tục `countBack` lớn hay tìm API theo `from/to` date?
+- Có cho phép feature không cần trading value chạy trước `2022-09-15` không?
 
 ---
 
@@ -229,52 +203,45 @@ flowchart LR
 ### Khái niệm / nội dung chính
 
 - **Raw layer:** lưu nguyên payload và non-secret metadata để có lineage.
-- **Parsed layer:** explode/normalize payload source-shaped thành rows.
+- **Parsed layer:** explode/normalize source-shaped payload thành rows.
 - **Quality layer:** phân loại `pass`, `warn`, `fail`; fail phải quarantine.
-- **Canonical layer:** chuẩn hóa table identity, schema version, parser version, source lineage.
-- **Feature layer:** tạo rolling returns, volatility, volume, liquidity, breadth, momentum, valuation features.
-- **Dynamic universe layer:** chọn tradable assets theo thời gian dựa trên liquidity, data completeness, exchange eligibility, và strategy constraints.
+- **Canonical layer:** chuẩn hóa identity, schema version, parser version, source lineage.
+- **Feature layer:** tạo returns, volatility, volume/liquidity, breadth, momentum, valuation features.
+- **Dynamic universe layer:** chọn tradable assets theo thời gian dựa trên liquidity, completeness, exchange eligibility, và strategy constraints.
 
 ### Vì sao quan trọng
 
-- Raw payload preservation giúp debug source changes và rerun parser khi schema đổi.
-- Quality layer ngăn bad data đi thẳng vào backtest hoặc agent answer.
-- Dynamic universe tránh nhầm `1598` fetch candidates thành final tradable list.
-- Feature store giúp agent và backtest dùng cùng một feature definition.
+- Raw layer giúp debug source changes và rerun parser khi schema đổi.
+- Quality layer chặn bad data; dynamic universe tránh nhầm `1598` fetch candidates thành final tradable list.
 
 ### Input
 
-- Source payloads từ Vietcap IQ, HOSE/HSX, FRED, VBMA, và sau này là financial statements/reports.
-- Fetch metadata: source, run_id, request scope, content hash, timestamps, status.
-- Parser rules và quality gates.
+- Source payloads, fetch metadata, parser rules, và quality gates.
 
 ### Output
 
 - Raw files: `payload.json`, `metadata.json`, content hash.
 - Parsed rows: source-specific dry-run CSVs.
 - Quality report: counts, reasons, quarantined rows.
-- Canonical candidates: OHLCV, universe, macro, bond, FA, report metadata tables.
-- Features và dynamic universe outputs cho strategy tools.
+- Canonical candidates, feature outputs, dynamic universe outputs.
 
 ### Ví dụ
 
 - Gap-chart object chứa arrays `o/h/l/c/v/t`.
-- Parser explode mỗi index thành một `daily_price_bar`.
-- Quality check đánh fail nếu `high < low` hoặc `open/close` nằm ngoài range.
-- Rows pass/warn mới được xem xét cho canonical layer; fail rows ở quarantine.
+- Parser explode mỗi array index thành một `daily_price_bar`.
+- Quality check fail nếu `high < low` hoặc `open/close` nằm ngoài range.
 
 ### Rủi ro / lưu ý
 
-- Nếu bỏ raw layer, không thể chứng minh source payload thay đổi hay parser sai.
-- Nếu không tách `warn` và `fail`, agent có thể trả lời tự tin bằng dữ liệu thiếu trading value hoặc có OHLC lỗi.
-- Nếu canonical table chưa có `price_basis`/`adjustment_type`, backtest có thể mix adjusted và unadjusted data.
-- Nếu dynamic universe thiếu point-in-time rule, strategy có thể dùng future membership hoặc future liquidity.
+- Nếu không có `price_basis`/`adjustment_type`, backtest có thể mix adjusted và unadjusted data.
+- Nếu không có point-in-time rule, strategy có thể dùng future membership hoặc future liquidity.
+- Warn rows cần feature-specific policy.
 
 ### Câu hỏi / việc cần mentor confirm
 
-- Quality `warn` rows có được dùng cho feature không, hay phải feature-specific gating?
-- Dynamic universe nên filter theo liquidity trước, data completeness trước, hay exchange eligibility trước?
-- Canonical OHLCV identity nên gồm những keys nào trước khi vào QuestDB?
+- `warn` rows có được dùng cho feature không, hay phải feature-specific gating?
+- Dynamic universe nên filter theo liquidity, data completeness, hay exchange eligibility trước?
+- Canonical OHLCV identity nên gồm keys nào trước khi vào QuestDB?
 
 ---
 
@@ -304,43 +271,38 @@ flowchart TB
 
 ### Khái niệm / nội dung chính
 
-- Kiến trúc đúng hiện tại: **agent là orchestrator**, tools là capability layer, data platform là nền tảng dùng chung.
+- Kiến trúc đúng: **agent là orchestrator**, tool router chọn capability, data platform là nền tảng dùng chung.
 - Previous flow `data -> feature -> signal -> backtest -> agent` quá backtest-centric.
-- Backtest chỉ là một tool/module trong hệ thống, không phải toàn bộ product.
-- Data layer phải phục vụ cả offline research/backtest và online ad-hoc agent analysis.
+- Backtest là một tool/module trong hệ thống, không phải toàn bộ product.
+- Data layer phải hỗ trợ cả backtest và ad-hoc agent analysis.
 
 ### Vì sao quan trọng
 
 - User không luôn hỏi `hãy backtest chiến lược X`.
-- User có thể hỏi market status, risk, signal, event explanation, hoặc report summary.
-- Agent cần gọi tool phù hợp theo intent thay vì bị buộc đi qua backtest.
+- Agent cần gọi tool theo intent: market status, risk, signal, event explanation, report summary.
 
 ### Input
 
-- User query từ UI/chat.
-- Tool registry với data/feature/strategy/backtest/risk/report/RAG tools.
-- Data platform gồm raw/canonical data, feature store, backtest results, reports.
+- User query, tool registry, và data platform.
 
 ### Output
 
 - Agent answer có số liệu, quality caveat, reasoning summary, và source/tool trace.
-- Backtest report khi user yêu cầu research/backtest.
-- Risk/report outputs khi user hỏi về exposure hoặc market condition.
+- Backtest/risk/report outputs chỉ được tạo khi query hoặc research flow cần.
 
 ### Ví dụ
 
 - Query `HPG hôm nay thế nào?` không cần chạy backtest trước.
-- Agent gọi market data tool để lấy OHLCV gần nhất, feature tool để tính momentum/volume, strategy tool để đọc signal, risk tool để kiểm tra volatility/drawdown, report tool để format answer.
+- Agent gọi market data tool, feature tool, strategy tool, risk tool, rồi report tool để format answer.
 
 ### Rủi ro / lưu ý
 
-- Nếu data tool không độc lập, agent sẽ không trả lời được câu hỏi online đơn giản.
-- Nếu backtest output là nguồn duy nhất, agent dễ trả lời chậm, cứng, và thiếu context.
-- Nếu tool outputs không có quality status, agent có thể overstate confidence.
+- Nếu data tool không độc lập, agent không trả lời được câu hỏi online đơn giản.
+- Nếu backtest output là nguồn duy nhất hoặc tool contracts không rõ, product sẽ chậm và khó kiểm soát.
 
 ### Câu hỏi / việc cần mentor confirm
 
-- Tool Router nên hard-code tool selection ban đầu hay dùng LLM routing với guardrails?
+- Tool Router nên hard-code ban đầu hay dùng LLM routing với guardrails?
 - Agent answer có cần luôn hiển thị quality caveat/source trace không?
 - Backtest tool nên chạy sync trong request hay async job?
 
@@ -363,7 +325,7 @@ sequenceDiagram
   UI->>Agent: user_query(symbol=HPG, horizon=today)
   Agent->>Data: get_latest_market_data(HPG)
   Data-->>Agent: latest OHLCV + quality status
-  Agent->>Feature: compute_intraday_or_latest_features(HPG)
+  Agent->>Feature: compute_latest_features(HPG)
   Feature-->>Agent: returns, volume, volatility, momentum
   Agent->>Strategy: evaluate_active_signals(HPG, latest_features)
   Strategy-->>Agent: signal summary + confidence
@@ -378,43 +340,30 @@ sequenceDiagram
 ### Khái niệm / nội dung chính
 
 - Online flow là runtime path khi user hỏi một câu cụ thể.
-- Agent không tự bịa số liệu; agent gọi tools để lấy data, features, signals, risk, rồi compose answer.
-- Tool output phải đủ structured để agent reason được và đủ human-readable để report generator dùng.
+- Agent gọi tools rồi compose answer; tool output cần structured, có timestamp, quality status, và source lineage.
 
 ### Vì sao quan trọng
 
-- Đây là behavior product-facing quan trọng nhất.
-- Nó chứng minh data layer không chỉ tồn tại cho backtest.
-- Nó ép tool contracts phải rõ: input, output, quality, timestamps, source lineage.
+- Đây là product-facing behavior quan trọng nhất.
+- Nó chứng minh data layer không chỉ tồn tại cho backtest và ép tool contracts phải rõ.
 
 ### Input
 
-- User query: `HPG hôm nay thế nào?`
-- Symbol resolver: `HPG`.
-- Market date/session context.
-- Tool registry và available data.
+- User query `HPG hôm nay thế nào?`, symbol resolver `HPG`, market/session context, tool registry, available data.
 
 ### Output
 
-- Câu trả lời tiếng Việt có:
-  - latest market data.
-  - feature summary.
-  - strategy signal summary.
-  - risk caveat.
-  - data quality limitation.
-  - source/tool trace nếu cần.
+- Câu trả lời tiếng Việt có latest market data, feature summary, signal summary, risk caveat, data limitation, và source/tool trace nếu cần.
 
 ### Ví dụ
 
-- Nếu latest OHLCV thiếu trading value nhưng giá/volume có đủ, answer nên nói rõ trading value incomplete.
 - Nếu market chưa đóng cửa, answer phải phân biệt provisional/intraday với final EOD.
-- Nếu data không đủ, agent trả lời `không đủ dữ liệu để kết luận`, không tự suy đoán.
+- Nếu OHLCV thiếu trading value hoặc data không đủ, answer phải nói rõ limitation.
 
 ### Rủi ro / lưu ý
 
-- Tool latency có thể cao nếu query kích hoạt nhiều tools.
-- Online answer có leakage risk nếu tool dùng future data hoặc stale adjusted data sai timestamp.
-- Agent phải biết khi nào cần RAG/report context và khi nào chỉ cần market data.
+- Tool latency có thể cao nếu một query kích hoạt quá nhiều tools.
+- Online answer có leakage/staleness risk nếu tool dùng sai timestamp hoặc stale adjusted data.
 
 ### Câu hỏi / việc cần mentor confirm
 
@@ -443,15 +392,13 @@ flowchart TB
 
 ### Khái niệm / nội dung chính
 
-- **Offline:** chạy theo batch/schedule để fetch, parse, validate, store, compute features/signals.
-- **Online:** chạy theo user query để agent gọi tools, reason, và trả lời.
-- Hai path dùng chung data platform nhưng có latency, safety, và output khác nhau.
+- **Offline:** batch/schedule path để fetch, parse, validate, store, compute features/signals.
+- **Online:** user-query path để agent gọi tools, reason, và trả lời.
+- Hai path dùng chung data platform nhưng khác latency, safety, và output.
 
 ### Vì sao quan trọng
 
-- Offline job có thể chậm nhưng phải đầy đủ, resumable, auditable.
-- Online flow phải nhanh, scoped, và trả lời đúng câu hỏi.
-- Tách hai path giúp không biến mọi user query thành một job fetch/backtest nặng.
+- Offline job phải đầy đủ/resumable/auditable; online flow phải nhanh/scoped; tách hai path tránh biến mọi user query thành fetch/backtest job nặng.
 
 ### Input
 
@@ -471,8 +418,7 @@ flowchart TB
 ### Rủi ro / lưu ý
 
 - Nếu online tool tự fetch quá nhiều, dễ vi phạm safety policy và rate limits.
-- Nếu offline không cập nhật đủ, online answer sẽ stale.
-- Nếu không có clear availability timestamp, cả offline backtest và online answer đều có leakage/staleness risk.
+- Nếu offline không cập nhật đủ hoặc thiếu availability timestamp, online answer/backtest đều có staleness/leakage risk.
 
 ### Câu hỏi / việc cần mentor confirm
 
@@ -507,23 +453,18 @@ flowchart TB
 | Symbol | Bars | Coverage | Notes |
 |---|---:|---|---|
 | `FPT` | `4,852` | `2006-12-13` to `2026-06-05` | Below requested `5000`; likely capped by available FPT history. |
-| `VNM` | `5,000` | `2006-05-18` to `2026-06-05` | Returned requested `5000`; may need from/to or larger-window exploration later. |
+| `VNM` | `5,000` | `2006-05-18` to `2026-06-05` | Returned requested `5000`; may need `from/to` or larger-window exploration later. |
 | `VCB` | `4,227` | `2009-06-30` to `2026-06-05` | Below requested `5000`; likely capped by available VCB history. |
 
-### Parser dry-run evidence
-
-| Metric | Count |
-|---|---:|
-| Total rows | `14,079` |
-| Pass | `2,781` |
-| Warn | `11,290` |
-| Fail | `8` |
-
-### Controlled fetcher plan-only evidence
+### Parser and fetcher evidence
 
 | Metric | Value |
 |---|---|
-| Mode | `plan_only` |
+| Parser total rows | `14,079` |
+| Parser pass | `2,781` |
+| Parser warn | `11,290` |
+| Parser fail | `8` |
+| Controlled fetcher mode | `plan_only` |
 | Network requests made | `False` |
 | Planned request count | `3` |
 | Symbol scope | `FPT`, `VNM`, `VCB` |
@@ -594,8 +535,4 @@ flowchart TB
 ## Report Pointers
 
 - Report path: `docs/reports/progress_report.md`.
-- Supporting docs:
-  - `docs/data_sources/01_vietcap_iq.md`.
-  - `docs/data_sources/hose_pipeline.md`.
-  - `docs/ingestion_v2_schema_plan.md`.
-  - `docs/architecture/02_trading_agent_architecture_overview.md`.
+- Supporting docs: `docs/data_sources/01_vietcap_iq.md`, `docs/data_sources/hose_pipeline.md`, `docs/ingestion_v2_schema_plan.md`, `docs/architecture/02_trading_agent_architecture_overview.md`.
