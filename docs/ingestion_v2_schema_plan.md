@@ -19,6 +19,7 @@ toc_max_heading_level: 3
 - **FRED** is ready for macro-context ingestion planning. The verified raw sample is structured JSON with top-level series metadata and nested observations.
 - **HOSE** listed-universe, quote-report, stock-only filter, and saved-output audits are summarized in `docs/data_sources/hose_pipeline.md`.
 - **Vietcap IQ** search-bar universe parsing is ready for review as a broad full-market fetch universe candidate. The current dry run writes `index_universe.csv` separately and produces a 1598-row listed-market fetch candidate, but this is not final tradable assets.
+- **Mentor progress report** for the current agent/tool architecture clarification lives in `docs/reports/progress_report.md`.
 
 #### What is not ready yet
 
