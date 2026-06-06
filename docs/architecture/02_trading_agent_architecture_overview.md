@@ -4,142 +4,251 @@ toc_min_heading_level: 2
 toc_max_heading_level: 3
 ---
 
-## Trading Agent Architecture Overview
+# Trading Agent Product Architecture Overview
 
-### Key Terms
-<details open>
-<summary>The architecture terms used across all later plans.</summary>
----
-#### System terms
+## 1. Short Summary
 
-| Term | Meaning |
-|---|---|
-| `orchestrator` | The main agent that chooses the next module or tool. |
-| `module` | A system block with a clear responsibility, such as data, features, backtest, or risk. |
-| `contract` | The required input, output, and failure shape for a module. |
-| `gate` | A validation rule that must pass before moving forward. |
-| `state` | The current run record: request, assumptions, tool outputs, and decision. |
-| `evidence` | Data or document content used to support an answer. |
-| `unanswered` | The final state when the system cannot safely conclude. |
+- `Trading Agent Orchestrator` là trung tâm của product: nhận câu hỏi user, chọn tool, tổng hợp kết quả, và trả lời có caveat.
+- Agent gọi tools trực tiếp: data tools, feature tools, strategy tools, risk tools, report tools, RAG tools, và backtest tools khi cần.
+- Backtest là một **module/tool**, không phải toàn bộ product.
+- Data layer phải phục vụ hai mode: offline research/backtest và online ad-hoc agent analysis.
+- Current implementation vẫn đang pre-DB và pre-backtest: đã có raw payload, parser dry-run, quality report, controlled fetcher plan-only; chưa có canonical DB, QuestDB schema, backtest engine, hoặc production agent tools.
 
 ---
-#### Decision states
 
-| State | Meaning |
-|---|---|
-| `reject` | The strategy was tested and failed core gates. |
-| `revise` | The strategy has a useful idea but fails one or more fixable gates. |
-| `promote_to_backtest` | The idea is structured enough to test, but not yet tested. |
-| `promote_to_paper_test` | The strategy passed MVP gates and can be tried without real capital. |
-| `unanswered` | The system lacks data, evidence, assumptions, or tool success. |
+## 2. Product Architecture
+
+```mermaid
+flowchart TB
+  U["User / UI"] --> A["Trading Agent Orchestrator"]
+  A --> R["Tool Router"]
+  R --> D["Data Tools"]
+  R --> F["Feature Tools"]
+  R --> S["Strategy Tools"]
+  R --> B["Backtest Tools"]
+  R --> K["Risk Tools"]
+  R --> P["Report Tools"]
+  R --> G["RAG Tools"]
+  D --> DP["Data Platform"]
+  F --> FS["Feature Store"]
+  S --> FS
+  B --> BR["Backtest Results"]
+  K --> FS
+  P --> RS["Report Store / Text Index"]
+  G --> RS
+  DP --> FS
+  BR --> P
+```
+
+- **User/UI:** nơi user hỏi câu như `HPG hôm nay thế nào?` hoặc yêu cầu backtest một chiến lược.
+- **Trading Agent Orchestrator:** hiểu intent, quyết định tool calls, kiểm tra caveat, và compose câu trả lời cuối.
+- **Tool Router:** map intent sang tool phù hợp; ban đầu có thể rule-based, sau này có thể LLM routing với guardrails.
+- **Data Tools:** lấy market data, universe, latest snapshot, hoặc historical windows từ cache/store/canonical layer.
+- **Feature Tools:** tính features như returns, volatility, momentum, volume/liquidity, breadth.
+- **Strategy Tools:** chuyển features thành signal hoặc strategy view.
+- **Backtest Tools:** chạy simulation khi user hoặc research flow cần; không chạy cho mọi câu hỏi.
+- **Risk Tools:** đánh giá risk flags như volatility, drawdown, liquidity, data quality caveat.
+- **Report Tools:** format answer/report bằng tiếng Việt, có evidence và limitation.
+- **RAG Tools:** retrieve reports/news/text evidence theo timestamp-safe policy.
+- **Data Platform / Feature Store / Backtest Results / Report Store:** storage layers dùng chung cho offline và online flows.
 
 ---
-</details>
 
-### Module Map
-<details open>
-<summary>The trading agent is a pipeline of tools around a cautious orchestrator.</summary>
+## 3. Data Preprocessing Architecture
+
+```mermaid
+flowchart LR
+  A["Sources"] --> B["Controlled Fetcher"]
+  B --> C["Raw Payload"]
+  C --> D["Parser"]
+  D --> E["Quality Check"]
+  E --> F["Pass / Warn / Fail"]
+  F --> G["Canonical Tables"]
+  G --> H["Feature Store"]
+  H --> I["Dynamic Universe"]
+  I --> J["Strategy Input"]
+```
+
+- **Source endpoints:** Vietcap IQ, HOSE/HSX, FRED, VBMA, và sau này là financial statements/reports/news.
+- **Controlled fetcher:** chạy sequential hoặc very low concurrency; có batch control, random sleep, retry, checkpoint/resume.
+- **Checkpoint/resume:** lưu completed/failed/pending để crash hoặc rate-limit không bắt fetch lại từ đầu.
+- **Raw payload layer:** lưu nguyên `payload.json` và non-secret metadata để có audit trail.
+- **Metadata/lineage:** source, run_id, endpoint label, request scope, content hash, parser version, schema version.
+- **Parser:** chuyển source-shaped payload thành rows; ví dụ gap-chart arrays `o/h/l/c/v/t` thành `daily_price_bar`.
+- **Quality check:** phân loại `pass`, `warn`, `fail` theo required fields, OHLC rules, duplicates, missing values, timestamp rules.
+- **Quarantine:** fail rows không được silent drop hoặc auto-fix; giữ riêng để review.
+- **Canonical tables:** future normalized DB tables cho universe, OHLCV, macro, bond, FA, reports.
+- **Feature store:** lưu features dùng chung cho strategy, risk, backtest, và online answer.
+- **Dynamic universe:** chọn tradable assets theo date/rebalance period dựa trên liquidity, completeness, exchange eligibility, strategy constraints.
+- **Strategy input:** feature + dynamic universe + quality status; không dùng raw payload trực tiếp.
+
 ---
-#### Cast
 
-- `vn_trading_agent` = the orchestrator that handles user requests.
-- `FPT` = the example Vietnamese stock used through this document.
-- `ma20_ma50_strategy` = the example strategy: buy when `MA20 > MA50`, exit when `MA20 < MA50`.
-- `backtest_window` = `2021-01-01` to `2025-12-31` on daily bars.
+## 4. Offline vs Online Architecture
+
+```mermaid
+flowchart TB
+  subgraph Offline["Offline"]
+    O1["fetch"] --> O2["parse"] --> O3["validate"] --> O4["store"] --> O5["features"] --> O6["signals"]
+  end
+
+  subgraph Online["Online"]
+    N1["user query"] --> N2["agent"] --> N3["tool calls"] --> N4["reasoning"] --> N5["answer"]
+  end
+
+  O4 --> N3
+  O5 --> N3
+  O6 --> N3
+```
+
+- **Offline path:** `fetch -> parse -> validate -> store -> features -> signals`.
+- **Online path:** `user query -> agent -> tool calls -> reasoning -> answer`.
+- Online nên ưu tiên đọc cache/store/canonical data thay vì làm heavy fetch hoặc backtest mỗi lần user hỏi.
+- Backtest không bắt buộc cho mọi câu hỏi: `HPG hôm nay thế nào?` cần latest data/features/risk/signal hơn là simulation.
+- Heavy fetch/backtest nên là explicit job hoặc research flow có trace, cost assumption, data-quality gates, và async handling nếu cần.
 
 ---
-#### Core modules
 
-| Module | Job | Output |
+## 5. Online Agent Tool Flow
+
+Ví dụ user hỏi: `HPG hôm nay thế nào?`
+
+```mermaid
+sequenceDiagram
+  actor User as User
+  participant UI as UI
+  participant Agent as Trading Agent Orchestrator
+  participant Data as Market Data Tool
+  participant Feature as Feature Tool
+  participant Strategy as Strategy Tool
+  participant Risk as Risk Tool
+  participant Report as Report Generator
+
+  User->>UI: HPG hôm nay thế nào?
+  UI->>Agent: user_query(symbol=HPG, horizon=today)
+  Agent->>Agent: parse intent + resolve symbol
+  Agent->>Data: get_latest_market_data(HPG)
+  Data-->>Agent: latest OHLCV + quality status
+  Agent->>Feature: compute_latest_features(HPG)
+  Feature-->>Agent: returns, volume, volatility, momentum
+  Agent->>Strategy: evaluate_active_signals(HPG, latest_features)
+  Strategy-->>Agent: signal summary + confidence
+  Agent->>Risk: assess_symbol_risk(HPG)
+  Risk-->>Agent: risk flags + caveats
+  Agent->>Report: compose_market_answer(query, data, features, signals, risk)
+  Report-->>Agent: answer draft + caveats
+  Agent-->>UI: final answer
+  UI-->>User: Vietnamese answer
+```
+
+- Agent parse intent: user đang hỏi tình hình hôm nay, không yêu cầu backtest.
+- Agent resolve symbol: `HPG`.
+- Market data tool trả latest OHLCV/snapshot và quality status.
+- Feature tool tính latest features cần cho đọc nhanh.
+- Strategy/signal tool trả signal summary, không tự biến thành advice.
+- Risk tool trả risk flags và caveats.
+- Report generator tạo câu trả lời có số liệu, limitation, và source/tool trace nếu cần.
+
+---
+
+## 6. Tool Contracts
+
+| Tool | Purpose | Input | Output | Quality/status fields | Example call |
+|---|---|---|---|---|---|
+| Market Data Tool | Lấy OHLCV/latest market snapshot. | `symbol`, `date/window`, `price_basis`, `data_status` | bars/snapshot, source, timestamp | `quality_status`, `missing_fields`, `is_final_eod`, `source_payload_id` | `get_latest_market_data(symbol="HPG")` |
+| Universe Tool | Lấy broad universe, listed-market fetch universe, dynamic universe. | `as_of_date`, `exchange`, `universe_type` | symbol list, filters, exclusions | `quality_status`, `excluded_count`, `filter_version` | `get_universe(as_of_date="2026-06-05", universe_type="listed_market_fetch")` |
+| Feature Tool | Tính features từ canonical bars/store. | `symbol/list`, `feature_set`, `as_of_date/window` | feature table/snapshot | `quality_status`, `lookback_coverage`, `feature_version` | `compute_latest_features(symbol="HPG", feature_set="mvp_daily")` |
+| Strategy Tool | Đọc/evaluate signal rules. | `symbol/list`, `features`, `strategy_id`, `as_of_date` | signal summary, confidence, reasons | `quality_status`, `signal_version`, `blocked_reason` | `evaluate_active_signals(symbol="HPG", strategy_id="mvp_momentum")` |
+| Backtest Tool | Simulate strategy over historical data when explicitly needed. | `strategy_id`, `symbols`, `window`, `costs`, `price_basis` | metrics, trades, validation gates | `quality_status`, `leakage_check`, `cost_assumption_status` | `run_backtest(strategy_id="ma20_ma50", symbols=["HPG"], window="2021:2025")` |
+| Risk Tool | Tính risk flags cho symbol/strategy/portfolio. | `symbol/list`, `features`, `positions optional`, `as_of_date` | volatility, drawdown, liquidity, caveats | `quality_status`, `risk_level`, `blocked_reason` | `assess_symbol_risk(symbol="HPG")` |
+| Report Tool | Format answer/report from structured tool outputs. | `query`, `tool_outputs`, `language`, `audience` | final answer/report markdown | `answer_status`, `missing_evidence`, `limitations` | `compose_market_answer(query, tool_outputs, language="vi")` |
+| RAG Tool | Retrieve reports/news/text evidence. | `query`, `symbol`, `as_of_date`, `doc_types` | snippets, citations, document metadata | `quality_status`, `published_at`, `retrieval_score`, `pit_safe` | `retrieve_evidence(symbol="HPG", as_of_date="2026-06-05")` |
+
+Contract rule:
+
+- Every tool output must include status and caveats.
+- The agent must not invent metrics absent from tool output.
+- Point-in-time sensitive tools must expose availability timestamps.
+- Backtest outputs must include data basis, cost assumptions, and validation gates.
+
+---
+
+## 7. Data Storage Layers
+
+| Layer | Role | Current status |
 |---|---|---|
-| `intent_parser` | Understand the user request and extract asset, time range, and task type. | intent object. |
-| `market_data_tool` | Load OHLCV and trading calendar data. | market data table. |
-| `data_quality_tool` | Check missing dates, duplicates, timestamp, and OHLC rules. | quality report. |
-| `feature_tool` | Compute MA, RSI, volatility, return, and other features. | feature table. |
-| `signal_tool` | Convert features into buy/sell/hold signals. | signal table. |
-| `backtest_tool` | Simulate trades with cost and slippage assumptions. | metrics and trade list. |
-| `validation_gate_tool` | Check gates such as drawdown, sample size, cost sensitivity, and leakage. | decision proposal. |
-| `evidence_tool` | Retrieve reports, news, or macro context when the request requires explanation. | evidence table. |
-| `answer_composer` | Convert structured outputs into a cautious user answer. | final response. |
-| `trace_store` | Save plan, tool calls, outputs, and decision. | reproducible run record. |
+| Raw files | Preserve exact source payload and metadata. | Exists for source probes and saved payloads. |
+| Parsed dry-run CSV/report | Local parser outputs and validation summaries. | Exists for several dry runs, including Vietcap IQ universe and gap-chart parser. |
+| Canonical DB | Normalized production tables for universe/OHLCV/macro/FA/reports. | Not implemented. |
+| Feature store | Reusable feature snapshots/tables. | Not implemented. |
+| Signal store | Strategy signal outputs and versions. | Not implemented. |
+| Backtest result store | Backtest metrics, trades, assumptions, validation gates. | Not implemented. |
+| Report/text index | Reports/news/docs metadata, chunks, embeddings, citations. | Not implemented. |
+
+- QuestDB schema/migration is not implemented.
+- Backtest engine is not implemented.
+- RAG pipeline is not implemented.
+- Current reliable layer is raw + parser dry-run + quality report.
 
 ---
-#### What each module must not do
 
-- `intent_parser` must not invent missing strategy rules.
-- `market_data_tool` must not silently fill large data gaps.
-- `feature_tool` must not use future values when computing today signals.
-- `backtest_tool` must not ignore transaction cost or slippage by default.
-- `answer_composer` must not invent metrics that are absent from tool output.
+## 8. Current Evidence From Implementation
 
----
-</details>
+### Vietcap IQ universe
 
-### End-To-End Flow
-<details open>
-<summary>The output of one block must become the input of the next block.</summary>
----
-#### Flow
+| Metric | Value |
+|---|---:|
+| Search-bar JSON rows | `2080` |
+| Unique symbols | `2078` |
+| Listed-market fetch candidates | `1598` |
+| Index candidates | `34` |
 
-- **user request** -> `intent_parser` extracts `symbol=FPT`, `strategy=ma20_ma50_strategy`, and `period=2021-2025`.
-- **intent object** -> `market_data_tool` loads daily OHLCV for `FPT`.
-- **OHLCV table** -> `data_quality_tool` checks if the data can be trusted.
-- **quality report** -> `feature_tool` only runs if quality status is `pass` or `warn`.
-- **feature table** -> `signal_tool` creates position signals.
-- **signal table** -> `backtest_tool` simulates trades.
-- **backtest result** -> `validation_gate_tool` checks gates.
-- **gate result** -> `answer_composer` writes the final answer.
-- **all objects** -> `trace_store` saves the run.
+### Gap-chart `countBack=5000`
 
----
-#### Worked example
+| Symbol | Bars | Coverage |
+|---|---:|---|
+| `FPT` | `4,852` | `2006-12-13` to `2026-06-05` |
+| `VNM` | `5,000` | `2006-05-18` to `2026-06-05` |
+| `VCB` | `4,227` | `2009-06-30` to `2026-06-05` |
 
-- **raw input** = `Backtest MA20/MA50 on FPT from 2021 to 2025 with 15 bps total cost`.
-- **data rows** = `1,250` daily rows.
-- **quality report** = `missing_days=0`, `duplicate_rows=0`, `ohlc_errors=0`, `status=pass`.
-- **signal output** = `13` entry signals and `13` exit signals.
-- **backtest output** = total return `18%`, after-cost return `11%`, max drawdown `-16%`, Sharpe `0.64`.
-- **gate output** = return gate passes, drawdown gate fails, Sharpe gate fails.
-- **final read** = `revise`; the strategy is testable but not strong enough for paper test.
+### Parser dry-run
+
+| Metric | Count |
+|---|---:|
+| Total rows | `14,079` |
+| Pass | `2,781` |
+| Warn | `11,290` |
+| Fail quarantined | `8` |
+
+### Controlled fetcher
+
+- Plan-only passed.
+- `network_requests_made=False`.
+- Tiny execute has not been run yet.
 
 ---
-#### Unanswered path
 
-- If OHLCV has missing rows above the threshold, the flow stops at `data_quality_tool`.
-- If the strategy rule is not specified, the flow stops after `intent_parser` and asks for the missing rule.
-- If cost assumptions are missing, the backtest can run as a diagnostic, but the final investment conclusion must be `unanswered`.
+## 9. Architecture Risks / Open Questions
 
----
-</details>
-
-### MVP Boundary
-<details open>
-<summary>The MVP should be narrow enough to prove the pipeline, not the whole market.</summary>
----
-#### Recommended MVP
-
-- **asset universe** = `5` to `10` VN stocks or `1` crypto asset if the data source is easier.
-- **bar frequency** = daily OHLCV first; intraday can wait.
-- **strategy family** = simple rule-based TA strategies such as moving average crossover and RSI mean reversion.
-- **validation** = data quality, no lookahead, cost, slippage, drawdown, Sharpe, trade count, and regime split.
-- **output** = structured decision with reason codes.
+- Adjusted vs unadjusted OHLCV semantics are not confirmed.
+- Corporate actions/dividend/split handling is not defined.
+- `accumulatedValue` is missing before `2022-09-15` in older gap-chart history.
+- `8` OHLC fail rows are quarantined and should not be auto-fixed.
+- Full-universe fetch safety needs controlled batch, random sleep, checkpoint/resume, and retry policy.
+- Rate-limit behavior is unknown until tiny controlled execute.
+- Online freshness policy is open: cache/store only vs controlled live tool calls.
+- Point-in-time availability is required for reports, statements, macro, adjusted data, and backtests.
+- Agent tool contracts need first implementation-ready schemas.
+- DB, backtest, and RAG are not implemented.
 
 ---
-#### Out of scope for first demo
 
-- live trading and order execution.
-- portfolio optimization across many assets.
-- high-frequency order book strategy.
-- complex reinforcement learning.
-- fully automated buy/sell advice for real money.
+## 10. Next Architecture Decisions
 
----
-#### Questions to ask mentor
-
-- Which asset universe should be used for MVP: VN stocks, crypto, or both?
-- Should the first demo focus on architecture trace or strategy profitability?
-- Which metrics should become hard gates and which should be warnings?
-- Should the user see raw tool outputs or only summarized decisions?
-
----
-</details>
+- Confirm agent/tool architecture with mentor.
+- Define first market data tool contract.
+- Define safe fetch expansion policy from tiny execute to controlled batches.
+- Discover financial statement endpoints.
+- Define canonical OHLCV schema, including `price_basis`, `adjustment_type`, lineage, and quality fields.
+- Define feature store contract.
+- Define backtest tool boundary: when it runs, what assumptions are required, and how results are stored.
