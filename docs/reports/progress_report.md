@@ -9,9 +9,9 @@ toc_max_heading_level: 3
 ## Executive Summary
 
 - **Current focus:** source discovery, OHLCV safety planning, và chuẩn hóa architecture direction sau mentor feedback.
-- **Completed:** Vietcap IQ broad universe, listed-market fetch candidate `1598` symbols, index universe separation, gap-chart `FPT/VNM/VCB`, parser dry-run, controlled fetcher plan-only.
+- **Completed:** Vietcap IQ broad universe, listed-market fetch candidate `1598` symbols, index universe separation, gap-chart `FPT/VNM/VCB`, parser dry-run, controlled fetcher plan-only, tiny controlled execute.
 - **Blocked:** full-universe fetch, DB ingestion, backtest, financial statement ingestion, and production agent tools.
-- **Next:** review architecture with mentor, approve tiny controlled execute, parse tiny outputs, discover financial statement endpoints, define first tool contracts.
+- **Next:** review architecture with mentor, review tiny controlled execute outputs, parse tiny outputs, discover financial statement endpoints, define first tool contracts.
 
 Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architecture_overview.md`.
 
@@ -27,7 +27,7 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - Gap-chart `countBack=5000`: `FPT=4,852`, `VNM=5,000`, `VCB=4,227` bars.
 - Parser dry-run: `14,079` rows, `2,781` pass, `11,290` warn, `8` fail quarantined.
 - Controlled fetcher plan-only passed: `network_requests_made=False`, `planned_request_count=3`.
-- Tiny execute has not been run yet.
+- Tiny execute passed for `FPT,VNM,VCB`: `network_requests_made=True`, `planned_request_count=3`, `failed_symbols=0`.
 - Main blocker: safe fetch policy, price adjustment semantics, corporate actions, financial statement endpoints, and tool contracts.
 
 ---
@@ -66,7 +66,7 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - [x] Plan-only mode passed.
 - [x] Checkpoint/resume and controlled batch design exists.
 - [x] Random sleep design exists.
-- [ ] Tiny execute for `FPT/VNM/VCB` not run yet.
+- [x] Tiny execute for `FPT/VNM/VCB` passed.
 - [ ] Full `1598` symbol fetch not approved.
 
 ### Data preprocessing pipeline
@@ -158,7 +158,7 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 | Controlled fetcher mode | `plan_only` |
 | Network requests made | `False` |
 | Planned request count | `3` |
-| Tiny execute | Not run yet |
+| Tiny execute | Passed for `FPT,VNM,VCB`; `failed_symbols=0` |
 
 ---
 
@@ -185,7 +185,7 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 
 - [x] Refactor architecture content into canonical architecture doc.
 - [ ] Review architecture with mentor.
-- [ ] If mentor approves, run tiny controlled execute for `FPT/VNM/VCB`.
+- [x] Run tiny controlled execute for `FPT/VNM/VCB`.
 - [ ] Parse controlled raw outputs from tiny execute.
 - [ ] Start Vietcap IQ financial statement endpoint discovery.
 

@@ -692,6 +692,61 @@ Safe next step:
 
 </details>
 
+### Controlled Gap-Chart Tiny Execute Smoke Result
+
+<details open>
+<summary>The tiny controlled execute pass succeeded for FPT, VNM, and VCB only.</summary>
+
+---
+
+#### Execute evidence
+
+| Item | Value |
+|---|---|
+| command | `python scripts/fetch_vietcap_iq_gap_chart_controlled.py --symbols FPT,VNM,VCB --count-back 5000 --to 1780633564 --sleep-min-seconds 2 --sleep-max-seconds 5 --max-symbols 3 --execute` |
+| run_id | `20260608T021035Z` |
+| mode | `execute` |
+| network_requests_made | `True` |
+| planned_request_count | `3` |
+| completed_symbols | `FPT`, `VCB`, `VNM` |
+| failed_symbols | none |
+| pending_symbols | none |
+| output directory | `data/raw/controlled_fetch/source=vietcap_iq/20260608T021035Z/` |
+| checkpoint | `data/raw/controlled_fetch/source=vietcap_iq/20260608T021035Z/fetch_checkpoint.json` |
+| fetch plan | `data/raw/controlled_fetch/source=vietcap_iq/20260608T021035Z/fetch_plan.json` |
+| fetch plan report | `data/raw/controlled_fetch/source=vietcap_iq/20260608T021035Z/fetch_plan_report.md` |
+
+Per-symbol raw files:
+
+| Symbol | Dataset | Access status | HTTP | Content type | Payload saved | Metadata saved | Metadata byte_size | Payload file size | Rows | Coverage from `t` | `accumulatedValue` nulls |
+|---|---|---|---:|---|---|---|---:|---:|---:|---|---:|
+| `FPT` | `vietcap_iq_gap_chart_fpt_countback_5000` | `verified` | 200 | `application/json; charset=utf-8` | yes | yes | 323,966 | 634,622 | 4,852 | `2006-12-13` to `2026-06-05` | 3,925 |
+| `VNM` | `vietcap_iq_gap_chart_vnm_countback_5000` | `verified` | 200 | `application/json; charset=utf-8` | yes | yes | 332,755 | 652,883 | 5,000 | `2006-05-18` to `2026-06-05` | 4,073 |
+| `VCB` | `vietcap_iq_gap_chart_vcb_countback_5000` | `verified` | 200 | `application/json; charset=utf-8` | yes | yes | 282,980 | 553,636 | 4,227 | `2009-06-30` to `2026-06-05` | 3,300 |
+
+Payload shape:
+
+- Top-level type is a JSON array with one object per requested symbol.
+- Fields match the previous saved `countBack=5000` payloads: `symbol`, `o`, `h`, `l`, `c`, `v`, `t`, `accumulatedVolume`, `accumulatedValue`, and `minBatchTruncTime`.
+- Aligned array lengths match the row counts above for each symbol.
+- Row counts and coverage match the previous saved `countBack=5000` expectations exactly.
+- `accumulatedValue` is null in older history and remains a warning-only trading-value completeness caveat; OHLC, `v`, `t`, and `accumulatedVolume` remain present.
+- Metadata request bodies contain only `symbols`, `timeFrame`, `countBack`, and `to`; no cookie, token, secret, authorization, or password fields were observed in metadata.
+
+Scope guardrails:
+
+- This execute pass fetched only `FPT`, `VNM`, and `VCB`.
+- No full-universe fetch was run.
+- No database migration, database write, parser-to-DB step, production fetcher, async/concurrency expansion, or backtest was implemented.
+
+Recommendation:
+
+- The next safe step is to parse only these controlled raw payloads into local dry-run CSV/report artifacts, then review rate-limit/access behavior before any broader controlled batch.
+
+---
+
+</details>
+
 ### Price-Chart Small-Symbol Probe Result
 
 <details open>
