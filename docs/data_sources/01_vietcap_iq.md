@@ -809,9 +809,48 @@ Plan-only guardrails:
 - No symbol `metadata.json` files were created.
 - No full-universe fetch, database migration, database write, parser-to-DB step, or backtest was performed.
 
+#### Tiny execute result
+
+| Item | Value |
+|---|---|
+| command | `python scripts/fetch_vietcap_iq_gap_chart_controlled.py --symbols REE,SAM --count-back 10000 --to 1780633564 --sleep-min-seconds 2 --sleep-max-seconds 5 --max-symbols 2 --execute` |
+| run_id | `20260608T024652Z` |
+| mode | `execute` |
+| network_requests_made | `True` |
+| planned_request_count | `2` |
+| completed_symbols | `REE`, `SAM` |
+| failed_symbols | none |
+| pending_symbols | none |
+| output directory | `data/raw/controlled_fetch/source=vietcap_iq/20260608T024652Z/` |
+| checkpoint | `data/raw/controlled_fetch/source=vietcap_iq/20260608T024652Z/fetch_checkpoint.json` |
+| fetch plan | `data/raw/controlled_fetch/source=vietcap_iq/20260608T024652Z/fetch_plan.json` |
+| fetch plan report | `data/raw/controlled_fetch/source=vietcap_iq/20260608T024652Z/fetch_plan_report.md` |
+
+Per-symbol result:
+
+| Symbol | Dataset | Access status | HTTP | Content type | Payload saved | Metadata saved | Metadata byte_size | Payload file size | Rows | Coverage from `t` | Reached around 2000? | `accumulatedValue` nulls |
+|---|---|---|---:|---|---|---|---:|---:|---:|---|---|---:|
+| `REE` | `vietcap_iq_gap_chart_ree_countback_10000` | `verified` | 200 | `application/json; charset=utf-8` | yes | yes | 405,689 | 808,377 | 6,290 | `2000-07-28` to `2026-06-05` | yes | 5,363 |
+| `SAM` | `vietcap_iq_gap_chart_sam_countback_10000` | `verified` | 200 | `application/json; charset=utf-8` | yes | yes | 398,785 | 801,473 | 6,290 | `2000-07-28` to `2026-06-05` | yes | 5,363 |
+
+Shape and request safety:
+
+- Payload shape matches previous gap-chart payloads: top-level JSON array with one object and fields `symbol`, `o`, `h`, `l`, `c`, `v`, `t`, `accumulatedVolume`, `accumulatedValue`, and `minBatchTruncTime`.
+- All aligned arrays have length 6,290 for both symbols.
+- Metadata request bodies contain only `symbols`, `timeFrame`, `countBack`, and `to`; no cookie, token, secret, authorization, or password fields were observed in metadata.
+- `accumulatedValue` has older null coverage and remains a warning-only trading-value completeness caveat.
+
+Time-horizon decision:
+
+- `countBack=10000` reached `2000-07-28` for both REE and SAM, which is close to the practical start of Vietnamese stock-market daily history.
+- The endpoint did not return the requested 10,000 rows; both symbols returned 6,290 rows, which looks like an available-history cap rather than a countBack cap for these early listed symbols.
+- Large countBack is a workable fallback for approximating `2000`-to-now daily OHLCV on early listed symbols, but it is still not a true from/to horizon contract.
+- Continue searching for a true from/to request body before treating this endpoint as a final time-horizon fetch design.
+- No full-universe fetch, database migration, database write, parser-to-DB step, production fetcher, async/concurrency expansion, or backtest was performed.
+
 Recommendation:
 
-- Review this plan, then decide whether to run exactly one tiny controlled execute for `REE,SAM` to test whether large `countBack` can reach the `2000`-to-now horizon for early listed symbols.
+- Review the `REE,SAM` execute evidence before any broader controlled batch.
 - In parallel, keep DevTools/source discovery open for a true from/to request body; if confirmed, prefer explicit time horizon over countBack approximation.
 
 ---
