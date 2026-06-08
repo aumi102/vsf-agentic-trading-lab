@@ -90,7 +90,11 @@ def resolve_inputs(raw_base_dir: Path, *, datasets: list[str]) -> list[tuple[str
 
 def find_latest_verified_gap_chart_payload(base_dir: Path, *, dataset: str) -> tuple[Path, Path] | None:
     candidates: list[tuple[str, Path, Path]] = []
-    for metadata_path in base_dir.glob(f"run_id=*/{dataset}/metadata.json"):
+    metadata_paths = {
+        *base_dir.glob(f"run_id=*/{dataset}/metadata.json"),
+        *base_dir.glob(f"*/{dataset}/metadata.json"),
+    }
+    for metadata_path in metadata_paths:
         metadata = _read_metadata(metadata_path)
         if metadata.get("source_name") != "vietcap_iq":
             continue

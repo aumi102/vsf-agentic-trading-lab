@@ -16,7 +16,7 @@ for path in (SRC, SCRIPTS):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from parse_vietcap_iq_gap_chart_dry_run import build_combined_summary
+from parse_vietcap_iq_gap_chart_dry_run import build_combined_summary, resolve_inputs
 from trading_agent.ingestion.parsers.vietcap_iq_gap_chart_parser import (
     BAR_INTERVAL,
     PRICE_BASIS,
@@ -188,6 +188,30 @@ def test_script_combined_summary_aggregates_coverage(tmp_path: Path) -> None:
     assert summary["total_bar_count"] == 4
     assert summary["coverage_by_symbol"]["FPT"]["bar_count"] == 2
     assert summary["coverage_by_symbol"]["VNM"]["bar_count"] == 2
+
+
+def test_script_resolves_source_probe_run_id_layout(tmp_path: Path) -> None:
+    base_dir = tmp_path / "source_probe" / "source=vietcap_iq"
+    dataset_dir = base_dir / "run_id=20260605T000000Z" / "vietcap_iq_gap_chart_fpt"
+    raw_path, metadata_path = _write_fixture(dataset_dir, [_symbol_object("FPT")])
+
+    inputs = resolve_inputs(base_dir, datasets=["vietcap_iq_gap_chart_fpt"])
+
+    assert inputs == [("vietcap_iq_gap_chart_fpt", raw_path, metadata_path)]
+
+
+def test_script_resolves_controlled_fetch_timestamp_layout(tmp_path: Path) -> None:
+    base_dir = tmp_path / "controlled_fetch" / "source=vietcap_iq"
+    dataset_dir = base_dir / "20260608T024652Z" / "vietcap_iq_gap_chart_ree_countback_10000"
+    raw_path, metadata_path = _write_fixture(
+        dataset_dir,
+        [_symbol_object("REE")],
+        dataset="vietcap_iq_gap_chart_ree_countback_10000",
+    )
+
+    inputs = resolve_inputs(base_dir, datasets=["vietcap_iq_gap_chart_ree_countback_10000"])
+
+    assert inputs == [("vietcap_iq_gap_chart_ree_countback_10000", raw_path, metadata_path)]
 
 
 def _write_fixture(tmp_path: Path, objects: list[dict[str, object]], *, dataset: str = "vietcap_iq_gap_chart_fpt") -> tuple[Path, Path]:

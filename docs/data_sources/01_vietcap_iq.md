@@ -848,6 +848,50 @@ Time-horizon decision:
 - Continue searching for a true from/to request body before treating this endpoint as a final time-horizon fetch design.
 - No full-universe fetch, database migration, database write, parser-to-DB step, production fetcher, async/concurrency expansion, or backtest was performed.
 
+#### Parser dry-run result
+
+| Item | Value |
+|---|---|
+| controlled fetch run_id | `20260608T024652Z` |
+| parser dry-run run_id | `20260608T025853Z` |
+| parser command | `python scripts/parse_vietcap_iq_gap_chart_dry_run.py --raw-base-dir data/raw/controlled_fetch/source=vietcap_iq --datasets vietcap_iq_gap_chart_ree_countback_10000,vietcap_iq_gap_chart_sam_countback_10000` |
+| output directory | `data/processed/dry_run/vietcap_iq_gap_chart/20260608T025853Z/` |
+| output files | `daily_price_bars.csv`, `validation_report.md`, `validation_summary.json` |
+| input datasets | `vietcap_iq_gap_chart_ree_countback_10000`, `vietcap_iq_gap_chart_sam_countback_10000` |
+| total rows | 12,580 |
+| quality pass | 1,854 |
+| quality warn | 10,721 |
+| quality fail | 5 |
+
+Per-symbol parser result:
+
+| Symbol | Rows | Coverage | Pass | Warn | Fail |
+|---|---:|---|---:|---:|---:|
+| `REE` | 6,290 | `2000-07-28` to `2026-06-05` | 927 | 5,359 | 4 |
+| `SAM` | 6,290 | `2000-07-28` to `2026-06-05` | 927 | 5,362 | 1 |
+
+Quality reasons:
+
+| Reason | Count | Classification |
+|---|---:|---|
+| `warning_missing_trading_value` | 10,726 | warning-only; older `accumulatedValue` / trading value missingness |
+| `close_price_outside_high_low` | 3 | fail; source OHLC inconsistency, keep quarantined |
+| `open_price_outside_high_low` | 2 | fail; source OHLC inconsistency, keep quarantined |
+
+Fail-row review:
+
+- `REE`: four OHLC range failures on `2006-06-15`, `2008-01-25`, `2009-06-10`, and `2009-06-11`.
+- `SAM`: one OHLC range failure on `2007-08-02`.
+- The failed rows are consistent with true source data-quality issues because the saved OHLC values violate high/low constraints; they should remain quarantined.
+- Missing `accumulatedValue` is still warning-only and should not be downgraded to fail by itself.
+
+Parser conclusion:
+
+- The controlled REE/SAM raw outputs parse into local dry-run artifacts and preserve the `2000-07-28` to `2026-06-05` horizon.
+- This supports `countBack=10000` as the current fallback for approximating the mentor-requested `2000`-to-now daily OHLCV horizon.
+- True from/to request support remains preferable if it can be discovered.
+- No full-universe fetch, database migration, database write, parser-to-DB step, or backtest was performed.
+
 Recommendation:
 
 - Review the `REE,SAM` execute evidence before any broader controlled batch.

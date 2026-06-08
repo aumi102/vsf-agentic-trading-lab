@@ -56,6 +56,7 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - [x] `gap-chart` verified for `FPT`, `VNM`, `VCB`.
 - [x] `countBack=5000` tested for `FPT/VNM/VCB`.
 - [x] `REE/SAM countBack=10000` tiny execute reached `2000-07-28` to `2026-06-05`; countBack remains a fallback, not true from/to.
+- [x] `REE/SAM countBack=10000` controlled raw outputs parsed locally: 12,580 rows, 1,854 pass, 10,721 warn, 5 OHLC fail rows quarantined.
 - [x] Saved-payload parser dry-run completed.
 - [x] `8` source OHLC inconsistency rows quarantined.
 - [ ] Adjusted/unadjusted semantics not confirmed.
