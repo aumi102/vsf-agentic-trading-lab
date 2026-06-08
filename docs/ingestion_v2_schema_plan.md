@@ -74,6 +74,7 @@ toc_max_heading_level: 3
 - The browser-observed Vietcap Trading `gap-chart` endpoint is the next small-symbol OHLCV candidate to verify before any full sector-batched fetch.
 - Full sector-batched OHLCV fetch must wait until a few explicit-symbol probes, such as `FPT`, `VNM`, and `VCB`, return verified row-level OHLCV payloads.
 - Vietcap gap-chart is ready for safe fetcher planning: FPT/VNM/VCB `countBack=5000` probes, the saved-payload parser dry run, the plan-only controlled-fetcher skeleton, and the tiny controlled execute pass show stable full-history-like windows, but full-universe ingestion remains blocked on broader rate-limit review, adjustment/corporate-action, DB, and backtest gates.
+- The controlled FPT/VNM/VCB raw outputs parse locally with the same 14,079 rows and 2,781/11,290/8 pass/warn/fail split as the previous source-probe saved-payload parser dry run.
 - True from/to time-horizon support for gap-chart remains an open gate; `REE/SAM countBack=10000` reached and parsed `2000-07-28` to `2026-06-05`, so large `countBack` windows are the current fallback for approximating `2000`-to-now coverage until a real time-horizon request body is verified.
 - The plan orders symbols by sector group and then symbol so fetchers can process one sector batch at a time.
 - Missing sector fields are assigned `sector_group=UNKNOWN` and reported as warnings when common.

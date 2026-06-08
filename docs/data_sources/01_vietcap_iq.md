@@ -747,6 +747,56 @@ Recommendation:
 
 </details>
 
+### Controlled FPT/VNM/VCB Parser Dry-Run Result
+
+<details open>
+<summary>The controlled-fetch FPT, VNM, and VCB raw payloads parse identically to the previous source-probe saved-payload dry run.</summary>
+
+---
+
+#### Dry-run evidence
+
+| Item | Value |
+|---|---|
+| controlled fetch run_id | `20260608T021035Z` |
+| parser dry-run run_id | `20260608T031039Z` |
+| parser command | `python scripts/parse_vietcap_iq_gap_chart_dry_run.py --raw-base-dir data/raw/controlled_fetch/source=vietcap_iq --datasets vietcap_iq_gap_chart_fpt_countback_5000,vietcap_iq_gap_chart_vnm_countback_5000,vietcap_iq_gap_chart_vcb_countback_5000` |
+| output directory | `data/processed/dry_run/vietcap_iq_gap_chart/20260608T031039Z/` |
+| output files | `daily_price_bars.csv`, `validation_report.md`, `validation_summary.json` |
+| input datasets | `vietcap_iq_gap_chart_fpt_countback_5000`, `vietcap_iq_gap_chart_vnm_countback_5000`, `vietcap_iq_gap_chart_vcb_countback_5000` |
+| total rows | 14,079 |
+| quality pass | 2,781 |
+| quality warn | 11,290 |
+| quality fail | 8 |
+
+Per-symbol parser result:
+
+| Symbol | Rows | Coverage | Pass | Warn | Fail |
+|---|---:|---|---:|---:|---:|
+| `FPT` | 4,852 | `2006-12-13` to `2026-06-05` | 927 | 3,922 | 3 |
+| `VNM` | 5,000 | `2006-05-18` to `2026-06-05` | 927 | 4,068 | 5 |
+| `VCB` | 4,227 | `2009-06-30` to `2026-06-05` | 927 | 3,300 | 0 |
+
+Quality reasons:
+
+| Reason | Count | Classification |
+|---|---:|---|
+| `warning_missing_trading_value` | 11,298 | warning-only; older `accumulatedValue` / trading value missingness |
+| `close_price_outside_high_low` | 6 | fail; source OHLC inconsistency, keep quarantined |
+| `open_price_outside_high_low` | 2 | fail; source OHLC inconsistency, keep quarantined |
+
+Comparison with previous source-probe saved-payload parse:
+
+- The controlled-fetch parse matches the previous source-probe parser dry run exactly on total rows and quality split: 14,079 rows, 2,781 pass, 11,290 warn, and 8 fail.
+- Coverage also matches the expected controlled execute payloads: FPT `2006-12-13` to `2026-06-05`, VNM `2006-05-18` to `2026-06-05`, and VCB `2009-06-30` to `2026-06-05`.
+- The 8 fail rows are OHLC range inconsistencies in the saved source data and remain quarantined.
+- Missing `accumulatedValue` / trading value remains warning-only and does not fail rows by itself.
+- No full-universe fetch, database migration, database write, parser-to-DB step, or backtest was performed.
+
+---
+
+</details>
+
 ### Gap-Chart Time Horizon Exploration Plan
 
 <details open>
