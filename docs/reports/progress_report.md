@@ -29,6 +29,7 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - Controlled fetcher plan-only passed: `network_requests_made=False`, `planned_request_count=3`.
 - Tiny execute passed for `FPT,VNM,VCB`: `network_requests_made=True`, `planned_request_count=3`, `failed_symbols=0`.
 - FA endpoint discovery is in FPT-only probe stage; five non-secret FA candidates returned `403/auth_required`, so row-level FA JSON is still not captured.
+- One-endpoint short-financial header-context diagnostic also returned `403/auth_required`; no Cookie/Auth was used and no raw FA JSON was saved.
 - Main blocker: safe fetch policy, price adjustment semantics, corporate actions, financial statement endpoints, and tool contracts.
 
 ---
@@ -109,6 +110,7 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - [x] FA discovery plan added after controlled OHLCV proof.
 - [x] FPT-only FA endpoint candidates added to local source-probe config.
 - [ ] FPT-only non-secret FA probe returned `403/auth_required`; no raw JSON saved.
+- [ ] FPT-only short-financial header-context diagnostic returned `403/auth_required`; parser planning remains blocked.
 - [ ] Full-history FA fetch not implemented.
 - [ ] PIT availability and statement/ratio schema not finalized.
 

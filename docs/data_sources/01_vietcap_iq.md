@@ -1536,6 +1536,60 @@ Next decision:
 
 </details>
 
+### FA Short-Financial Header Context Diagnostic
+
+<details open>
+<summary>Adding non-secret browser-like headers did not resolve the short-financial 403.</summary>
+
+---
+
+#### Diagnostic scope
+
+| Item | Value |
+|---|---|
+| command | `python scripts/probe_sources.py --sources vietcap_iq --symbols FPT --start 2026-06-01 --end 2026-06-03 --targets-config config/source_probe_targets.local.json` |
+| run_id | `20260608T090818Z` |
+| endpoint tested | `https://iq.vietcap.com.vn/api/iq-insight-service/v1/company/FPT/short-financial?lengthReport=10` |
+| target | `vietcap_iq_fa_short_financial_fpt_header_context_candidate` |
+| dataset | `vietcap_iq_fa_short_financial_header_context` |
+| symbol scope | `FPT` only |
+| endpoint scope | one endpoint only |
+
+Header context was browser-like but non-secret: JSON accept headers, Vietnamese/English language preference, Vietcap Trading origin/referer context, browser-like user agent, and `Sec-Fetch-*` request context. No `Cookie`, `Authorization`, access token, session token, or local secret was used.
+
+#### Result
+
+| Field | Value |
+|---|---|
+| access status | `auth_required` |
+| auth status | `auth_or_access_failed` |
+| HTTP result | `403 Forbidden` |
+| raw path | none |
+| metadata path | none |
+| top-level keys | unavailable |
+| `data` shape | unavailable |
+| parser readiness | blocked |
+
+Conclusion:
+
+- Non-secret browser-like headers alone are not enough for this FA endpoint from the source-probe runner.
+- The browser `200` result may depend on account-bound browser session context, provider-approved access, or other access/terms conditions that should not be copied into committed config or docs.
+- Parser planning remains blocked until a compliant tiny probe saves row-level FA JSON.
+
+Guardrails confirmed:
+
+- FPT only.
+- One endpoint only.
+- No `Cookie` or `Authorization`.
+- No full universe.
+- No database write.
+- No parser.
+- No backtest.
+
+---
+
+</details>
+
 ### Reports And Evidence
 
 <details open>
