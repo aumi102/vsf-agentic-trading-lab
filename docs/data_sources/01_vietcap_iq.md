@@ -1410,6 +1410,74 @@ The raw `HOSE + HNX + UPCOM` floor count is 1632, which matches the mentor expec
 
 </details>
 
+### Financial Statement / FA Data Discovery Plan
+
+<details open>
+<summary>Vietcap IQ FA endpoints still need manual DevTools discovery before any parser or fetcher work.</summary>
+
+---
+
+#### Current status
+
+- Mentor requirement: Vietcap IQ financial statement and FA data should be fetched with full available history where possible.
+- Verified so far: Vietcap IQ broad universe/search-bar JSON, company/profile-like universe fields, research/report HTML surfaces, and gap-chart OHLCV.
+- Not verified yet: row-level financial statement, ratio, dividend, corporate-action, or full-history FA JSON endpoints.
+- No financial statement parser, financial statement fetcher, database migration, database write, or backtest is implemented.
+- The committed source-probe example has only a placeholder `vietcap_iq_reports_candidate`; it is not a verified endpoint.
+- `scripts/probe_sources.py` and the source-probe config model can support static browser-observed `GET`/`POST` targets, request bodies, expected content-type/body checks, auth env handling, and secret redaction. Use this only after manual endpoint review.
+
+#### Target data groups
+
+| Data group | Desired coverage | Notes |
+|---|---|---|
+| Income statement | full available history; yearly and quarterly where available | Revenue, gross profit, operating profit, net income, EPS, and source line-item labels. |
+| Balance sheet | full available history; yearly and quarterly where available | Assets, liabilities, equity, cash, debt, inventory, receivables, and source line-item labels. |
+| Cash flow | full available history; yearly and quarterly where available | Operating, investing, financing cash flow, capex, free-cash-flow candidates, and source line-item labels. |
+| Financial ratios | full available history; yearly and quarterly where available | Margins, ROE/ROA, leverage, liquidity, valuation ratios, and source ratio names/units. |
+| Company profile / sector metadata | current plus source-updated history if exposed | Company name, sector/industry, listing metadata, flags, and profile fields from search/profile payloads. |
+| Dividends / corporate actions | full available history if exposed | Use only if a verified endpoint exposes dividend, split, issue, or adjustment event rows. |
+
+#### Expected canonical tables
+
+| Candidate table | Role |
+|---|---|
+| `financial_statement_facts` | Generic long-form financial statement facts with symbol, period, statement type, line item, value, unit, and lineage. |
+| `income_statement_items` | Optional statement-specific output if a wide/typed dry run is useful. |
+| `balance_sheet_items` | Optional statement-specific output if a wide/typed dry run is useful. |
+| `cash_flow_items` | Optional statement-specific output if a wide/typed dry run is useful. |
+| `financial_ratios` | Ratio facts with ratio name, value, unit, fiscal period, and source lineage. |
+| `company_profiles` | Profile and sector metadata linked to `securities_master` / `instrument_universe`. |
+| `corporate_actions` | Only if source exposes verified dividend, split, issue, or adjustment-event rows. |
+
+#### Source discovery workflow
+
+1. Open Vietcap IQ company pages for `FPT`, `VNM`, `VCB`, `REE`, and `SAM`.
+2. Use browser DevTools Network and filter XHR/fetch.
+3. Inspect company tabs for Financials, `Bao cao tai chinh`, ratios, profile, dividends, and corporate-action surfaces.
+4. Capture endpoint URL, method, query params or request body, required headers, and whether the response is public or account-bound.
+5. Inspect response shape for row-level JSON, statement type, fiscal year/quarter, period end date, publication or update timestamp, line-item names, values, units, and currency.
+6. Add local-only source-probe targets after manual review; do not commit cookies, tokens, account-specific URLs, or local secrets.
+7. Run tiny probes only, starting with `FPT`, then `VNM`, `VCB`, `REE`, and `SAM` if shape and access are stable.
+8. Preserve raw `payload.json` and non-secret `metadata.json` before any normalization.
+9. Write a parser dry run only after row-level JSON is verified; keep outputs local CSV/report/summary artifacts.
+
+#### Guardrails and readiness gates
+
+- No full-universe FA fetch until tiny endpoint behavior, terms/access, period coverage, and rate-limit behavior are reviewed.
+- No database migration, database write, canonical ingestion, backtest, or production FA tool until parser dry-run evidence exists.
+- Do not print or commit cookies, tokens, browser session identifiers, or local-only config.
+- Preserve raw lineage: source name, endpoint label, request scope, content hash, raw path, metadata path, parser version, and schema version.
+- Quality flags must separate missing optional values, unsupported statement rows, duplicate periods/items, invalid numeric values, and point-in-time availability gaps.
+- Point-in-time fields are mandatory for later backtest safety: fiscal period, period end date, source updated timestamp, published/available timestamp if exposed, and raw capture time.
+
+Next decision:
+
+- Start manual DevTools discovery for Vietcap IQ financial statement and ratio endpoints; only after a concrete endpoint is captured should a local source-probe target be added and probed.
+
+---
+
+</details>
+
 ### Reports And Evidence
 
 <details open>

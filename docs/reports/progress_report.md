@@ -11,7 +11,7 @@ toc_max_heading_level: 3
 - **Current focus:** source discovery, OHLCV safety planning, và chuẩn hóa architecture direction sau mentor feedback.
 - **Completed:** Vietcap IQ broad universe, listed-market fetch candidate `1598` symbols, index universe separation, gap-chart `FPT/VNM/VCB`, parser dry-run, controlled fetcher plan-only, tiny controlled execute.
 - **Blocked:** full-universe fetch, DB ingestion, backtest, financial statement ingestion, and production agent tools.
-- **Next:** review architecture with mentor, review tiny controlled execute outputs, parse tiny outputs, discover financial statement endpoints, define first tool contracts.
+- **Next:** start Vietcap IQ financial statement / FA endpoint discovery, review architecture with mentor, define first tool contracts.
 
 Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architecture_overview.md`.
 
@@ -28,6 +28,7 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - Parser dry-run: `14,079` rows, `2,781` pass, `11,290` warn, `8` fail quarantined.
 - Controlled fetcher plan-only passed: `network_requests_made=False`, `planned_request_count=3`.
 - Tiny execute passed for `FPT,VNM,VCB`: `network_requests_made=True`, `planned_request_count=3`, `failed_symbols=0`.
+- FA endpoint discovery is now the next milestone after the proven controlled OHLCV path.
 - Main blocker: safe fetch policy, price adjustment semantics, corporate actions, financial statement endpoints, and tool contracts.
 
 ---
@@ -104,6 +105,7 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 ### Financial statements / FA data
 
 - [x] Vietcap IQ identified as candidate for profiles, statements, ratios, reports.
+- [x] FA discovery plan added after controlled OHLCV proof.
 - [ ] Financial statement endpoints not discovered.
 - [ ] Full-history FA fetch not implemented.
 - [ ] PIT availability and statement/ratio schema not finalized.
