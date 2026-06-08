@@ -11,7 +11,7 @@ toc_max_heading_level: 3
 - **Current focus:** source discovery, OHLCV safety planning, và chuẩn hóa architecture direction sau mentor feedback.
 - **Completed:** Vietcap IQ broad universe, listed-market fetch candidate `1598` symbols, index universe separation, gap-chart `FPT/VNM/VCB`, parser dry-run, controlled fetcher plan-only, tiny controlled execute.
 - **Blocked:** full-universe fetch, DB ingestion, backtest, financial statement ingestion, and production agent tools.
-- **Next:** start Vietcap IQ financial statement / FA endpoint discovery, review architecture with mentor, define first tool contracts.
+- **Next:** review Vietcap IQ FA endpoint access after FPT-only non-secret probes returned `403`, review architecture with mentor, define first tool contracts.
 
 Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architecture_overview.md`.
 
@@ -28,7 +28,7 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - Parser dry-run: `14,079` rows, `2,781` pass, `11,290` warn, `8` fail quarantined.
 - Controlled fetcher plan-only passed: `network_requests_made=False`, `planned_request_count=3`.
 - Tiny execute passed for `FPT,VNM,VCB`: `network_requests_made=True`, `planned_request_count=3`, `failed_symbols=0`.
-- FA endpoint discovery is now the next milestone after the proven controlled OHLCV path.
+- FA endpoint discovery is in FPT-only probe stage; five non-secret FA candidates returned `403/auth_required`, so row-level FA JSON is still not captured.
 - Main blocker: safe fetch policy, price adjustment semantics, corporate actions, financial statement endpoints, and tool contracts.
 
 ---
@@ -40,7 +40,8 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - [x] Vietcap IQ identified as full-market universe candidate.
 - [x] HOSE/HSX kept as HOSE-specific source, not full-market source.
 - [x] Some macro/bond context dry-run proofs exist.
-- [ ] Vietcap IQ financial statement endpoints not discovered yet.
+- [x] Vietcap IQ financial statement endpoint candidates manually discovered for FPT.
+- [ ] Vietcap IQ financial statement endpoint access/row-level JSON not verified yet.
 - [ ] Vietcap IQ report/document endpoints not discovered yet.
 
 ### Vietcap IQ universe
@@ -106,7 +107,8 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 
 - [x] Vietcap IQ identified as candidate for profiles, statements, ratios, reports.
 - [x] FA discovery plan added after controlled OHLCV proof.
-- [ ] Financial statement endpoints not discovered.
+- [x] FPT-only FA endpoint candidates added to local source-probe config.
+- [ ] FPT-only non-secret FA probe returned `403/auth_required`; no raw JSON saved.
 - [ ] Full-history FA fetch not implemented.
 - [ ] PIT availability and statement/ratio schema not finalized.
 
@@ -192,7 +194,8 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - [ ] Review architecture with mentor.
 - [x] Run tiny controlled execute for `FPT/VNM/VCB`.
 - [x] Parse controlled raw outputs from tiny execute.
-- [ ] Start Vietcap IQ financial statement endpoint discovery.
+- [x] Start Vietcap IQ financial statement endpoint discovery.
+- [ ] Resolve FPT-only FA endpoint access before parser planning.
 
 ### Short-term next steps
 

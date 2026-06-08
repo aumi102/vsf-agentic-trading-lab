@@ -1478,6 +1478,64 @@ Next decision:
 
 </details>
 
+### FA Endpoint Tiny Probe Result
+
+<details open>
+<summary>Five FPT-only FA endpoint candidates were probed with non-secret headers, but direct access returned 403.</summary>
+
+---
+
+#### Probe scope
+
+| Item | Value |
+|---|---|
+| command | `python scripts/probe_sources.py --sources vietcap_iq --symbols FPT --start 2026-06-01 --end 2026-06-03 --targets-config config/source_probe_targets.local.json` |
+| run_id | `20260608T083412Z` |
+| symbol scope | `FPT` only |
+| endpoint scope | Five manually observed Vietcap IQ FA candidates only. |
+| raw payloads saved | none |
+| metadata files saved | none |
+| report | `reports/source_probe_report.md` |
+
+The first sandboxed attempt could not open sockets (`WinError 10013`), so the same command was rerun with network permission. The network-reaching run returned HTTP `403` for all five candidates. No endpoint was retried after the `403` result.
+
+#### Target result
+
+| Target | Dataset | Access status | Auth status | HTTP result | Raw path | Observed keys | Data shape | First classification |
+|---|---|---|---|---|---|---|---|---|
+| `vietcap_iq_fa_financial_statement_balance_sheet_fpt_candidate` | `vietcap_iq_fa_financial_statement_balance_sheet` | `auth_required` | `auth_or_access_failed` | `403 Forbidden` | none | none | unavailable | `financial_statement_facts` / `balance_sheet_items` candidate |
+| `vietcap_iq_fa_financial_statement_metrics_fpt_candidate` | `vietcap_iq_fa_financial_statement_metrics` | `auth_required` | `auth_or_access_failed` | `403 Forbidden` | none | none | unavailable | `financial_statement_metrics` candidate |
+| `vietcap_iq_fa_short_financial_fpt_candidate` | `vietcap_iq_fa_short_financial` | `auth_required` | `auth_or_access_failed` | `403 Forbidden` | none | none | unavailable | `short_financial_summary` candidate |
+| `vietcap_iq_fa_last_quarter_financial_fpt_candidate` | `vietcap_iq_fa_last_quarter_financial` | `auth_required` | `auth_or_access_failed` | `403 Forbidden` | none | none | unavailable | `last_quarter_financial_snapshot` candidate |
+| `vietcap_iq_fa_statistics_financial_fpt_candidate` | `vietcap_iq_fa_statistics_financial` | `auth_required` | `auth_or_access_failed` | `403 Forbidden` | none | none | unavailable | `financial_statistics` candidate |
+
+Because no raw JSON was saved, the browser-observed wrapper keys (`serverDateTime`, `traceId`, `status`, `code`, `msg`, `exception`, `successful`, `data`) are not yet verified by source-probe output, and there is no row-level payload available for parser planning.
+
+#### Remaining unknowns
+
+- Full-history parameters.
+- Quarter/year frequency controls.
+- Point-in-time availability fields.
+- Exact units and currency semantics.
+- Whether `section` supports `INCOME_STATEMENT` and `CASH_FLOW`.
+- Whether access requires account-bound browser session context, additional non-secret browser headers, or provider-approved credentials.
+
+Guardrails confirmed:
+
+- FPT only.
+- No full universe.
+- No database write.
+- No parser or backtest.
+- No cookies, tokens, authorization headers, or local secrets were added to docs.
+
+Next decision:
+
+- Review access/terms and required non-secret browser context before another tiny probe. Parser work remains blocked until at least one FA endpoint returns saved row-level JSON.
+
+---
+
+</details>
+
 ### Reports And Evidence
 
 <details open>
