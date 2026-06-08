@@ -747,6 +747,77 @@ Recommendation:
 
 </details>
 
+### Gap-Chart Time Horizon Exploration Plan
+
+<details open>
+<summary>Mentor wants daily OHLCV coverage by time horizon, while the current gap-chart fetcher is still countBack-based.</summary>
+
+---
+
+#### Current behavior
+
+- Mentor requirement: daily OHLCV should target the practical Vietnamese market horizon, roughly `2000` to now where source coverage allows.
+- Current controlled fetcher request body is countBack-based, not explicit from/to-date-based:
+  - `symbols`
+  - `timeFrame`
+  - `countBack`
+  - `to`
+- `countBack` means a number of daily bars/trading sessions backward from `to`, not a number of calendar days.
+- `countBack=5000` is useful for large-window exploration, but it is not guaranteed to reach `2000` for every symbol.
+- Existing code/docs do not show confirmed `gap-chart` support for a true `from`, `fromDate`, `toDate`, `fromTime`, or equivalent time-horizon request body.
+
+#### Why REE and SAM
+
+- REE and SAM are useful early-history probes because they are early listed Vietnamese market symbols.
+- If `countBack=10000` with `timeFrame=ONE_DAY` can reach early market history for these symbols, it gives evidence about the endpoint's practical historical horizon without fetching the full universe.
+- This remains an empirical endpoint-capability test, not a parser, DB, or backtest step.
+
+#### Proposed next empirical test
+
+Use a tiny controlled plan first:
+
+```text
+python scripts/fetch_vietcap_iq_gap_chart_controlled.py --symbols REE,SAM --count-back 10000 --to 1780633564 --sleep-min-seconds 2 --sleep-max-seconds 5 --max-symbols 2
+```
+
+Only after review should a tiny controlled execute be considered for `REE,SAM` with the same fixed `to=1780633564`.
+
+#### Plan-only result
+
+| Item | Value |
+|---|---|
+| run_id | `20260608T024107Z` |
+| mode | `plan_only` |
+| network_requests_made | `False` |
+| planned_request_count | `2` |
+| symbols | `REE`, `SAM` |
+| output directory | `data/raw/controlled_fetch/source=vietcap_iq/20260608T024107Z/` |
+| fetch plan | `data/raw/controlled_fetch/source=vietcap_iq/20260608T024107Z/fetch_plan.json` |
+| fetch plan report | `data/raw/controlled_fetch/source=vietcap_iq/20260608T024107Z/fetch_plan_report.md` |
+
+Planned datasets:
+
+| Symbol | Dataset | countBack | to |
+|---|---|---:|---:|
+| `REE` | `vietcap_iq_gap_chart_ree_countback_10000` | 10000 | 1780633564 |
+| `SAM` | `vietcap_iq_gap_chart_sam_countback_10000` | 10000 | 1780633564 |
+
+Plan-only guardrails:
+
+- No network request was made.
+- No `payload.json` files were created.
+- No symbol `metadata.json` files were created.
+- No full-universe fetch, database migration, database write, parser-to-DB step, or backtest was performed.
+
+Recommendation:
+
+- Review this plan, then decide whether to run exactly one tiny controlled execute for `REE,SAM` to test whether large `countBack` can reach the `2000`-to-now horizon for early listed symbols.
+- In parallel, keep DevTools/source discovery open for a true from/to request body; if confirmed, prefer explicit time horizon over countBack approximation.
+
+---
+
+</details>
+
 ### Price-Chart Small-Symbol Probe Result
 
 <details open>
