@@ -1717,6 +1717,173 @@ This run adds:
 
 </details>
 
+### FA Search-Bar Parity Diagnostic
+
+<details open>
+<summary>Fresh httpx session with 8-header search-bar profile returned HTTP 200 — suggests the warm-up flow introduced state that made iq.* return 403; the iq subdomain is accessible with a clean request profile.</summary>
+
+---
+
+#### Run details (run `20260609T032924Z`)
+
+| Field | Value |
+|---|---|
+| Diagnostic target | `search-bar` |
+| Target URL | `https://iq.vietcap.com.vn/api/iq-insight-service/v2/company/search-bar?language=1` |
+| Referer style | `trading-company-page` |
+| HTTP status | `200` |
+| Access status | `verified` |
+| Content type | `application/json` |
+| Response top-level type | `dict` |
+| Response top-level keys | `code, data, exception, msg, serverDateTime, status, successful, traceId` |
+| `data` type | `list` |
+| `data` length | `2083` |
+| Manual cookie header set | `false` |
+| Manual authorization header set | `false` |
+| Cookies saved | `false` |
+| Authorization saved | `false` |
+
+---
+
+#### Request profile used
+
+| Header | Value |
+|---|---|
+| `Accept` | `application/json, text/plain, */*` |
+| `Accept-Language` | `vi,en-US;q=0.9,en;q=0.8` |
+| `User-Agent` | Chrome 148 / Edge 148 (real UA) |
+| `Origin` | `https://trading.vietcap.com.vn` |
+| `Referer` | `https://trading.vietcap.com.vn/iq/company?ticker=VCI&tab=overview&isIndex=false` |
+| `Sec-Fetch-Dest` | `empty` |
+| `Sec-Fetch-Mode` | `cors` |
+| `Sec-Fetch-Site` | `same-site` |
+
+No `sec-ch-ua*` headers. No `Cookie`. No `Authorization`.
+
+---
+
+#### Key finding
+
+A fresh `httpx.Client` session (no prior page load, no prior trading subdomain warm-up) with the 8-header search-bar profile returns `200 JSON` from `iq.vietcap.com.vn`. This directly contradicts the previous warm-up diagnostic (run `20260609T024007Z`) where the same URL returned `403` inside a session that had already made requests to `trading.vietcap.com.vn`.
+
+Candidate root causes (narrowed, not yet confirmed):
+
+1. **Session cookies from trading subdomain reaching iq subdomain.** Cookies set by `trading.vietcap.com.vn` may be scoped to `.vietcap.com.vn` (parent domain) and thus sent automatically by `httpx.Client` to `iq.vietcap.com.vn`. The iq backend may check for a valid authenticated session; if the cookie carries a partially-initialised or unauthenticated session token, the server rejects it as `403`. A fresh session carries no cookies and the server falls back to unauthenticated-public behaviour — returning `200` for the public search-bar.
+2. **`sec-ch-ua*` headers triggering a stricter server path.** The warm-up used 11 headers including `sec-ch-ua`, `sec-ch-ua-mobile`, and `sec-ch-ua-platform`. The parity probe uses 8 headers without them. The server may interpret the presence of client hints as an indication of a full browser session and require a corresponding authenticated context.
+
+Both causes, or a combination, could explain the pattern. Note that this result applied to the public search-bar endpoint only. The FA endpoint was subsequently tested with the same clean profile — see the "FA Direct Clean-Profile Diagnostic" section below.
+
+---
+
+#### Guardrails and terms notes
+
+- No manual `Cookie` or `Authorization` header.
+- No parser run.
+- No database write.
+- No backtest.
+- Payload captured for inspection only under `data/raw/httpx_diagnostic/`.
+
+---
+
+</details>
+
+### FA Direct Clean-Profile Diagnostic
+
+<details open>
+<summary>FA endpoint returned HTTP 200 with a clean 8-header httpx profile — no warm-up, no Cookie, no Authorization, no sec-ch-ua* headers.</summary>
+
+---
+
+#### Why this test was run
+
+The search-bar parity diagnostic (run `20260609T032924Z`) showed that a fresh `httpx.Client` with an 8-header clean profile can reach `iq.vietcap.com.vn`. This test applied the same approach directly to the FA financial-statement endpoint to check whether it behaves the same way or has stricter access requirements.
+
+**Command used:**
+
+```
+python scripts/probe_vietcap_iq_fa_httpx_session.py \
+  --diagnostic-target fa-direct \
+  --symbol VCI \
+  --section BALANCE_SHEET \
+  --referer-style trading-company-page
+```
+
+---
+
+#### Run details (run `20260609T035318Z`)
+
+| Field | Value |
+|---|---|
+| Diagnostic target | `fa-direct` |
+| Target URL | `https://iq.vietcap.com.vn/api/iq-insight-service/v1/company/VCI/financial-statement?section=BALANCE_SHEET` |
+| Referer style | `trading-company-page` |
+| HTTP status | `200` |
+| Access status | `verified` |
+| Content type | `application/json` |
+| Byte size | `354,443` |
+| Response top-level type | `dict` |
+| Response top-level keys | `code, data, exception, msg, serverDateTime, status, successful, traceId` |
+| `data` type | `dict` |
+| `data` keys | `quarters, years` |
+| `data` length | `null` (data is a dict, not a list) |
+| Manual cookie header set | `false` |
+| Manual authorization header set | `false` |
+| Cookies saved | `false` |
+| Authorization saved | `false` |
+
+---
+
+#### Request profile used
+
+| Header | Value |
+|---|---|
+| `Accept` | `application/json, text/plain, */*` |
+| `Accept-Language` | `vi,en-US;q=0.9,en;q=0.8` |
+| `User-Agent` | Chrome 148 / Edge 148 (real UA) |
+| `Origin` | `https://trading.vietcap.com.vn` |
+| `Referer` | `https://trading.vietcap.com.vn/iq/company?ticker=VCI&tab=overview&isIndex=false` |
+| `Sec-Fetch-Dest` | `empty` |
+| `Sec-Fetch-Mode` | `cors` |
+| `Sec-Fetch-Site` | `same-site` |
+
+No `sec-ch-ua*` headers. No `Cookie`. No `Authorization`.
+
+---
+
+#### Payload shape (inspection only — no parser)
+
+- Top-level response is a `dict` with keys `code, data, exception, msg, serverDateTime, status, successful, traceId`.
+- `data` is a `dict` with keys `quarters` and `years`.
+- Both `quarters` and `years` likely contain financial statement rows by period; exact structure and field names not yet inspected.
+- No parser has been run. No schema has been promoted. No DB write has been made.
+
+---
+
+#### Conclusion
+
+The FA endpoint is accessible with a clean 8-header httpx request profile — the same profile that reached the search-bar endpoint. This means the previous `403` results from the warm-up session diagnostic were likely caused by session state (cookies from `trading.vietcap.com.vn` or `sec-ch-ua*` headers) rather than an endpoint-level access requirement. Parser planning for this endpoint can now advance to payload-shape review.
+
+Next steps:
+- Review the `data.quarters` and `data.years` structure to understand the financial statement row format.
+- Test at least one other section (e.g., `INCOME_STATEMENT`) and one other symbol before concluding the access pattern is general.
+- No full-universe fetch, no parser implementation, no DB write until those reviews are done.
+
+---
+
+#### Guardrails and terms notes
+
+- No manual `Cookie` or `Authorization` header.
+- No warm-up sequence. Fresh `httpx.Client` only.
+- One symbol (`VCI`), one section (`BALANCE_SHEET`), one request.
+- No parser run.
+- No database write.
+- No backtest.
+- Payload captured for shape inspection only under `data/raw/httpx_diagnostic/`.
+
+---
+
+</details>
+
 ### Reports And Evidence
 
 <details open>

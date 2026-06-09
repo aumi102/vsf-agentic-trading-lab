@@ -31,7 +31,9 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - FA endpoint discovery is in FPT-only probe stage; five non-secret FA candidates returned `403/auth_required`, so row-level FA JSON is still not captured.
 - One-endpoint short-financial header-context diagnostic also returned `403/auth_required`; no Cookie/Auth was used and no raw FA JSON was saved.
 - `httpx` session diagnostic loaded the VCI financial page with `200`, but the FA API still returned `403/auth_required`; metadata only, no raw FA JSON.
-- `httpx` browser-session warm-up diagnostic (run `20260609T024007Z`): `trading.*` public warm-ups returned `200`; all `iq.*` warm-up + FA API endpoints returned `403/auth_required`; current httpx warm-up flow still gets 403 on `iq.*` endpoints; next step is to compare with previously working search-bar/source-probe request profile.
+- `httpx` browser-session warm-up diagnostic (run `20260609T024007Z`): `trading.*` public warm-ups returned `200`; all `iq.*` warm-up + FA API endpoints returned `403/auth_required`; warm-up session state (trading subdomain cookies or `sec-ch-ua*` headers) is the blocking factor.
+- `httpx` search-bar parity diagnostic (run `20260609T032924Z`): fresh `httpx.Client`, 8-header profile (no `sec-ch-ua*`, no `Cookie`, no `Authorization`), `trading-company-page` referer style — returned `200 JSON`, `data_length=2083`; shows `iq.*` is accessible with a clean request profile.
+- `httpx` FA direct clean-profile diagnostic (run `20260609T035318Z`): same clean 8-header profile, `VCI/financial-statement?section=BALANCE_SHEET` — returned `200 JSON`, `data_keys=quarters,years`, `byte_size=354443`; FA endpoint accessible with clean profile; parser planning can advance to payload-shape review.
 - Main blocker: safe fetch policy, price adjustment semantics, corporate actions, financial statement endpoints, and tool contracts.
 
 ---
@@ -114,7 +116,9 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - [ ] FPT-only non-secret FA probe returned `403/auth_required`; no raw JSON saved.
 - [ ] FPT-only short-financial header-context diagnostic returned `403/auth_required`; parser planning remains blocked.
 - [ ] VCI `httpx` session diagnostic returned page `200` but FA API `403/auth_required`; no raw FA JSON saved.
-- [ ] VCI `httpx` browser-session warm-up diagnostic (run `20260609T024007Z`): `trading.*` public warm-ups `200`; all `iq.*` endpoints `403/auth_required`; current httpx flow still blocked on `iq.*`; needs profile comparison with previously working search-bar; no raw FA JSON saved.
+- [ ] VCI `httpx` browser-session warm-up diagnostic (run `20260609T024007Z`): `trading.*` public warm-ups `200`; all `iq.*` endpoints `403/auth_required`; warm-up session state (cookies or `sec-ch-ua*`) is likely blocking factor; no raw FA JSON saved.
+- [x] Search-bar parity diagnostic (run `20260609T032924Z`): fresh `httpx.Client`, 8-header profile — `iq.*` search-bar returned `200 JSON`, `data_length=2083`; `iq.*` accessible with clean request profile.
+- [x] FA direct clean-profile diagnostic (run `20260609T035318Z`): same clean 8-header profile, `VCI/financial-statement?section=BALANCE_SHEET` — returned `200 JSON`, `data_keys=quarters,years`, `byte_size=354443`; FA endpoint accessible; raw payload captured; parser planning can advance to payload-shape review.
 - [ ] Full-history FA fetch not implemented.
 - [ ] PIT availability and statement/ratio schema not finalized.
 
