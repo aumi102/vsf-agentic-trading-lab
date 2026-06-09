@@ -1888,7 +1888,13 @@ A compact payload-shape review (field structure, period encoding, metric prefix 
 
 `docs/data_sources/vietcap_iq_fa_payload_shape_review.md`
 
-Parser planning can start as a dry-run design. No parser has been implemented yet.
+#### Shape cross-check
+
+A cross-check of the access profile and payload shape across VCI INCOME_STATEMENT and FPT BALANCE_SHEET has been added at:
+
+`docs/data_sources/vietcap_iq_fa_shape_cross_check.md`
+
+Both additional probes returned HTTP 200. Section and symbol generalisation is confirmed for the clean 8-header profile. Parser dry-run design can start. No parser has been implemented yet.
 
 ---
 

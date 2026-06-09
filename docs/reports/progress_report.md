@@ -31,10 +31,11 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - FA endpoint discovery is in FPT-only probe stage; five non-secret FA candidates returned `403/auth_required`, so row-level FA JSON is still not captured.
 - One-endpoint short-financial header-context diagnostic also returned `403/auth_required`; no Cookie/Auth was used and no raw FA JSON was saved.
 - `httpx` session diagnostic loaded the VCI financial page with `200`, but the FA API still returned `403/auth_required`; metadata only, no raw FA JSON.
-- `httpx` browser-session warm-up diagnostic (run `20260609T024007Z`): `trading.*` public warm-ups returned `200`; all `iq.*` warm-up + FA API endpoints returned `403/auth_required`; warm-up session state (trading subdomain cookies or `sec-ch-ua*` headers) is the blocking factor.
+- `httpx` browser-session warm-up diagnostic (run `20260609T024007Z`): `trading.*` public warm-ups returned `200`; all `iq.*` warm-up + FA API endpoints returned `403/auth_required`; warm-up session state (trading subdomain cookies or `sec-ch-ua*` headers) was a likely contributing factor in the earlier `403` responses.
 - `httpx` search-bar parity diagnostic (run `20260609T032924Z`): fresh `httpx.Client`, 8-header profile (no `sec-ch-ua*`, no `Cookie`, no `Authorization`), `trading-company-page` referer style — returned `200 JSON`, `data_length=2083`; shows `iq.*` is accessible with a clean request profile.
 - `httpx` FA direct clean-profile diagnostic (run `20260609T035318Z`): same clean 8-header profile, `VCI/financial-statement?section=BALANCE_SHEET` — returned `200 JSON`, `data_keys=quarters,years`, `byte_size=354443`; FA endpoint accessible with clean profile.
-- FA BALANCE_SHEET payload-shape review added (`docs/data_sources/vietcap_iq_fa_payload_shape_review.md`): wide-format, 33 quarters + 8 years, 331 opaque metric codes, `publicDate` field present for all rows; no parser implemented yet.
+- FA BALANCE_SHEET payload-shape review added (`docs/data_sources/vietcap_iq_fa_payload_shape_review.md`): wide-format, 33 quarters + 8 years, 331 opaque metric codes, `publicDate` present as candidate availability field (PIT semantics unconfirmed); no parser implemented yet.
+- FA shape cross-check added (`docs/data_sources/vietcap_iq_fa_shape_cross_check.md`): VCI INCOME_STATEMENT (run `20260609T075846Z`) and FPT BALANCE_SHEET (run `20260609T075857Z`) both returned HTTP 200; initial section/symbol cross-check passed (three tested cases); `nos*` columns are null for FPT (not applicable for non-securities firms); parser dry-run design can start; no parser or DB write yet.
 - Main blocker: safe fetch policy, price adjustment semantics, corporate actions, financial statement parser design, and tool contracts.
 
 ---
@@ -121,6 +122,8 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - [x] Search-bar parity diagnostic (run `20260609T032924Z`): fresh `httpx.Client`, 8-header profile — `iq.*` search-bar returned `200 JSON`, `data_length=2083`; `iq.*` accessible with clean request profile.
 - [x] FA direct clean-profile diagnostic (run `20260609T035318Z`): same clean 8-header profile, `VCI/financial-statement?section=BALANCE_SHEET` — returned `200 JSON`, `data_keys=quarters,years`, `byte_size=354443`; FA endpoint accessible; raw payload captured.
 - [x] FA BALANCE_SHEET payload-shape review written: wide-format, 33 quarters + 8 years, 331 opaque metric codes, `publicDate` present as candidate availability field (PIT semantics unconfirmed); no parser implemented; see `docs/data_sources/vietcap_iq_fa_payload_shape_review.md`.
+- [x] FA shape cross-check: VCI INCOME_STATEMENT and FPT BALANCE_SHEET both HTTP 200; initial section/symbol cross-check passed (three tested cases); `nos*` null for non-securities firms; parser dry-run design can start; see `docs/data_sources/vietcap_iq_fa_shape_cross_check.md`.
+- [ ] FA dry-run parser not implemented.
 - [ ] Full-history FA fetch not implemented.
 - [ ] PIT availability and statement/ratio schema not finalized.
 
