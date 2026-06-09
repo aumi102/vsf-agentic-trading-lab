@@ -1882,6 +1882,16 @@ Next steps:
 
 ---
 
+#### Payload-shape review
+
+A compact payload-shape review (field structure, period encoding, metric prefix groups, PIT warning, proposed canonical schema, and next steps) has been added at:
+
+`docs/data_sources/vietcap_iq_fa_payload_shape_review.md`
+
+Parser planning can start as a dry-run design. No parser has been implemented yet.
+
+---
+
 </details>
 
 ### Reports And Evidence
