@@ -14,13 +14,21 @@ from scripts.parse_vietcap_iq_fa_payloads_dry_run import (
     WARNING_NO_NAME,
     WARNING_PIT,
     _LONG_FORMAT_COLUMNS,
+    _check_duplicate_keys,
+    _check_mapping_coverage,
+    _check_no_invented_names,
+    _check_nos_pattern,
+    _check_publicdate_format,
+    _check_value_status_validity,
     _get_metric_columns,
     _section_from_metadata_or_url,
+    _sort_facts,
     _value_status,
     discover_payloads,
     generate_report,
     melt_period_rows,
     parse_payload,
+    validate_parse_result,
     write_outputs,
 )
 
@@ -591,3 +599,357 @@ def test_no_httpx_import_in_parser_module() -> None:
     import scripts.parse_vietcap_iq_fa_payloads_dry_run as parser_mod
     # The parser must not depend on httpx — it reads local files only.
     assert not hasattr(parser_mod, "httpx"), "parser module must not import httpx"
+
+
+# ---------------------------------------------------------------------------
+# _sort_facts
+# ---------------------------------------------------------------------------
+
+
+def test_sort_facts_is_deterministic() -> None:
+    # Two orderings of the same facts — sorted result must be identical.
+    base = {"value_status": "present", "value": 1.0, "source_run_id": "r1",
+            "section": "BS", "source_period_label": "2024Q1", "line_item_code": "bsa1"}
+
+    f_a = dict(base) | {"symbol": "AAA"}
+    f_b = dict(base) | {"symbol": "BBB"}
+    f_a2 = dict(base) | {"symbol": "AAA", "line_item_code": "bsa2"}
+
+    unordered = [f_b, f_a2, f_a]
+    sorted_once = _sort_facts(unordered)
+    sorted_twice = _sort_facts(list(reversed(unordered)))
+
+    assert sorted_once == sorted_twice
+    assert sorted_once[0]["symbol"] == "AAA"
+    assert sorted_once[0]["line_item_code"] == "bsa1"
+    assert sorted_once[1]["symbol"] == "AAA"
+    assert sorted_once[1]["line_item_code"] == "bsa2"
+    assert sorted_once[2]["symbol"] == "BBB"
+
+
+# ---------------------------------------------------------------------------
+# _check_duplicate_keys
+# ---------------------------------------------------------------------------
+
+
+def _make_fact(
+    symbol: str = "TST",
+    section: str = "BS",
+    period_label: str = "2024Q1",
+    code: str = "bsa1",
+    run_id: str = "r1",
+) -> dict:
+    return {
+        "symbol": symbol,
+        "section": section,
+        "source_period_label": period_label,
+        "line_item_code": code,
+        "source_run_id": run_id,
+        "line_item_name": "",
+        "value_status": "present",
+    }
+
+
+def test_check_duplicate_keys_no_dupes_returns_info() -> None:
+    facts = [_make_fact(code="bsa1"), _make_fact(code="bsa2")]
+    findings = _check_duplicate_keys(facts)
+    assert len(findings) == 1
+    assert findings[0]["severity"] == "info"
+    assert findings[0]["check"] == "duplicate_keys"
+
+
+def test_check_duplicate_keys_detects_exact_duplicate() -> None:
+    facts = [_make_fact(code="bsa1"), _make_fact(code="bsa1")]
+    findings = _check_duplicate_keys(facts)
+    assert any(f["severity"] == "error" for f in findings)
+    assert "duplicate" in findings[0]["detail"].lower()
+
+
+def test_check_duplicate_keys_different_run_ids_not_duplicate() -> None:
+    facts = [_make_fact(code="bsa1", run_id="r1"), _make_fact(code="bsa1", run_id="r2")]
+    findings = _check_duplicate_keys(facts)
+    assert all(f["severity"] == "info" for f in findings)
+
+
+# ---------------------------------------------------------------------------
+# _check_publicdate_format
+# ---------------------------------------------------------------------------
+
+
+def test_check_publicdate_format_valid_iso_passes() -> None:
+    facts = [
+        _make_fact() | {"public_date": "2024-04-25T00:00:00"},
+        _make_fact() | {"public_date": "2023-12-31"},
+    ]
+    findings = _check_publicdate_format(facts)
+    assert all(f["severity"] == "info" for f in findings)
+
+
+def test_check_publicdate_format_empty_is_ok() -> None:
+    facts = [_make_fact() | {"public_date": ""}]
+    findings = _check_publicdate_format(facts)
+    assert all(f["severity"] == "info" for f in findings)
+
+
+def test_check_publicdate_format_bad_format_is_warning() -> None:
+    facts = [_make_fact() | {"public_date": "25/04/2024"}]
+    findings = _check_publicdate_format(facts)
+    assert any(f["severity"] == "warning" for f in findings)
+    assert any("ISO" in f["detail"] or "format" in f["detail"].lower() for f in findings)
+
+
+def test_check_publicdate_format_slash_date_is_warning() -> None:
+    facts = [_make_fact() | {"public_date": "2024/04/25"}]
+    findings = _check_publicdate_format(facts)
+    assert any(f["severity"] == "warning" for f in findings)
+
+
+# ---------------------------------------------------------------------------
+# _check_mapping_coverage
+# ---------------------------------------------------------------------------
+
+
+def test_check_mapping_coverage_zero_when_no_names() -> None:
+    facts = [
+        _make_fact(code="bsa1") | {"line_item_name": ""},
+        _make_fact(code="bsa2") | {"line_item_name": ""},
+    ]
+    findings = _check_mapping_coverage(facts)
+    assert len(findings) == 1
+    assert findings[0]["check"] == "mapping_coverage"
+    assert "0.0%" in findings[0]["detail"] or "0/" in findings[0]["detail"]
+
+
+def test_check_mapping_coverage_reports_unique_codes() -> None:
+    facts = [_make_fact(code=c) | {"line_item_name": ""} for c in ("bsa1", "bsa2", "bsa3")]
+    findings = _check_mapping_coverage(facts)
+    assert "3" in findings[0]["detail"]  # 3 unique codes
+
+
+def test_check_mapping_coverage_empty_facts_does_not_crash() -> None:
+    findings = _check_mapping_coverage([])
+    assert len(findings) == 1
+
+
+# ---------------------------------------------------------------------------
+# _check_no_invented_names
+# ---------------------------------------------------------------------------
+
+
+def test_check_no_invented_names_passes_when_all_empty() -> None:
+    facts = [
+        _make_fact() | {"line_item_name": ""},
+        _make_fact(code="bsa2") | {"line_item_name": ""},
+    ]
+    findings = _check_no_invented_names(facts)
+    assert all(f["severity"] == "info" for f in findings)
+
+
+def test_check_no_invented_names_error_when_name_present() -> None:
+    facts = [_make_fact() | {"line_item_name": "Total Assets"}]
+    findings = _check_no_invented_names(facts)
+    assert any(f["severity"] == "error" for f in findings)
+    assert any("invented" in f["detail"].lower() or "non-empty" in f["detail"] for f in findings)
+
+
+# ---------------------------------------------------------------------------
+# _check_value_status_validity
+# ---------------------------------------------------------------------------
+
+
+def test_check_value_status_validity_passes_for_valid_values() -> None:
+    facts = [
+        _make_fact() | {"value_status": "present"},
+        _make_fact(code="bsa2") | {"value_status": "zero"},
+        _make_fact(code="nos1") | {"value_status": "missing"},
+    ]
+    findings = _check_value_status_validity(facts)
+    assert all(f["severity"] == "info" for f in findings)
+
+
+def test_check_value_status_validity_error_for_bad_value() -> None:
+    facts = [_make_fact() | {"value_status": "unknown_garbage"}]
+    findings = _check_value_status_validity(facts)
+    assert any(f["severity"] == "error" for f in findings)
+
+
+# ---------------------------------------------------------------------------
+# _check_nos_pattern
+# ---------------------------------------------------------------------------
+
+
+def test_check_nos_pattern_all_null_is_info() -> None:
+    facts = [
+        _make_fact(code="nos1", symbol="FPT") | {"value_status": "missing"},
+        _make_fact(code="nos2", symbol="FPT") | {"value_status": "missing"},
+    ]
+    findings = _check_nos_pattern(facts)
+    assert len(findings) == 1
+    assert findings[0]["severity"] == "info"
+    assert "100%" in findings[0]["detail"]
+    assert "non-securities" in findings[0]["detail"]
+
+
+def test_check_nos_pattern_zero_null_is_info() -> None:
+    facts = [
+        _make_fact(code="nos1", symbol="VCI") | {"value_status": "present"},
+        _make_fact(code="nos2", symbol="VCI") | {"value_status": "zero"},
+    ]
+    findings = _check_nos_pattern(facts)
+    assert len(findings) == 1
+    assert findings[0]["severity"] == "info"
+    assert "securities" in findings[0]["detail"].lower()
+
+
+def test_check_nos_pattern_mixed_is_warning() -> None:
+    facts = [
+        _make_fact(code="nos1", symbol="MIX") | {"value_status": "missing"},
+        _make_fact(code="nos2", symbol="MIX") | {"value_status": "present"},
+    ]
+    findings = _check_nos_pattern(facts)
+    assert any(f["severity"] == "warning" for f in findings)
+    assert any("Mixed" in f["detail"] or "mixed" in f["detail"] for f in findings)
+
+
+def test_check_nos_pattern_no_nos_columns_returns_info() -> None:
+    facts = [_make_fact(code="bsa1") | {"value_status": "present"}]
+    findings = _check_nos_pattern(facts)
+    assert len(findings) == 1
+    assert findings[0]["severity"] == "info"
+    assert "No nos*" in findings[0]["detail"]
+
+
+def test_check_nos_pattern_non_nos_columns_not_counted() -> None:
+    facts = [
+        _make_fact(code="bsa1", symbol="FPT") | {"value_status": "missing"},
+        _make_fact(code="nos1", symbol="FPT") | {"value_status": "missing"},
+    ]
+    findings = _check_nos_pattern(facts)
+    # Only nos1 counted; bsa1 is not a nos* column.
+    assert "1/1" in findings[0]["detail"]
+
+
+# ---------------------------------------------------------------------------
+# validate_parse_result (composite)
+# ---------------------------------------------------------------------------
+
+
+def _make_stats(
+    run_id: str = "r1",
+    symbol: str = "TST",
+    section: str = "BS",
+    metric_col_count: int = 2,
+) -> dict:
+    return {
+        "run_id": run_id,
+        "symbol": symbol,
+        "section": section,
+        "dataset": "ds",
+        "quarter_rows_read": 1,
+        "year_rows_read": 0,
+        "metric_column_count": metric_col_count,
+        "output_fact_rows": 2,
+        "q_publicdate_nonnull": 1,
+        "y_publicdate_nonnull": 0,
+    }
+
+
+def test_validate_clean_input_has_no_errors() -> None:
+    facts = [
+        _make_fact(code="bsa1") | {"line_item_name": "", "public_date": "2024-04-25T00:00:00",
+                                    "value_status": "present"},
+        _make_fact(code="bsa2") | {"line_item_name": "", "public_date": "2024-04-25T00:00:00",
+                                    "value_status": "zero"},
+    ]
+    stats = [_make_stats()]
+    findings = validate_parse_result(facts, stats)
+    errors = [f for f in findings if f["severity"] == "error"]
+    assert errors == []
+
+
+def test_validate_detects_zero_metric_columns_as_error() -> None:
+    facts = [_make_fact() | {"line_item_name": "", "public_date": "", "value_status": "present"}]
+    stats = [_make_stats(metric_col_count=0)]
+    findings = validate_parse_result(facts, stats)
+    assert any(f["check"] == "metric_columns_detected" and f["severity"] == "error" for f in findings)
+
+
+def test_validate_empty_facts_returns_error() -> None:
+    findings = validate_parse_result([], [_make_stats()])
+    assert any(f["check"] == "facts_produced" and f["severity"] == "error" for f in findings)
+
+
+def test_validate_duplicate_key_surfaces_as_error() -> None:
+    dup = _make_fact() | {"line_item_name": "", "public_date": "", "value_status": "present"}
+    stats = [_make_stats()]
+    findings = validate_parse_result([dup, dup], stats)
+    assert any(f["check"] == "duplicate_keys" and f["severity"] == "error" for f in findings)
+
+
+def test_validate_invented_name_surfaces_as_error() -> None:
+    fact = _make_fact() | {"line_item_name": "Total Assets", "public_date": "", "value_status": "present"}
+    stats = [_make_stats()]
+    findings = validate_parse_result([fact], stats)
+    assert any(f["check"] == "no_invented_names" and f["severity"] == "error" for f in findings)
+
+
+def test_validate_mapping_coverage_finding_always_present() -> None:
+    facts = [_make_fact() | {"line_item_name": "", "public_date": "", "value_status": "present"}]
+    stats = [_make_stats()]
+    findings = validate_parse_result(facts, stats)
+    checks = [f["check"] for f in findings]
+    assert "mapping_coverage" in checks
+
+
+def test_validate_preserves_null_vs_zero_distinction() -> None:
+    """Null (missing) and zero must be distinct value_status values — parser must not collapse them."""
+    null_fact = _make_fact(code="nos1") | {"line_item_name": "", "public_date": "", "value_status": "missing"}
+    zero_fact = _make_fact(code="bsa1") | {"line_item_name": "", "public_date": "", "value_status": "zero"}
+    stats = [_make_stats()]
+    findings = validate_parse_result([null_fact, zero_fact], stats)
+    # No value_status_validity errors
+    vs_errors = [f for f in findings if f["check"] == "value_status_validity" and f["severity"] == "error"]
+    assert vs_errors == []
+    # The distinct statuses are preserved
+    statuses = {null_fact["value_status"], zero_fact["value_status"]}
+    assert "missing" in statuses
+    assert "zero" in statuses
+    assert statuses != {"zero"}  # null must not be mapped to zero
+
+
+def test_validate_does_not_fill_fake_metric_names() -> None:
+    """Parser must never populate line_item_name without a real mapping."""
+    rows = [_make_row(length=1, bsa1=1.0, bsa2=None)]
+    meta = {"run_id": "r1", "symbol": "TST", "section": "BALANCE_SHEET"}
+    facts, _ = melt_period_rows(rows, "quarter", meta, "")
+    assert all(f.get("line_item_name", "") == "" for f in facts), (
+        "line_item_name must be empty — parser must not invent metric names"
+    )
+
+
+# ---------------------------------------------------------------------------
+# generate_report with validation_findings
+# ---------------------------------------------------------------------------
+
+
+def test_generate_report_includes_validation_section_when_findings_passed() -> None:
+    stats = [{"run_id": "r1", "symbol": "T", "section": "S", "dataset": "d",
+               "quarter_rows_read": 1, "year_rows_read": 0, "metric_column_count": 2,
+               "output_fact_rows": 2, "q_publicdate_nonnull": 1, "y_publicdate_nonnull": 0}]
+    findings = [
+        {"check": "duplicate_keys", "severity": "info", "detail": "No duplicates."},
+        {"check": "mapping_coverage", "severity": "info", "detail": "0 rows named."},
+    ]
+    report = generate_report(stats, [], [], validation_findings=findings)
+    assert "Validation" in report
+    assert "duplicate_keys" in report
+    assert "mapping_coverage" in report
+
+
+def test_generate_report_no_validation_section_when_no_findings() -> None:
+    stats = [{"run_id": "r1", "symbol": "T", "section": "S", "dataset": "d",
+               "quarter_rows_read": 0, "year_rows_read": 0, "metric_column_count": 0,
+               "output_fact_rows": 0, "q_publicdate_nonnull": 0, "y_publicdate_nonnull": 0}]
+    report = generate_report(stats, [], [], validation_findings=None)
+    # No validation section when findings is None (backward compat).
+    assert "## Validation" not in report
