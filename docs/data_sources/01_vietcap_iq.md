@@ -1906,6 +1906,14 @@ Parser script: `scripts/parse_vietcap_iq_fa_payloads_dry_run.py`
 
 Key results: `34,563` long-format fact rows from three saved payloads; null/zero distinction preserved; `line_item_name` empty (no mapping); no DB write, no backtest; `publicDate` PIT semantics unconfirmed.
 
+#### Metric Mapping Discovery
+
+A mapping discovery audit has been run. No code-to-name mapping exists in any local payload or doc.
+A live probe of the candidate endpoint
+`https://iq.vietcap.com.vn/api/iq-insight-service/v1/company/VCI/financial-statement/metrics`
+(run `20260609T091305Z`) failed at DNS level — result is inconclusive, not auth-blocked.
+See `docs/data_sources/vietcap_iq_fa_metric_mapping_discovery.md` for full details and next steps.
+
 ---
 
 </details>
