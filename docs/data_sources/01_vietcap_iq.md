@@ -1914,6 +1914,33 @@ A live probe of the candidate endpoint
 (run `20260609T091305Z`) failed at DNS level — result is inconclusive, not auth-blocked.
 See `docs/data_sources/vietcap_iq_fa_metric_mapping_discovery.md` for full details and next steps.
 
+#### FA Ingestion V2 Readiness Package
+
+A readiness document, manifest planner, and tests have been added for the FA ingestion V2 phase:
+
+| Artifact | Path | Notes |
+|---|---|---|
+| Readiness document | `docs/data_sources/vietcap_iq_fa_ingestion_v2_readiness.md` | Defines all confirmed facts, open gates, policies, and next steps |
+| Manifest planner script | `scripts/plan_vietcap_iq_fa_full_history_manifest.py` | Dry-run only; generates a deterministic fetch-plan CSV with no network requests |
+| Manifest tests | `tests/test_plan_vietcap_iq_fa_full_history_manifest.py` | 43 tests covering determinism, section validation, readiness flags, no httpx/requests |
+
+Key constraints still enforced:
+
+- `line_item_name` remains empty — no verified mapping is loaded.
+- `publicDate` is a candidate field only — PIT semantics are unconfirmed.
+- Full-history FA fetch is planned but not implemented.
+- DB write remains blocked (§17 of readiness doc).
+- Backtest remains blocked (§18 of readiness doc).
+
+Manifest planner CLI example:
+
+```
+python scripts/plan_vietcap_iq_fa_full_history_manifest.py \
+  --symbols VCI,FPT \
+  --sections BALANCE_SHEET,INCOME_STATEMENT,CASH_FLOW \
+  --output data/processed/vietcap_iq/fa_full_history_manifest.csv
+```
+
 ---
 
 </details>

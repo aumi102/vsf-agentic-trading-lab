@@ -129,8 +129,12 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - [x] FA dry-run parser implemented: `scripts/parse_vietcap_iq_fa_payloads_dry_run.py`; `34,563` fact rows from 3 saved payloads; no DB write, no backtest; `publicDate` PIT semantics unconfirmed; see `docs/data_sources/vietcap_iq_fa_parser_dry_run.md`.
 - [ ] FA metric mapping: no local mapping found; `/financial-statement/metrics` probe (run `20260609T091305Z`) failed at DNS level — inconclusive; `line_item_name` empty; see `docs/data_sources/vietcap_iq_fa_metric_mapping_discovery.md`.
 - [x] FA parser hardened: 7 validation checks (`duplicate_keys`, `publicdate_format`, `mapping_coverage`, `nos_pattern`, `value_status_validity`, `no_invented_names`, `metric_columns_detected`); `--strict` flag; deterministic sort; 235 tests pass; see `docs/data_sources/vietcap_iq_fa_parser_hardening.md`.
-- [ ] Full-history FA fetch not implemented.
-- [ ] PIT availability and statement/ratio schema not finalized.
+- [x] FA ingestion V2 readiness package added: readiness doc (`docs/data_sources/vietcap_iq_fa_ingestion_v2_readiness.md`) defines confirmed facts, open gates, all policies, and DB/backtest gates; manifest planner (`scripts/plan_vietcap_iq_fa_full_history_manifest.py`) generates deterministic fetch-plan CSV, no network; 43 new tests (278 total passing); branch `phase/fa-ingestion-v2-readiness`.
+- [ ] Full-history FA fetch not implemented — planned, not implemented; blocked on mapping/PIT/schema gates.
+- [ ] Metric mapping still incomplete — `line_item_name` empty for all parsed rows.
+- [ ] PIT availability (`publicDate` semantics) still unconfirmed.
+- [ ] DB write still blocked — mapping, PIT, and schema gates not met.
+- [ ] Backtest still blocked — DB write not implemented.
 
 ### RAG / text data future module
 
