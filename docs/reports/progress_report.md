@@ -36,7 +36,8 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - `httpx` FA direct clean-profile diagnostic (run `20260609T035318Z`): same clean 8-header profile, `VCI/financial-statement?section=BALANCE_SHEET` — returned `200 JSON`, `data_keys=quarters,years`, `byte_size=354443`; FA endpoint accessible with clean profile.
 - FA BALANCE_SHEET payload-shape review added (`docs/data_sources/vietcap_iq_fa_payload_shape_review.md`): wide-format, 33 quarters + 8 years, 331 opaque metric codes, `publicDate` present as candidate availability field (PIT semantics unconfirmed); no parser implemented yet.
 - FA shape cross-check added (`docs/data_sources/vietcap_iq_fa_shape_cross_check.md`): VCI INCOME_STATEMENT (run `20260609T075846Z`) and FPT BALANCE_SHEET (run `20260609T075857Z`) both returned HTTP 200; initial section/symbol cross-check passed (three tested cases); `nos*` columns are null for FPT (not applicable for non-securities firms); parser dry-run design can start; no parser or DB write yet.
-- Main blocker: safe fetch policy, price adjustment semantics, corporate actions, financial statement parser design, and tool contracts.
+- FA parser dry-run implemented (`scripts/parse_vietcap_iq_fa_payloads_dry_run.py`): wide-to-long pivot on all three saved payloads; `34,563` total fact rows (`8,695` present, `23,885` zero, `1,983` missing/null); no DB write, no backtest; `line_item_name` empty (no mapping); `publicDate` PIT semantics unconfirmed; see `docs/data_sources/vietcap_iq_fa_parser_dry_run.md`.
+- Main blocker: safe fetch policy, price adjustment semantics, corporate actions, FA metric name mapping, `publicDate` PIT validation, parser hardening for production, full-history FA fetch policy, and tool contracts.
 
 ---
 
@@ -118,12 +119,12 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - [ ] FPT-only non-secret FA probe returned `403/auth_required`; no raw JSON saved.
 - [ ] FPT-only short-financial header-context diagnostic returned `403/auth_required`; parser planning remains blocked.
 - [ ] VCI `httpx` session diagnostic returned page `200` but FA API `403/auth_required`; no raw FA JSON saved.
-- [ ] VCI `httpx` browser-session warm-up diagnostic (run `20260609T024007Z`): `trading.*` public warm-ups `200`; all `iq.*` endpoints `403/auth_required`; warm-up session state (cookies or `sec-ch-ua*`) is likely blocking factor; no raw FA JSON saved.
+- [ ] VCI `httpx` browser-session warm-up diagnostic (run `20260609T024007Z`): `trading.*` public warm-ups `200`; all `iq.*` endpoints `403/auth_required`; warm-up session state (cookies or `sec-ch-ua*`) was a likely contributing factor; no raw FA JSON saved.
 - [x] Search-bar parity diagnostic (run `20260609T032924Z`): fresh `httpx.Client`, 8-header profile — `iq.*` search-bar returned `200 JSON`, `data_length=2083`; `iq.*` accessible with clean request profile.
 - [x] FA direct clean-profile diagnostic (run `20260609T035318Z`): same clean 8-header profile, `VCI/financial-statement?section=BALANCE_SHEET` — returned `200 JSON`, `data_keys=quarters,years`, `byte_size=354443`; FA endpoint accessible; raw payload captured.
 - [x] FA BALANCE_SHEET payload-shape review written: wide-format, 33 quarters + 8 years, 331 opaque metric codes, `publicDate` present as candidate availability field (PIT semantics unconfirmed); no parser implemented; see `docs/data_sources/vietcap_iq_fa_payload_shape_review.md`.
 - [x] FA shape cross-check: VCI INCOME_STATEMENT and FPT BALANCE_SHEET both HTTP 200; initial section/symbol cross-check passed (three tested cases); `nos*` null for non-securities firms; parser dry-run design can start; see `docs/data_sources/vietcap_iq_fa_shape_cross_check.md`.
-- [ ] FA dry-run parser not implemented.
+- [x] FA dry-run parser implemented: `scripts/parse_vietcap_iq_fa_payloads_dry_run.py`; `34,563` fact rows from 3 saved payloads; no DB write, no backtest; `publicDate` PIT semantics unconfirmed; see `docs/data_sources/vietcap_iq_fa_parser_dry_run.md`.
 - [ ] Full-history FA fetch not implemented.
 - [ ] PIT availability and statement/ratio schema not finalized.
 

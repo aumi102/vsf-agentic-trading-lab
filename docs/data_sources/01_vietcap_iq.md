@@ -1894,7 +1894,17 @@ A cross-check of the access profile and payload shape across VCI INCOME_STATEMEN
 
 `docs/data_sources/vietcap_iq_fa_shape_cross_check.md`
 
-Both additional probes returned HTTP 200. Section and symbol generalisation is confirmed for the clean 8-header profile. Parser dry-run design can start. No parser has been implemented yet.
+Both additional probes returned HTTP 200. Initial section/symbol cross-check passed for the clean 8-header profile. Parser dry-run design can start.
+
+#### FA Parser Dry-Run
+
+A local-only wide-to-long parser dry-run has been implemented at:
+
+`docs/data_sources/vietcap_iq_fa_parser_dry_run.md`
+
+Parser script: `scripts/parse_vietcap_iq_fa_payloads_dry_run.py`
+
+Key results: `34,563` long-format fact rows from three saved payloads; null/zero distinction preserved; `line_item_name` empty (no mapping); no DB write, no backtest; `publicDate` PIT semantics unconfirmed.
 
 ---
 
