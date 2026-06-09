@@ -30,6 +30,8 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - Tiny execute passed for `FPT,VNM,VCB`: `network_requests_made=True`, `planned_request_count=3`, `failed_symbols=0`.
 - FA endpoint discovery is in FPT-only probe stage; five non-secret FA candidates returned `403/auth_required`, so row-level FA JSON is still not captured.
 - One-endpoint short-financial header-context diagnostic also returned `403/auth_required`; no Cookie/Auth was used and no raw FA JSON was saved.
+- `httpx` session diagnostic loaded the VCI financial page with `200`, but the FA API still returned `403/auth_required`; metadata only, no raw FA JSON.
+- `httpx` browser-session warm-up diagnostic (run `20260609T024007Z`): `trading.*` public warm-ups returned `200`; all `iq.*` warm-up + FA API endpoints returned `403/auth_required`; current httpx warm-up flow still gets 403 on `iq.*` endpoints; next step is to compare with previously working search-bar/source-probe request profile.
 - Main blocker: safe fetch policy, price adjustment semantics, corporate actions, financial statement endpoints, and tool contracts.
 
 ---
@@ -111,6 +113,8 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - [x] FPT-only FA endpoint candidates added to local source-probe config.
 - [ ] FPT-only non-secret FA probe returned `403/auth_required`; no raw JSON saved.
 - [ ] FPT-only short-financial header-context diagnostic returned `403/auth_required`; parser planning remains blocked.
+- [ ] VCI `httpx` session diagnostic returned page `200` but FA API `403/auth_required`; no raw FA JSON saved.
+- [ ] VCI `httpx` browser-session warm-up diagnostic (run `20260609T024007Z`): `trading.*` public warm-ups `200`; all `iq.*` endpoints `403/auth_required`; current httpx flow still blocked on `iq.*`; needs profile comparison with previously working search-bar; no raw FA JSON saved.
 - [ ] Full-history FA fetch not implemented.
 - [ ] PIT availability and statement/ratio schema not finalized.
 

@@ -25,7 +25,7 @@ toc_max_heading_level: 3
 
 - **Stock OHLCV DB/backtest use** is not ready until units, adjustment policy, EOD semantics, historical availability, and dynamic universe filters are confirmed.
 - **Vietcap IQ reports/fundamentals** still need row-level financial/report payloads and source-field mapping before parser planning.
-- **Vietcap IQ financial statements / FA data** are a separate source-discovery gate after the controlled OHLCV proof; FPT endpoint candidates exist, but the first non-secret source probe and one-endpoint short-financial header-context diagnostic both returned `403/auth_required`, so no row-level sample, parser, DB write, or backtest exists yet.
+- **Vietcap IQ financial statements / FA data** are a separate source-discovery gate after the controlled OHLCV proof; FPT endpoint candidates exist, but non-secret source-probe attempts returned `403/auth_required`; VCI `httpx` browser-session warm-up diagnostic confirmed `trading.*` public endpoints return `200` while all `iq.*` endpoints return `403/auth_required`; current httpx warm-up flow still gets 403 on `iq.*` endpoints; next step is to compare with previously working search-bar/source-probe request profile before concluding the exact access mechanism; no row-level sample, parser, DB write, or backtest exists yet.
 - **Final tradable assets** are not defined yet. They must be selected later from broad fetch outputs using dynamic liquidity, data-quality, and strategy filters.
 
 #### Why VBMA plus FRED first

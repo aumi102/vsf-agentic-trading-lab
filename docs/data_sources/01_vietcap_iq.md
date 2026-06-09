@@ -1590,6 +1590,133 @@ Guardrails confirmed:
 
 </details>
 
+### FA HTTPX Session Diagnostic Result
+
+<details open>
+<summary>httpx page bootstrap reached the company page but the FA API still returned 403.</summary>
+
+---
+
+#### Diagnostic scope
+
+Mentor suggested using `httpx` as a browser-like session. The diagnostic used one `httpx.Client`, first loading the company financial page, then calling one FA API endpoint with the same client/session.
+
+| Item | Value |
+|---|---|
+| command | `python scripts/probe_vietcap_iq_fa_httpx_session.py` |
+| run_id | `20260608T100523Z` |
+| symbol | `VCI` |
+| page URL | `https://trading.vietcap.com.vn/iq/company?ticker=VCI&tab=financial&isIndex=false&financialTab=financialStatement` |
+| API URL | `https://iq.vietcap.com.vn/api/iq-insight-service/v1/company/VCI/financial-statement?section=BALANCE_SHEET` |
+| dataset | `vietcap_iq_fa_financial_statement_balance_sheet_httpx_session` |
+| metadata path | `data/raw/httpx_diagnostic/source=vietcap_iq/run_id=20260608T100523Z/vietcap_iq_fa_financial_statement_balance_sheet_httpx_session/metadata.json` |
+| raw payload path | none |
+
+#### Result
+
+| Field | Value |
+|---|---|
+| page HTTP status | `200` |
+| API HTTP status | `403` |
+| access status | `auth_required` |
+| API content type | `text/html` |
+| payload saved | no |
+| response top-level type | unavailable |
+| response top-level keys | unavailable |
+| `data` shape | unavailable |
+| parser readiness | blocked |
+
+Conclusion:
+
+- `httpx.Client` page bootstrap alone does not resolve FA API access.
+- The page request itself is reachable, but the FA API remains blocked by an access/session/provider-terms gate.
+- No row-level FA JSON was saved, so parser planning remains blocked.
+
+Guardrails confirmed:
+
+- No manual `Cookie` or `Authorization`.
+- Cookies and authorization values were not saved to metadata.
+- One symbol only.
+- One endpoint only.
+- No full universe.
+- No parser.
+- No database write.
+- No backtest.
+
+---
+
+</details>
+
+### FA HTTPX Browser-Session Warm-Up Diagnostic
+
+<details open>
+<summary>httpx warm-up: trading subdomain public endpoints returned 200; all iq subdomain endpoints (warm-up + FA API) returned 403.</summary>
+
+---
+
+#### Mentor direction
+
+Mentor said the 403 is a request-context blocking issue that can be passed with httpx. The previous diagnostic only hit the financial page then called the FA API directly, used a fake User-Agent, and applied no warm-up sequence.
+
+This run adds:
+- Real Chrome/Edge User-Agent string.
+- A 5-step warm-up sequence on the same `httpx.Client` before the FA API call.
+- Correct `Sec-Fetch-*`, `Origin`, `Referer`, and `sec-ch-ua` hints on JSON requests.
+
+#### Scope
+
+| Item | Value |
+|---|---|
+| command | `python scripts/probe_vietcap_iq_fa_httpx_session.py --symbol VCI --section BALANCE_SHEET` |
+| run_id | `20260609T024007Z` |
+| symbol | `VCI` |
+| page URL | `https://trading.vietcap.com.vn/iq/company?ticker=VCI&tab=financial&isIndex=false&financialTab=financialStatement` |
+| warm-up endpoints | 5 public/browser-observed endpoints (3 on `trading.*`, 2 on `iq.*`) |
+| API URL | `https://iq.vietcap.com.vn/api/iq-insight-service/v1/company/VCI/financial-statement?section=BALANCE_SHEET` |
+| metadata path | `data/raw/httpx_diagnostic/source=vietcap_iq/run_id=20260609T024007Z/vietcap_iq_fa_financial_statement_balance_sheet_httpx_session/metadata.json` |
+| raw payload path | none |
+
+#### Result
+
+| Field | Value |
+|---|---|
+| page HTTP status | `200` |
+| warm-up: `configuration-service/v1/non-authen/app-config` | `200 application/json` |
+| warm-up: `price/marketStatus/getAll` | `200 application/json` |
+| warm-up: `market-data-service/v1/data-version` | `200 application/json` |
+| warm-up: `iq-insight-service/v2/company/search-bar` | `403 text/html` |
+| warm-up: `iq-insight-service/v1/company/details?ticker=VCI` | `403 text/html` |
+| FA API HTTP status | `403` |
+| access status | `auth_required` |
+| API content type | `text/html` |
+| payload saved | no |
+| parser readiness | blocked |
+
+#### Conclusion
+
+- All three `trading.vietcap.com.vn` public endpoints returned `200`.
+- All two `iq.vietcap.com.vn` warm-up endpoints returned `403`, and the FA API also returned `403`.
+- In this httpx warm-up flow, `trading.*` public endpoints returned `200` while all `iq.*` endpoints returned `403`.
+- This suggests missing request context, session/access requirement, or header/profile mismatch on the `iq.*` subdomain in the current httpx flow.
+- Note: the Vietcap IQ universe search-bar endpoint previously returned results in an earlier source-probe context; that request profile has not yet been directly compared against the current httpx warm-up flow.
+- Next step: compare the current httpx request profile against the previously working search-bar/source-probe request profile before concluding whether provider-approved auth or a different session mechanism is required.
+- No row-level FA JSON was saved; parser planning remains blocked.
+
+#### Guardrails confirmed
+
+- No manual `Cookie` or `Authorization`.
+- Cookies and authorization values were not saved to metadata.
+- One symbol only (`VCI`).
+- One FA endpoint only.
+- No full universe.
+- No parser.
+- No database write.
+- No backtest.
+
+---
+
+</details>
+
 ### Reports And Evidence
 
 <details open>
