@@ -176,10 +176,11 @@ class TestPrimaryMissConsensusFallback:
         result = r.resolve("CASH_FLOW", "cfa1")
         assert result.mapping_conflict == "false"
 
-    def test_vi_name_empty_for_union_fallback(self):
-        # Union CSV has no per-code VI names
-        r = _make_resolver(primary_rows=[], union_rows=[_U_CONSENSUS_CF], has_primary=True)
+    def test_vi_name_empty_for_consensus_fallback(self):
+        # Union CSV has no per-code VI names; primary has bsa1 only so cfa1 falls through
+        r = _make_resolver(primary_rows=[_P_BS_A1], union_rows=[_U_CONSENSUS_CF], has_primary=True)
         result = r.resolve("CASH_FLOW", "cfa1")
+        assert result.mapping_status == "consensus_fallback"
         assert result.line_item_name_vi == ""
 
     def test_union_code_not_in_primary(self):

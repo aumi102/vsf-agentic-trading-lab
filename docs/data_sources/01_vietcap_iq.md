@@ -2016,6 +2016,27 @@ Parser code not changed. `line_item_name` remains empty.
 
 See `docs/data_sources/vietcap_iq_fa_firm_type_determination.md`.
 
+#### FA Option C Mapping Resolver
+
+Pure offline Option C mapping resolver implemented (not yet wired into parser). Script:
+`scripts/resolve_vietcap_iq_fa_metric_mapping.py` (74 tests, 487 total passing).
+
+Resolves `(section, line_item_code)` → `MappingResult` with six statuses:
+
+| Status | Meaning |
+|--------|---------|
+| `primary` | Code found in firm-type-specific primary mapping, section matches |
+| `consensus_fallback` | Primary miss; code in union with `conflict=false`, section matches |
+| `conflict_skipped` | Code in union with `conflict=true` — name withheld |
+| `not_covered` | Code absent from primary and union |
+| `no_mapping_available` | Primary expected (`has_primary=True`) but no rows loaded |
+| `section_mismatch` | Code found but stored section does not match queried section |
+
+Parser code not changed. `line_item_name_en` / `line_item_name_vi` not yet emitted.
+`line_item_name` remains empty. DB write and backtest remain blocked.
+
+See `docs/data_sources/vietcap_iq_fa_mapping_resolver_tests.md`.
+
 ---
 
 </details>
