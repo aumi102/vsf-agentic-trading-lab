@@ -1908,37 +1908,49 @@ Key results: `34,563` long-format fact rows from three saved payloads; null/zero
 
 #### Metric Mapping Discovery
 
-A mapping discovery audit has been run. No code-to-name mapping exists in any local payload or doc.
-A live probe of the candidate endpoint
-`https://iq.vietcap.com.vn/api/iq-insight-service/v1/company/VCI/financial-statement/metrics`
-(run `20260609T091305Z`) failed at DNS level — result is inconclusive, not auth-blocked.
-See `docs/data_sources/vietcap_iq_fa_metric_mapping_discovery.md` for full details and next steps.
+A mapping discovery audit was run. An initial probe (run `20260609T091305Z`) failed at DNS level.
+A re-probe (run `20260610T025420Z`) succeeded: HTTP 200, mapping payload confirmed with 1078
+non-null metric codes across sections BALANCE_SHEET, INCOME_STATEMENT, CASH_FLOW, NOTE. Coverage
+against saved probe payloads: 62.8% BS / 43.6% IS / 65.8% CF — below the 95% gate threshold.
+See `docs/data_sources/vietcap_iq_fa_metric_mapping_discovery.md` and
+`docs/data_sources/vietcap_iq_fa_mapping_cashflow_probe.md` for full details.
 
 #### FA Ingestion V2 Readiness Package
 
-A readiness document, manifest planner, and tests have been added for the FA ingestion V2 phase:
+A readiness document, manifest planner, and tests were added for the FA ingestion V2 phase:
 
 | Artifact | Path | Notes |
 |---|---|---|
 | Readiness document | `docs/data_sources/vietcap_iq_fa_ingestion_v2_readiness.md` | Defines all confirmed facts, open gates, policies, and next steps |
 | Manifest planner script | `scripts/plan_vietcap_iq_fa_full_history_manifest.py` | Dry-run only; generates a deterministic fetch-plan CSV with no network requests |
-| Manifest tests | `tests/test_plan_vietcap_iq_fa_full_history_manifest.py` | 43 tests covering determinism, section validation, readiness flags, no httpx/requests |
+| Manifest tests | `tests/test_plan_vietcap_iq_fa_full_history_manifest.py` | 43 tests |
+
+#### FA Mapping and CASH_FLOW Probe Package
+
+Additional scripts and docs added for the mapping retrieval and CASH_FLOW coverage phase:
+
+| Artifact | Path | Notes |
+|---|---|---|
+| Probe report | `docs/data_sources/vietcap_iq_fa_mapping_cashflow_probe.md` | Results for mapping re-probe and VCI/FPT CASH_FLOW probes |
+| Mapping parser script | `scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py` | Offline only; no network, no DB; outputs deterministic mapping CSV and optional coverage report |
+| Mapping parser tests | `tests/test_parse_vietcap_iq_fa_metric_mapping_dry_run.py` | 50 tests |
 
 Key constraints still enforced:
 
-- `line_item_name` remains empty — no verified mapping is loaded.
+- `line_item_name` remains empty in parser output — mapping coverage is below the 95% gate threshold.
 - `publicDate` is a candidate field only — PIT semantics are unconfirmed.
+- CASH_FLOW section is now confirmed (same envelope, HTTP 200 for VCI and FPT).
 - Full-history FA fetch is planned but not implemented.
 - DB write remains blocked (§17 of readiness doc).
 - Backtest remains blocked (§18 of readiness doc).
 
-Manifest planner CLI example:
+Mapping parser CLI example:
 
 ```
-python scripts/plan_vietcap_iq_fa_full_history_manifest.py \
-  --symbols VCI,FPT \
-  --sections BALANCE_SHEET,INCOME_STATEMENT,CASH_FLOW \
-  --output data/processed/vietcap_iq/fa_full_history_manifest.csv
+python scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py \
+  --output-mapping data/processed/vietcap_iq/fa_metric_mapping.csv \
+  --probe-dir data/raw/httpx_diagnostic/source=vietcap_iq \
+  --output-coverage data/processed/vietcap_iq/fa_metric_mapping_coverage.csv
 ```
 
 ---
