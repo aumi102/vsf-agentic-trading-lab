@@ -6,8 +6,8 @@
 |------|-------|
 | Resolver implemented | **Done** — `scripts/resolve_vietcap_iq_fa_metric_mapping.py` |
 | Resolver tests | **Done** — `tests/test_resolve_vietcap_iq_fa_metric_mapping.py` (74 tests) |
-| Parser integration | **Not implemented** — see blocker below |
-| Current parser output | Unchanged — `line_item_name_en` / `line_item_name_vi` not yet added |
+| Parser integration | **Done** — resolver wired; 65 new integration tests; 5-payload dry-run: 53,013 rows, 0 errors |
+| Current parser output | Updated — `line_item_name_en`, `line_item_name_vi`, `mapping_status`, `mapping_source_symbol`, `mapping_source_run_id`, `mapping_conflict`, `mapping_group` added |
 | DB writes | Blocked — not in scope |
 | Backtests | Blocked — not in scope |
 

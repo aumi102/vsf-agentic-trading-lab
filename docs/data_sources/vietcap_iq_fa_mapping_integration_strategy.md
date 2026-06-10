@@ -6,9 +6,9 @@ toc_max_heading_level: 3
 
 # Vietcap IQ FA Metric Mapping Integration Strategy
 
-**Status:** Design only — not implemented.  
+**Status:** Design complete. Parser integration implemented (2026-06-10) — see `docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md`.  
 **Date:** 2026-06-10  
-**Branch:** `phase/fa-mapping-integration-strategy`
+**Branch:** `phase/fa-mapping-integration-strategy` (design); `phase/fa-parser-mapping-integration` (implementation)
 
 ---
 
@@ -305,14 +305,14 @@ Before any parser integration code is merged, the following test groups must exi
 | Conflict policy accepted (never populate for conflicting codes) | **Done** — defined in §6.3 |
 | Mapping coverage report generated from current saved payloads | **Done** — `data/processed/vietcap_iq/fa_metric_mapping_union_coverage.csv` |
 | Firm-type determination logic designed | **Done** — `docs/data_sources/vietcap_iq_fa_firm_type_determination.md`; planner script `scripts/plan_vietcap_iq_fa_firm_type_mapping.py`; 46 tests |
-| Tests for all lookup behaviors written (§6.6) | **Not done** |
-| Parser integration code reviewed and approved | **Not done** |
+| Tests for all lookup behaviors written (§6.6) | **Done** — 65 integration tests + 74 resolver tests |
+| Parser integration code reviewed and approved | **Done** — `phase/fa-parser-mapping-integration` |
 
 ### Gates before DB write (unchanged from readiness doc §17)
 
 | Gate | Current Status |
 |---|---|
-| Mapping integration dry-run passes on 5+ saved payloads | **Not done** |
+| Mapping integration dry-run passes on 5+ saved payloads | **Done** — 5 payloads, 53,013 rows, 0 errors |
 | Mapping coverage ≥ 95% per section | **Not met** — best union: 89.4% / 92.3% / 86.7% |
 | `publicDate` PIT semantics confirmed | **Not met** |
 | Canonical QuestDB schema designed and reviewed | **Not met** |

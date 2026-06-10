@@ -21,9 +21,10 @@ write is permitted. No DB write or backtest is implemented in this phase.
 |---|---|
 | FA endpoint access | **Confirmed** — HTTP 200 JSON for VCI BALANCE_SHEET, VCI INCOME_STATEMENT, FPT BALANCE_SHEET using clean 8-header profile |
 | Payload shape reviewed | **Confirmed** — wide-format `data.quarters` + `data.years`; opaque metric codes; `publicDate` present |
-| Parser dry-run | **Implemented** — `scripts/parse_vietcap_iq_fa_payloads_dry_run.py`; 34,563 long-format fact rows from 3 saved payloads |
-| Parser hardening | **Done** — 7 validation checks; `--strict` mode; deterministic sort; 235 tests pass |
+| Parser dry-run | **Implemented** — `scripts/parse_vietcap_iq_fa_payloads_dry_run.py`; 53,013 long-format fact rows from 5 saved payloads |
+| Parser hardening | **Done** — 7 validation checks; `--strict` mode; deterministic sort; 552 tests pass |
 | Metric code-to-name mapping | **Partially retrieved** — VCI-only: 1078 codes, BS 62.8% / IS 43.6% / CF 65.8%; union across VCI+VCB+BVH+SSI: 1793 codes, BS 89.4% / IS 92.3% / CF 86.7%; 88 conflicts; no section reaches 95% gate threshold |
+| Mapping resolver integration | **Done** — Option C resolver wired; 7 new output columns; 65 new integration tests; dry-run on 5 payloads: 53,013 rows, 0 errors; mapping coverage gate still not met; DB write still blocked |
 | `publicDate` PIT semantics | **Unconfirmed** — present in payload as candidate field only; semantics not validated against exchange filings |
 | Full-history FA fetch | **Not implemented** — no fetcher script; no symbol universe loop |
 | DB write | **Not implemented** — explicitly blocked |
@@ -111,7 +112,7 @@ write is permitted. No DB write or backtest is implemented in this phase.
 |---|---|---|---|
 | `BALANCE_SHEET` | **Confirmed** — VCI + FPT | **Implemented** | 331 metric codes per row for both tested symbols |
 | `INCOME_STATEMENT` | **Confirmed** — VCI only | **Implemented** | 181 metric codes per row |
-| `CASH_FLOW` | **Not yet probed** | Not implemented | Assumed by analogy; must be probed before adding to fetch plan |
+| `CASH_FLOW` | **Confirmed** — VCI + FPT | **Implemented** | 225 codes per row; `publicDate` non-null |
 | Other sections (ratios, notes) | **Not discovered** | Not implemented | Requires DevTools discovery |
 
 The manifest planner currently accepts `BALANCE_SHEET`, `INCOME_STATEMENT`, and

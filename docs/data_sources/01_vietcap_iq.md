@@ -2018,7 +2018,7 @@ See `docs/data_sources/vietcap_iq_fa_firm_type_determination.md`.
 
 #### FA Option C Mapping Resolver
 
-Pure offline Option C mapping resolver implemented (not yet wired into parser). Script:
+Pure offline Option C mapping resolver implemented. Script:
 `scripts/resolve_vietcap_iq_fa_metric_mapping.py` (74 tests, 487 total passing).
 
 Resolves `(section, line_item_code)` → `MappingResult` with six statuses:
@@ -2032,10 +2032,23 @@ Resolves `(section, line_item_code)` → `MappingResult` with six statuses:
 | `no_mapping_available` | Primary expected (`has_primary=True`) but no rows loaded |
 | `section_mismatch` | Code found but stored section does not match queried section |
 
-Parser code not changed. `line_item_name_en` / `line_item_name_vi` not yet emitted.
-`line_item_name` remains empty. DB write and backtest remain blocked.
-
 See `docs/data_sources/vietcap_iq_fa_mapping_resolver_tests.md`.
+
+---
+
+#### FA Parser Mapping Integration
+
+Resolver wired into `scripts/parse_vietcap_iq_fa_payloads_dry_run.py`. 7 new output columns
+added after `line_item_name` (legacy — always empty): `line_item_name_en`, `line_item_name_vi`,
+`mapping_status`, `mapping_source_symbol`, `mapping_source_run_id`, `mapping_conflict`,
+`mapping_group`. All columns default to `""` when no mapping flags are supplied (backward
+compatible). Existing tests unchanged (552 total passing, +65 new tests).
+
+Dry-run validated on 5 saved payloads (VCI BS / IS / CF, FPT BS / CF): 53,013 fact rows,
+0 errors. VCI BALANCE_SHEET: 87% rows named (11,849/13,571). No DB write. No backtest.
+`publicDate` PIT semantics still unconfirmed. Mapping coverage still below 95% DB-write gate.
+
+See `docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md`.
 
 ---
 
