@@ -88,10 +88,11 @@ The following conditions make parser integration premature:
    contain a wrong or misleading name that depends on which firm type's mapping happened to be
    loaded. This is a data corruption risk for downstream consumers.
 
-3. **Firm-type determination logic not designed:** The strategy is now documented (Option C —
-   this document). However, the parser-level logic that maps a symbol to its firm type (to
-   select the correct per-symbol mapping payload) has not been designed. Without this, the
-   primary lookup step in §6.2 cannot be implemented correctly.
+3. **Firm-type determination logic not yet integrated into parser:** The determination logic
+   is now designed and documented (`docs/data_sources/vietcap_iq_fa_firm_type_determination.md`)
+   with a planner script (`scripts/plan_vietcap_iq_fa_firm_type_mapping.py`). However, the
+   parser code has not been changed. The planner output must be wired into the parser's primary
+   lookup step (§6.2) before integration can proceed.
 
 4. **`publicDate` PIT unconfirmed:** Even with correct names, DB write remains blocked on PIT
    validation. Rushing mapping integration does not unblock DB write by itself.
@@ -153,8 +154,9 @@ auditability of "which mapping produced this name" is lost.
 **Behavior:**
 
 1. **Primary lookup:** Use the firm-type-specific mapping for the symbol being parsed.
-   - Determine the firm type from `isBank` in the symbol universe, or from the mapping source
-     symbol that produced the closest match.
+   - Determine the firm type using the Approach D hybrid logic (see
+     `docs/data_sources/vietcap_iq_fa_firm_type_determination.md`): explicit override table
+     for directly-probed symbols, then `company_type_code` from the Vietcap IQ universe CSV.
    - If a saved mapping payload for that firm type exists, use it as primary.
 2. **Consensus fallback:** For codes not covered by the primary mapping, fall back to the
    union consensus mapping — but only if:
@@ -302,7 +304,7 @@ Before any parser integration code is merged, the following test groups must exi
 | Mapping integration strategy documented | **Done** — this document |
 | Conflict policy accepted (never populate for conflicting codes) | **Done** — defined in §6.3 |
 | Mapping coverage report generated from current saved payloads | **Done** — `data/processed/vietcap_iq/fa_metric_mapping_union_coverage.csv` |
-| Firm-type determination logic designed | **Not done** — must define how parser identifies the firm type for each symbol |
+| Firm-type determination logic designed | **Done** — `docs/data_sources/vietcap_iq_fa_firm_type_determination.md`; planner script `scripts/plan_vietcap_iq_fa_firm_type_mapping.py`; 46 tests |
 | Tests for all lookup behaviors written (§6.6) | **Not done** |
 | Parser integration code reviewed and approved | **Not done** |
 

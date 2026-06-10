@@ -1997,6 +1997,25 @@ See `docs/data_sources/vietcap_iq_fa_mapping_integration_strategy.md`.
 
 `line_item_name` is not populated. DB write and backtest remain blocked.
 
+#### FA Firm-Type Determination Design
+
+Firm-type determination logic designed (not integrated into parser). Recommended:
+Approach D — Hybrid metadata-primary. Uses `company_type_code` from the Vietcap IQ
+universe CSV to select the correct firm-type-specific mapping payload:
+
+| `company_type_code` | Mapping group | Source symbol |
+|---|---|---|
+| `NH` (bank) | bank | VCB |
+| `BH` (insurance) | insurance | BVH |
+| `CK` (securities) | securities | VCI |
+| `CT`, `QU`, other | general | (none — consensus fallback only) |
+
+Explicit overrides for the 4 directly-probed symbols (VCI, SSI, VCB, BVH) take precedence.
+Planner script: `scripts/plan_vietcap_iq_fa_firm_type_mapping.py` (offline, 46 tests).
+Parser code not changed. `line_item_name` remains empty.
+
+See `docs/data_sources/vietcap_iq_fa_firm_type_determination.md`.
+
 ---
 
 </details>
