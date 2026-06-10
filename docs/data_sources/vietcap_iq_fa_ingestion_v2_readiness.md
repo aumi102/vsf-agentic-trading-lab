@@ -307,6 +307,12 @@ re-ingestion from multiple runs (e.g., a dedup/upsert policy on
   section-matched codes, with full provenance tracking. See
   `docs/data_sources/vietcap_iq_fa_mapping_integration_strategy.md` for the full design.
   The strategy is **designed, not implemented.** Parser code has not been changed.
+- **Firm-type determination:** How the parser selects the correct firm-type mapping group for
+  each symbol is designed in `docs/data_sources/vietcap_iq_fa_firm_type_determination.md`.
+  Classification uses `company_type_code` from the Vietcap IQ universe CSV (`NH`=bank,
+  `BH`=insurance, `CK`=securities, others=general) with an explicit override table for the
+  four directly-probed symbols (VCI, SSI, VCB, BVH). Planner script:
+  `scripts/plan_vietcap_iq_fa_firm_type_mapping.py`. Not yet integrated into the parser.
 - **Future integration rule:** When the parser integration is eventually implemented, it
   must populate `line_item_name_en` (and `line_item_name_vi`) via the hybrid lookup, not
   the legacy `line_item_name` column. The `_check_no_invented_names` guard must still pass —
