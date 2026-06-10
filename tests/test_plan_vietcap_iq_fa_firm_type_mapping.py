@@ -397,8 +397,17 @@ class TestNoNetworkNoDB:
         spec = importlib.util.find_spec("plan_vietcap_iq_fa_firm_type_mapping")
         source = Path(spec.origin).read_text(encoding="utf-8")
         assert "questdb" not in source.lower()
-        assert ".db" not in source or "DictWriter" in source  # .db in DictWriter is fine
         assert "sqlite3" not in source
+        # No DB file writes — check no .db/.sqlite extension in open() calls
+        for line in source.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            assert ".sqlite" not in stripped, f"sqlite file reference: {stripped!r}"
+            if ".db" in stripped:
+                assert "DictWriter" in stripped or "DictReader" in stripped, (
+                    f"Possible DB file reference: {stripped!r}"
+                )
 
     def test_no_db_file_written(self, tmp_path):
         out = tmp_path / "out.csv"
