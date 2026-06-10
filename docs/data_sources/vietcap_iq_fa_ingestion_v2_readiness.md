@@ -302,14 +302,22 @@ re-ingestion from multiple runs (e.g., a dedup/upsert policy on
   integration strategy (per-symbol vs union) must also be decided.
 - **Sources confirmed:** `/financial-statement/metrics` endpoint returns the mapping.
   Additional firm types (fund management, etc.) may cover residual uncovered codes.
+- **Integration strategy:** Option C (Hybrid gated mapping) is the documented recommended
+  approach — per-symbol mapping as primary, union consensus as fallback for non-conflicting
+  codes, with full provenance tracking. See
+  `docs/data_sources/vietcap_iq_fa_mapping_integration_strategy.md` for the full design.
 - **Integration rule:** Once a verified mapping is available, the parser may populate
-  `line_item_name` from the mapping dict. The `_check_no_invented_names` guard must still
-  pass — any code not in the mapping must leave `line_item_name` empty.
+  `line_item_name_en` from the mapping using the hybrid lookup. The `_check_no_invented_names`
+  guard must still pass — conflicting, uncovered, and section-mismatched codes must leave
+  `line_item_name_en` empty. The existing `line_item_name` column remains empty until a
+  deliberate deprecation decision is documented.
 - **Do not invent names.** Prefix-level inferences (`bsa*` ≈ balance sheet assets) are
-  not verified and must not be written into `line_item_name`.
+  not verified and must not be written into any name field.
 - **Coverage threshold:** The mapping must cover a sufficient fraction of the observed
   codes before DB write is unblocked. Suggested minimum: ≥95% code coverage for each
   confirmed section.
+- **Integration is designed but not implemented.** `line_item_name` remains empty in all
+  current parser output.
 
 ---
 
@@ -383,7 +391,7 @@ All DB write gates (§17) must be met first. Additionally:
 | 1. Re-probe `/financial-statement/metrics` | ~~Network access restored~~ | **Done** — HTTP 200, `run_id=20260610T025420Z`; 1078 codes, coverage 43–66%; see `vietcap_iq_fa_mapping_cashflow_probe.md` |
 | 2. Probe CASH_FLOW section for VCI and FPT | ~~None~~ | **Done** — `run_id=20260610T025429Z` (VCI) and `20260610T025440Z` (FPT); identical envelope; 33Q + 8Y; 225 codes; publicDate non-null |
 | 3. Probe 3–5 additional symbols across HOSE/HNX/UPCOM | None | Check that payload shape is consistent across firm types |
-| 4. Build metric mapping integration | Step 1 or alternative mapping found | Extend parser dry-run to populate `line_item_name` from verified mapping |
+| 4. Build metric mapping integration | Step 1; strategy designed | **Strategy designed** — Option C (Hybrid gated) documented in `vietcap_iq_fa_mapping_integration_strategy.md`; parser not yet modified; `line_item_name` still empty |
 | 5. Run mapping coverage check | Step 4 | Verify ≥ threshold coverage before DB gate discussion |
 | 6. Validate `publicDate` PIT semantics | External filing records | Cross-check 5–10 sample rows against HOSE/HNX filing dates |
 | 7. Design canonical DB schema | Steps 4–6 complete | Define QuestDB table(s), dedup key, and upsert policy |
@@ -409,6 +417,8 @@ All DB write gates (§17) must be met first. Additionally:
 - `docs/data_sources/vietcap_iq_fa_parser_dry_run.md` — parser command and output
 - `docs/data_sources/vietcap_iq_fa_metric_mapping_discovery.md` — mapping probe results
 - `docs/data_sources/vietcap_iq_fa_mapping_cashflow_probe.md` — mapping re-probe and CASH_FLOW probe results
+- `docs/data_sources/vietcap_iq_fa_mapping_coverage_bank_probe.md` — bank/insurance union coverage and Options A/B/C overview
+- `docs/data_sources/vietcap_iq_fa_mapping_integration_strategy.md` — integration strategy design (Option C recommended)
 - `docs/data_sources/vietcap_iq_fa_parser_hardening.md` — validation checks and test coverage
 - `docs/ingestion_v2_schema_plan.md` — overall ingestion V2 context
 - `scripts/parse_vietcap_iq_fa_payloads_dry_run.py` — parser implementation
