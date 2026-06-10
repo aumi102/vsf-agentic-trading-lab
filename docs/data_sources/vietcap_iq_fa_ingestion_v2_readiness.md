@@ -298,26 +298,30 @@ re-ingestion from multiple runs (e.g., a dedup/upsert policy on
 - **Key finding:** The mapping endpoint is firm-type-specific. VCB returns bank codes (`isb*`,
   `bsb*`, `cfb*`); BVH returns insurance codes (`isi*`, `bsi*`). A universal mapping requires
   either per-symbol querying or a union with conflict resolution.
-- **What is needed:** Coverage ≥ 95% for each confirmed section before integration. An
-  integration strategy (per-symbol vs union) must also be decided.
+- **What is needed:** Coverage ≥ 95% per section is still required before parser integration
+  proceeds. The integration strategy has been documented (Option C).
 - **Sources confirmed:** `/financial-statement/metrics` endpoint returns the mapping.
   Additional firm types (fund management, etc.) may cover residual uncovered codes.
 - **Integration strategy:** Option C (Hybrid gated mapping) is the documented recommended
-  approach — per-symbol mapping as primary, union consensus as fallback for non-conflicting
-  codes, with full provenance tracking. See
+  approach — per-symbol mapping as primary, union consensus as fallback for conflict-free,
+  section-matched codes, with full provenance tracking. See
   `docs/data_sources/vietcap_iq_fa_mapping_integration_strategy.md` for the full design.
-- **Integration rule:** Once a verified mapping is available, the parser may populate
-  `line_item_name_en` from the mapping using the hybrid lookup. The `_check_no_invented_names`
-  guard must still pass — conflicting, uncovered, and section-mismatched codes must leave
-  `line_item_name_en` empty. The existing `line_item_name` column remains empty until a
-  deliberate deprecation decision is documented.
+  The strategy is **designed, not implemented.** Parser code has not been changed.
+- **Future integration rule:** When the parser integration is eventually implemented, it
+  must populate `line_item_name_en` (and `line_item_name_vi`) via the hybrid lookup, not
+  the legacy `line_item_name` column. The `_check_no_invented_names` guard must still pass —
+  conflicting, uncovered, and section-mismatched codes must leave `line_item_name_en` empty.
+  The existing `line_item_name` column must remain empty until a deliberate deprecation or
+  migration decision is separately documented and reviewed.
+- **Mapping integration does not unblock DB write by itself.** DB write remains blocked until
+  PIT validation, QuestDB schema design, full-history fetch, and all §17 quality gates are
+  cleared — independent of whether mapping integration is implemented.
 - **Do not invent names.** Prefix-level inferences (`bsa*` ≈ balance sheet assets) are
   not verified and must not be written into any name field.
-- **Coverage threshold:** The mapping must cover a sufficient fraction of the observed
-  codes before DB write is unblocked. Suggested minimum: ≥95% code coverage for each
-  confirmed section.
-- **Integration is designed but not implemented.** `line_item_name` remains empty in all
-  current parser output.
+- **Coverage threshold:** The mapping must cover ≥95% of observed codes per section before
+  the mapping gate in §17 can be marked met.
+- **Current parser output:** `line_item_name` remains empty in all current parser output.
+  `line_item_name_en` does not yet exist in parser output — it is a planned future column.
 
 ---
 

@@ -81,16 +81,17 @@ FA probe payloads:
 The following conditions make parser integration premature:
 
 1. **Coverage below gate:** No FA section reaches the 95% coverage threshold. Using a union
-   with < 95% coverage would leave 8–13% of codes with empty `line_item_name` even after
+   with < 95% coverage would leave 8–13% of codes with empty `line_item_name_en` even after
    integration — acceptable only if the integration strategy handles this explicitly.
 
 2. **88 name conflicts:** If the parser writes a conflicting name for a code, the output would
    contain a wrong or misleading name that depends on which firm type's mapping happened to be
    loaded. This is a data corruption risk for downstream consumers.
 
-3. **No integration strategy decided:** Whether to use per-symbol, universal union, or a hybrid
-   approach determines the parser API, the required input files, and the validation checks.
-   Writing integration code before the strategy is decided risks rework.
+3. **Firm-type determination logic not designed:** The strategy is now documented (Option C —
+   this document). However, the parser-level logic that maps a symbol to its firm type (to
+   select the correct per-symbol mapping payload) has not been designed. Without this, the
+   primary lookup step in §6.2 cannot be implemented correctly.
 
 4. **`publicDate` PIT unconfirmed:** Even with correct names, DB write remains blocked on PIT
    validation. Rushing mapping integration does not unblock DB write by itself.
@@ -106,7 +107,7 @@ The following conditions make parser integration premature:
 ### Option A — Per-symbol mapping
 
 **Behavior:** Before parsing a symbol's FA payload, query `/financial-statement/metrics` with
-that symbol. Use the returned firm-type-specific mapping to populate `line_item_name`. No
+that symbol. Use the returned firm-type-specific mapping to populate `line_item_name_en`. No
 union mapping involved.
 
 | Dimension | Assessment |
@@ -128,7 +129,7 @@ additional codes discovered by bank/insurance mapping probes when parsing a secu
 ### Option B — Universal union mapping
 
 **Behavior:** Build the union mapping from all available firm-type payloads. Apply it
-universally to every symbol regardless of firm type. Skip conflicting codes (leave `line_item_name`
+universally to every symbol regardless of firm type. Skip conflicting codes (leave `line_item_name_en`
 empty for codes in the 88-conflict set).
 
 | Dimension | Assessment |
@@ -159,8 +160,8 @@ auditability of "which mapping produced this name" is lost.
    union consensus mapping — but only if:
    - the code has `conflict=false` in the union CSV;
    - the code's `section` matches the FA section being parsed.
-3. **No name for uncovered, conflicting, or mismatched codes.** Leave `line_item_name` empty
-   with explicit `mapping_status` values (see §5).
+3. **No name for uncovered, conflicting, or mismatched codes.** Leave `line_item_name_en` empty
+   with explicit `mapping_status` values (see §6.3).
 4. **Record the mapping provenance** for every populated name via new output columns.
 
 | Dimension | Assessment |
