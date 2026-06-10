@@ -61,9 +61,8 @@ write is permitted. No DB write or backtest is implemented in this phase.
 | Assumption | Why Unconfirmed | Required to Unblock |
 |---|---|---|
 | `publicDate` represents the exchange filing/publication date usable for PIT availability | No cross-check against HOSE/HSX/HNX official filing records or Vietcap documentation | PIT validation gate (see §14) |
-| Metric codes (`bsa1`, `isa25`, etc.) map to human-readable line-item names | No mapping found locally or via probe; `/financial-statement/metrics` probe inconclusive | Metric mapping gate (see §13) |
-| Endpoint returns the same shape for all HOSE/HNX/UPCOM listed firms and all FA sections | Only tested for VCI (securities) and FPT (general) on BALANCE_SHEET and INCOME_STATEMENT | Broader symbol/section probe |
-| CASH_FLOW section exists and returns data under the same payload envelope | **Confirmed** — HTTP 200 for VCI and FPT CASH_FLOW (`run_id=20260610T025429Z`, `20260610T025440Z`); 33Q + 8Y, 225 codes per row, `publicDate` non-null for all rows | — (gate met for CASH_FLOW) |
+| Metric codes (`bsa1`, `isa25`, etc.) map to human-readable line-item names | Mapping payload retrieved (run `20260610T025420Z`); coverage 62.8% BS / 43.6% IS / 65.8% CF — below 95% gate; remaining codes have no verified name | Metric mapping gate (see §13) — coverage must reach ≥ 95% per section |
+| Endpoint returns the same shape for all HOSE/HNX/UPCOM listed firms and all FA sections | Only tested for VCI (securities) and FPT (general) on BS, IS, and CF | Broader symbol/section probe |
 | `accumulatedValue` / trading-value units are consistent across symbols | Not reviewed for FA endpoint; documented open risk for gap-chart | FA-specific payload review |
 | The endpoint is stable at scale (1598-symbol fetch) | Only three symbols have been tested | Rate-limit and access review |
 | `organCode` is always equal to `ticker` for all non-securities firms | Sometimes differs; parser emits `WARNING_CODE_TICKER_DIFFER` per row | Source documentation |
