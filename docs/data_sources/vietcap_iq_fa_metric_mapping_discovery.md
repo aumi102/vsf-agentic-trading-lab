@@ -128,8 +128,10 @@ The union of all 4 payloads has 1793 codes with 88 name conflicts:
 | INCOME_STATEMENT | 43.6% | **92.3%** | 86.2% | **blocked** |
 | CASH_FLOW | 65.8% | **86.7%** | 78.2% | **blocked** |
 
-Union coverage is the best achievable across the 4 tested firm types. **No section reaches
-the 95% gate threshold.** Coverage is partial but significantly improved from VCI-only.
+Best observed union coverage across tested firm types so far (VCI, VCB, BVH, SSI). **No
+section reaches the 95% gate threshold.** Coverage is significantly improved from VCI-only,
+but additional firm types may still improve coverage. Mapping integration remains blocked
+because no section reaches 95% and the 88 conflicts require an integration strategy decision.
 
 Computed by `scripts/analyze_vietcap_iq_fa_metric_mapping_union.py`. See
 `docs/data_sources/vietcap_iq_fa_mapping_coverage_bank_probe.md` for full analysis.
