@@ -38,6 +38,7 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - FA shape cross-check added (`docs/data_sources/vietcap_iq_fa_shape_cross_check.md`): VCI INCOME_STATEMENT (run `20260609T075846Z`) and FPT BALANCE_SHEET (run `20260609T075857Z`) both returned HTTP 200; initial section/symbol cross-check passed (three tested cases); `nos*` columns are null for FPT (not applicable for non-securities firms); parser dry-run design can start; no parser or DB write yet.
 - FA parser dry-run implemented (`scripts/parse_vietcap_iq_fa_payloads_dry_run.py`): wide-to-long pivot on all three saved payloads; `34,563` total fact rows (`8,695` present, `23,885` zero, `1,983` missing/null); no DB write, no backtest; `line_item_name` empty (no mapping); `publicDate` PIT semantics unconfirmed; see `docs/data_sources/vietcap_iq_fa_parser_dry_run.md`.
 - FA metric mapping discovery run: no local mapping found; live probe of `/financial-statement/metrics` (run `20260609T091305Z`) failed at DNS level — inconclusive; mapping coverage not yet measurable; see `docs/data_sources/vietcap_iq_fa_metric_mapping_discovery.md`.
+- FA dry-run parser hardened: 7 validation checks added (`duplicate_keys`, `publicdate_format`, `mapping_coverage`, `nos_pattern`, `value_status_validity`, `no_invented_names`, `metric_columns_detected`); `--strict` flag; deterministic sort; 30 new tests (235 total); see `docs/data_sources/vietcap_iq_fa_parser_hardening.md`.
 - Main blocker: safe fetch policy, price adjustment semantics, corporate actions, FA metric name mapping, `publicDate` PIT validation, parser hardening for production, full-history FA fetch policy, and tool contracts.
 
 ---
@@ -127,8 +128,13 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 - [x] FA shape cross-check: VCI INCOME_STATEMENT and FPT BALANCE_SHEET both HTTP 200; initial section/symbol cross-check passed (three tested cases); `nos*` null for non-securities firms; parser dry-run design can start; see `docs/data_sources/vietcap_iq_fa_shape_cross_check.md`.
 - [x] FA dry-run parser implemented: `scripts/parse_vietcap_iq_fa_payloads_dry_run.py`; `34,563` fact rows from 3 saved payloads; no DB write, no backtest; `publicDate` PIT semantics unconfirmed; see `docs/data_sources/vietcap_iq_fa_parser_dry_run.md`.
 - [ ] FA metric mapping: no local mapping found; `/financial-statement/metrics` probe (run `20260609T091305Z`) failed at DNS level — inconclusive; `line_item_name` empty; see `docs/data_sources/vietcap_iq_fa_metric_mapping_discovery.md`.
-- [ ] Full-history FA fetch not implemented.
-- [ ] PIT availability and statement/ratio schema not finalized.
+- [x] FA parser hardened: 7 validation checks (`duplicate_keys`, `publicdate_format`, `mapping_coverage`, `nos_pattern`, `value_status_validity`, `no_invented_names`, `metric_columns_detected`); `--strict` flag; deterministic sort; 235 tests pass; see `docs/data_sources/vietcap_iq_fa_parser_hardening.md`.
+- [x] FA ingestion V2 readiness package added: readiness doc (`docs/data_sources/vietcap_iq_fa_ingestion_v2_readiness.md`) defines confirmed facts, open gates, all policies, and DB/backtest gates; manifest planner (`scripts/plan_vietcap_iq_fa_full_history_manifest.py`) generates deterministic fetch-plan CSV, no network; 43 new tests (278 total passing); branch `phase/fa-ingestion-v2-readiness`.
+- [ ] Full-history FA fetch not implemented — planned, not implemented; blocked on mapping/PIT/schema gates.
+- [ ] Metric mapping still incomplete — `line_item_name` empty for all parsed rows.
+- [ ] PIT availability (`publicDate` semantics) still unconfirmed.
+- [ ] DB write still blocked — mapping, PIT, and schema gates not met.
+- [ ] Backtest still blocked — DB write not implemented.
 
 ### RAG / text data future module
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -57,6 +58,18 @@ WARNING_NO_NAME: str = "line_item_name_unknown_no_mapping"
 WARNING_PIT: str = "publicDate_semantics_unconfirmed"
 WARNING_CODE_TICKER_DIFFER: str = "organCode_ticker_differ"
 
+# Pattern: publicDate must start with YYYY-MM-DD if present.
+_ISO_DATE_RE: re.Pattern[str] = re.compile(r"^\d{4}-\d{2}-\d{2}")
+
+# Natural composite key for uniqueness check in long-format output.
+_FACT_KEY_FIELDS: tuple[str, ...] = (
+    "source_run_id",
+    "symbol",
+    "section",
+    "source_period_label",
+    "line_item_code",
+)
+
 
 def _section_from_metadata_or_url(meta: dict) -> str:
     """Return section from metadata['section'] field; fall back to URL parsing."""
@@ -82,6 +95,240 @@ def _value_status(v: Any) -> str:
 
 def _get_metric_columns(row: dict) -> list[str]:
     return [k for k in row if k not in METADATA_FIELDS]
+
+
+def _sort_facts(facts: list[dict]) -> list[dict]:
+    """Sort facts for deterministic output order."""
+    return sorted(
+        facts,
+        key=lambda f: (
+            f.get("symbol", ""),
+            f.get("section", ""),
+            f.get("source_period_label", ""),
+            f.get("line_item_code", ""),
+            f.get("source_run_id", ""),
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Validation helpers
+# ---------------------------------------------------------------------------
+
+
+def _check_duplicate_keys(facts: list[dict]) -> list[dict]:
+    """Check for duplicate natural keys in long-format output."""
+    seen: dict[tuple, int] = {}
+    dupes: list[tuple] = []
+    for i, f in enumerate(facts):
+        key = tuple(f.get(k, "") for k in _FACT_KEY_FIELDS)
+        if key in seen:
+            dupes.append(key)
+        else:
+            seen[key] = i
+    if dupes:
+        return [{
+            "check": "duplicate_keys",
+            "severity": "error",
+            "detail": (
+                f"{len(dupes)} duplicate (run_id, symbol, section, period_label, "
+                f"line_item_code) keys found. First: {dupes[0]}"
+            ),
+        }]
+    return [{
+        "check": "duplicate_keys",
+        "severity": "info",
+        "detail": f"No duplicate keys found across {len(facts):,} fact rows.",
+    }]
+
+
+def _check_publicdate_format(facts: list[dict]) -> list[dict]:
+    """Check that non-empty publicDate values look like ISO date strings."""
+    invalid: set[str] = set()
+    for f in facts:
+        pd = f.get("public_date", "")
+        if pd and not _ISO_DATE_RE.match(str(pd)):
+            invalid.add(str(pd))
+    if invalid:
+        sample = sorted(invalid)[:5]
+        return [{
+            "check": "publicdate_format",
+            "severity": "warning",
+            "detail": (
+                f"{len(invalid)} unique publicDate value(s) do not match ISO date format. "
+                f"Sample: {sample}. Expected YYYY-MM-DD[T...]."
+            ),
+        }]
+    return [{
+        "check": "publicdate_format",
+        "severity": "info",
+        "detail": "All non-empty publicDate values match ISO date format.",
+    }]
+
+
+def _check_mapping_coverage(facts: list[dict]) -> list[dict]:
+    """Explicitly verify mapping coverage — expected 0% until mapping is loaded."""
+    unique_codes = {f.get("line_item_code", "") for f in facts if f.get("line_item_code")}
+    rows_with_name = sum(1 for f in facts if f.get("line_item_name", ""))
+    total = len(facts)
+    pct = rows_with_name / total * 100 if total else 0.0
+    return [{
+        "check": "mapping_coverage",
+        "severity": "info",
+        "detail": (
+            f"line_item_name populated for {rows_with_name}/{total} rows ({pct:.1f}%). "
+            f"Unique line_item_codes: {len(unique_codes)}. "
+            "No mapping loaded — see vietcap_iq_fa_metric_mapping_discovery.md."
+        ),
+    }]
+
+
+def _check_no_invented_names(facts: list[dict]) -> list[dict]:
+    """Guard: line_item_name must remain empty when no mapping is loaded."""
+    non_empty = [f for f in facts if f.get("line_item_name", "")]
+    if non_empty:
+        return [{
+            "check": "no_invented_names",
+            "severity": "error",
+            "detail": (
+                f"{len(non_empty)} fact row(s) have non-empty line_item_name. "
+                "Metric names must not be invented — load a verified mapping or leave empty."
+            ),
+        }]
+    return [{
+        "check": "no_invented_names",
+        "severity": "info",
+        "detail": "line_item_name is empty for all rows — no invented names.",
+    }]
+
+
+def _check_value_status_validity(facts: list[dict]) -> list[dict]:
+    """All value_status values must be 'present', 'zero', or 'missing'."""
+    valid = {"present", "zero", "missing"}
+    invalid = [f for f in facts if f.get("value_status") not in valid]
+    if invalid:
+        return [{
+            "check": "value_status_validity",
+            "severity": "error",
+            "detail": f"{len(invalid)} fact row(s) have invalid value_status (not in {valid}).",
+        }]
+    return [{
+        "check": "value_status_validity",
+        "severity": "info",
+        "detail": f"All {len(facts):,} fact rows have valid value_status.",
+    }]
+
+
+def _check_nos_pattern(facts: list[dict]) -> list[dict]:
+    """Check nos* column null patterns by symbol.
+
+    For securities firms: nos* may have non-null values.
+    For non-securities firms: nos* should be entirely null.
+    Mixed patterns are flagged as warnings for review.
+    """
+    from collections import defaultdict
+    nos_statuses: dict[str, list[str]] = defaultdict(list)
+    for f in facts:
+        code = f.get("line_item_code", "")
+        symbol = f.get("symbol", "")
+        if code.startswith("nos"):
+            nos_statuses[symbol].append(f.get("value_status", ""))
+
+    if not nos_statuses:
+        return [{
+            "check": "nos_pattern",
+            "severity": "info",
+            "detail": "No nos* columns found in fact rows.",
+        }]
+
+    findings = []
+    for symbol, statuses in sorted(nos_statuses.items()):
+        total = len(statuses)
+        null_count = statuses.count("missing")
+        null_pct = null_count / total * 100 if total else 0.0
+        if null_pct == 100.0:
+            findings.append({
+                "check": "nos_pattern",
+                "severity": "info",
+                "detail": (
+                    f"symbol={symbol}: nos* columns 100% null/missing ({null_count}/{total}). "
+                    "Expected pattern for non-securities firm."
+                ),
+            })
+        elif null_pct == 0.0:
+            findings.append({
+                "check": "nos_pattern",
+                "severity": "info",
+                "detail": (
+                    f"symbol={symbol}: nos* columns 0% null ({null_count}/{total}). "
+                    "Consistent with securities firm having off-balance-sheet notes."
+                ),
+            })
+        else:
+            findings.append({
+                "check": "nos_pattern",
+                "severity": "warning",
+                "detail": (
+                    f"symbol={symbol}: nos* columns {null_pct:.0f}% null ({null_count}/{total}). "
+                    "Mixed pattern — review expected for this company type."
+                ),
+            })
+    return findings
+
+
+def validate_parse_result(
+    all_facts: list[dict],
+    all_stats: list[dict],
+) -> list[dict]:
+    """Run validation checks on all parsed facts and stats.
+
+    Returns a list of findings, each with 'check', 'severity', 'detail'.
+    Severity levels: 'error' (blocks strict mode), 'warning', 'info'.
+    """
+    findings: list[dict] = []
+
+    # Check: metric columns detected in each payload
+    for s in all_stats:
+        if s.get("metric_column_count", 0) == 0:
+            findings.append({
+                "check": "metric_columns_detected",
+                "severity": "error",
+                "detail": (
+                    f"run_id={s.get('run_id')}: 0 metric columns detected. "
+                    "Payload may be metadata-only or malformed."
+                ),
+            })
+        else:
+            findings.append({
+                "check": "metric_columns_detected",
+                "severity": "info",
+                "detail": (
+                    f"run_id={s.get('run_id')} section={s.get('section')}: "
+                    f"{s['metric_column_count']} metric columns detected."
+                ),
+            })
+
+    if not all_facts:
+        findings.append({
+            "check": "facts_produced",
+            "severity": "error",
+            "detail": "No fact rows produced from any payload.",
+        })
+        return findings
+
+    findings.extend(_check_duplicate_keys(all_facts))
+    findings.extend(_check_publicdate_format(all_facts))
+    findings.extend(_check_mapping_coverage(all_facts))
+    findings.extend(_check_no_invented_names(all_facts))
+    findings.extend(_check_value_status_validity(all_facts))
+    findings.extend(_check_nos_pattern(all_facts))
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# Core parse functions
+# ---------------------------------------------------------------------------
 
 
 def melt_period_rows(
@@ -308,10 +555,16 @@ def discover_payloads(
     return found
 
 
+# ---------------------------------------------------------------------------
+# Report generation
+# ---------------------------------------------------------------------------
+
+
 def generate_report(
     all_stats: list[dict],
     all_facts: list[dict],
     all_errors: list[dict],
+    validation_findings: list[dict] | None = None,
 ) -> str:
     lines: list[str] = [
         "# Vietcap IQ FA Parser Dry-Run Report",
@@ -377,6 +630,9 @@ def generate_report(
         "| Raw payloads parsed | **Yes** |",
         "| Wide-to-long pivot | **Done** |",
         "| Period encoding (`yearReport` + `lengthReport`) | **Done** |",
+        "| Duplicate key check | **Done** |",
+        "| publicDate format check | **Done** |",
+        "| nos* null-pattern check | **Done** |",
         "| `publicDate` copied | **Yes** — as candidate field only |",
         "| `publicDate` PIT semantics | **Unconfirmed** |",
         "| Line item names | **Not available** — opaque codes only |",
@@ -384,6 +640,25 @@ def generate_report(
         "| Full-universe fetch | **Not implemented** |",
         "| Backtest | **Not implemented** |",
         "",
+    ]
+
+    if validation_findings:
+        errors_found = [f for f in validation_findings if f["severity"] == "error"]
+        warnings_found = [f for f in validation_findings if f["severity"] == "warning"]
+        lines += [
+            "## Validation Results",
+            "",
+            f"**Errors:** {len(errors_found)}  **Warnings:** {len(warnings_found)}  "
+            f"**Info:** {len(validation_findings) - len(errors_found) - len(warnings_found)}",
+            "",
+            "| check | severity | detail |",
+            "|---|---|---|",
+        ]
+        for f in validation_findings:
+            lines.append(f"| `{f['check']}` | `{f['severity']}` | {f['detail']} |")
+        lines.append("")
+
+    lines += [
         "## PIT / Backtest Warning",
         "",
         "> **`publicDate`** is present and non-null for all rows in all tested payloads. "
@@ -397,6 +672,11 @@ def generate_report(
     ]
 
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Output
+# ---------------------------------------------------------------------------
 
 
 def write_outputs(
@@ -475,6 +755,12 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         default=False,
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        default=False,
+        help="Exit non-zero if any validation findings have severity='error'.",
+    )
     args = parser.parse_args(argv)
 
     run_ids: list[str] = []
@@ -516,8 +802,14 @@ def main(argv: list[str] | None = None) -> None:
             f"-> {stats['output_fact_rows']:,} fact rows"
         )
 
-    # Generate report before any max_rows truncation so counts are accurate.
-    report = generate_report(all_stats, all_facts, all_errors)
+    # Run validation before sorting/truncation so counts reflect full parse.
+    validation_findings = validate_parse_result(all_facts, all_stats)
+
+    # Sort for deterministic output order.
+    all_facts = _sort_facts(all_facts)
+
+    # Generate report after validation but before max_rows truncation.
+    report = generate_report(all_stats, all_facts, all_errors, validation_findings)
 
     if args.max_rows is not None:
         all_facts = all_facts[: args.max_rows]
@@ -537,6 +829,14 @@ def main(argv: list[str] | None = None) -> None:
         f"| present: {n_present:,}  zero: {n_zero:,}  missing: {n_missing:,} "
         f"| errors: {len(all_errors):,}"
     )
+
+    error_findings = [f for f in validation_findings if f["severity"] == "error"]
+    if error_findings:
+        print(f"\nValidation ERRORS ({len(error_findings)}):", file=sys.stderr)
+        for f in error_findings:
+            print(f"  [{f['check']}] {f['detail']}", file=sys.stderr)
+        if args.strict:
+            sys.exit(1)
 
 
 if __name__ == "__main__":
