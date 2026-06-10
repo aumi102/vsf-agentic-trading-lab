@@ -1985,6 +1985,18 @@ python scripts/analyze_vietcap_iq_fa_metric_mapping_union.py \
   --output-coverage data/processed/vietcap_iq/fa_metric_mapping_union_coverage.csv
 ```
 
+#### FA Mapping Integration Strategy
+
+Mapping integration strategy designed (not implemented). Recommended: Option C — Hybrid
+gated mapping. Per-symbol mapping as primary, union consensus (conflict-free only) as
+fallback, with provenance columns (`line_item_name_en`, `mapping_status`,
+`mapping_source_symbol`, `mapping_source_run_id`, `mapping_conflict`). Existing
+`line_item_name` remains empty until integration is implemented and tested.
+
+See `docs/data_sources/vietcap_iq_fa_mapping_integration_strategy.md`.
+
+`line_item_name` is not populated. DB write and backtest remain blocked.
+
 ---
 
 </details>
