@@ -23,7 +23,7 @@ write is permitted. No DB write or backtest is implemented in this phase.
 | Payload shape reviewed | **Confirmed** — wide-format `data.quarters` + `data.years`; opaque metric codes; `publicDate` present |
 | Parser dry-run | **Implemented** — `scripts/parse_vietcap_iq_fa_payloads_dry_run.py`; 34,563 long-format fact rows from 3 saved payloads |
 | Parser hardening | **Done** — 7 validation checks; `--strict` mode; deterministic sort; 235 tests pass |
-| Metric code-to-name mapping | **Blocked** — no local mapping; live probe of `/financial-statement/metrics` inconclusive (DNS failure) |
+| Metric code-to-name mapping | **Partially retrieved** — mapping payload confirmed (HTTP 200, `run_id=20260610T025420Z`); 1078 codes across 4 sections; coverage 62.8% BS / 43.6% IS / 65.8% CF; below 95% gate threshold |
 | `publicDate` PIT semantics | **Unconfirmed** — present in payload as candidate field only; semantics not validated against exchange filings |
 | Full-history FA fetch | **Not implemented** — no fetcher script; no symbol universe loop |
 | DB write | **Not implemented** — explicitly blocked |
@@ -47,7 +47,12 @@ write is permitted. No DB write or backtest is implemented in this phase.
 | `null` and `0.0` are distinct in the payload and must stay distinct in the output | Validated by `value_status` logic and `test_validate_preserves_null_vs_zero_distinction` |
 | The parser produces deterministic output given the same saved payloads | `_sort_facts` + `test_sort_facts_is_deterministic` |
 | No duplicate natural keys across the three parsed payloads | `_check_duplicate_keys` passes with `severity=info` |
-| Three parsed payloads cover only VCI BALANCE_SHEET, VCI INCOME_STATEMENT, FPT BALANCE_SHEET | The full FA symbol/section universe has not been fetched |
+| Three originally parsed payloads cover VCI BALANCE_SHEET, VCI INCOME_STATEMENT, FPT BALANCE_SHEET | The full FA symbol/section universe has not been fetched |
+| CASH_FLOW section uses the same `data.quarters` + `data.years` envelope as BALANCE_SHEET and INCOME_STATEMENT | VCI and FPT CASH_FLOW probes, `run_id=20260610T025429Z` and `20260610T025440Z` |
+| CASH_FLOW rows have 225 metric columns; `publicDate` is non-null for all quarterly and annual rows | Confirmed from VCI and FPT CASH_FLOW payloads |
+| `/financial-statement/metrics` returns HTTP 200 with a full mapping payload | `run_id=20260610T025420Z`; data keys: BALANCE_SHEET, INCOME_STATEMENT, CASH_FLOW, NOTE |
+| Mapping payload has 1078 non-null metric codes and 9 null-field display headers across 4 sections | Parsed by `scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py` |
+| Mapping coverage against saved probes: 62.8% (BS), 43.6% (IS), 65.8% (CF) | Coverage computed from 5 saved probe payloads; below 95% gate threshold |
 
 ---
 
@@ -58,7 +63,7 @@ write is permitted. No DB write or backtest is implemented in this phase.
 | `publicDate` represents the exchange filing/publication date usable for PIT availability | No cross-check against HOSE/HSX/HNX official filing records or Vietcap documentation | PIT validation gate (see §14) |
 | Metric codes (`bsa1`, `isa25`, etc.) map to human-readable line-item names | No mapping found locally or via probe; `/financial-statement/metrics` probe inconclusive | Metric mapping gate (see §13) |
 | Endpoint returns the same shape for all HOSE/HNX/UPCOM listed firms and all FA sections | Only tested for VCI (securities) and FPT (general) on BALANCE_SHEET and INCOME_STATEMENT | Broader symbol/section probe |
-| CASH_FLOW and other sections exist and return data under the same payload envelope | Not yet probed; assumed by analogy with confirmed sections | Section probe |
+| CASH_FLOW section exists and returns data under the same payload envelope | **Confirmed** — HTTP 200 for VCI and FPT CASH_FLOW (`run_id=20260610T025429Z`, `20260610T025440Z`); 33Q + 8Y, 225 codes per row, `publicDate` non-null for all rows | — (gate met for CASH_FLOW) |
 | `accumulatedValue` / trading-value units are consistent across symbols | Not reviewed for FA endpoint; documented open risk for gap-chart | FA-specific payload review |
 | The endpoint is stable at scale (1598-symbol fetch) | Only three symbols have been tested | Rate-limit and access review |
 | `organCode` is always equal to `ticker` for all non-securities firms | Sometimes differs; parser emits `WARNING_CODE_TICKER_DIFFER` per row | Source documentation |
@@ -284,13 +289,16 @@ re-ingestion from multiple runs (e.g., a dedup/upsert policy on
 
 ## 15. Metric Mapping Policy
 
-- **Current state:** No verified mapping exists. `line_item_name` is empty for all 34,563
-  parsed fact rows.
-- **What is needed:** A code-to-name mapping from opaque codes (e.g., `bsa1`) to
-  human-readable line-item names (e.g., "Total Assets"), in a verified and stable form.
-- **Sources to investigate:** `/financial-statement/metrics` endpoint (re-probe when
-  network is available); Vietcap localization JSON (`/vietcap-iq/language/vi/company.json`);
-  browser DevTools on the financial statement page.
+- **Current state:** A mapping payload has been retrieved (`run_id=20260610T025420Z`,
+  HTTP 200). It contains 1078 non-null metric codes across sections BALANCE_SHEET,
+  INCOME_STATEMENT, CASH_FLOW, and NOTE. Coverage against saved probe payloads: 62.8% (BS),
+  43.6% (IS), 65.8% (CF). `line_item_name` remains empty for all parsed fact rows until coverage
+  meets the gate threshold and integration is implemented.
+- **What is needed:** Coverage ≥ 95% for each confirmed section before integration.
+  Current coverage is below threshold. Probing additional symbol types (bank, insurance)
+  may improve IS coverage beyond 43.6%.
+- **Sources confirmed:** `/financial-statement/metrics` endpoint returns the mapping.
+  Coverage for some firm-type-specific codes remains unknown.
 - **Integration rule:** Once a verified mapping is available, the parser may populate
   `line_item_name` from the mapping dict. The `_check_no_invented_names` guard must still
   pass — any code not in the mapping must leave `line_item_name` empty.
@@ -324,7 +332,7 @@ All of the following gates must be satisfied before any DB write is implemented:
 
 | Gate | Current Status |
 |---|---|
-| Metric mapping verified and coverage ≥ threshold | **Not met** — no mapping available |
+| Metric mapping verified and coverage ≥ threshold | **Not met** — mapping payload retrieved (1078 codes, run `20260610T025420Z`); coverage 62.8% BS / 43.6% IS / 65.8% CF; below 95% threshold |
 | `publicDate` PIT semantics confirmed | **Not met** — unconfirmed |
 | Canonical DB schema designed and reviewed | **Not met** — schema defined in long-format only; QuestDB table design not implemented |
 | Natural key / dedup policy for re-ingestion defined | **Not met** — design exists in concept only |
@@ -369,8 +377,8 @@ All DB write gates (§17) must be met first. Additionally:
 
 | Step | Depends On | Description |
 |---|---|---|
-| 1. Re-probe `/financial-statement/metrics` | Network access restored | Run the documented probe command; inspect shape and coverage |
-| 2. Probe CASH_FLOW section for VCI and FPT | None | Verify payload shape and metric code set for CASH_FLOW |
+| 1. Re-probe `/financial-statement/metrics` | ~~Network access restored~~ | **Done** — HTTP 200, `run_id=20260610T025420Z`; 1078 codes, coverage 43–66%; see `vietcap_iq_fa_mapping_cashflow_probe.md` |
+| 2. Probe CASH_FLOW section for VCI and FPT | ~~None~~ | **Done** — `run_id=20260610T025429Z` (VCI) and `20260610T025440Z` (FPT); identical envelope; 33Q + 8Y; 225 codes; publicDate non-null |
 | 3. Probe 3–5 additional symbols across HOSE/HNX/UPCOM | None | Check that payload shape is consistent across firm types |
 | 4. Build metric mapping integration | Step 1 or alternative mapping found | Extend parser dry-run to populate `line_item_name` from verified mapping |
 | 5. Run mapping coverage check | Step 4 | Verify ≥ threshold coverage before DB gate discussion |
@@ -397,6 +405,7 @@ All DB write gates (§17) must be met first. Additionally:
 - `docs/data_sources/vietcap_iq_fa_shape_cross_check.md` — cross-section/symbol check
 - `docs/data_sources/vietcap_iq_fa_parser_dry_run.md` — parser command and output
 - `docs/data_sources/vietcap_iq_fa_metric_mapping_discovery.md` — mapping probe results
+- `docs/data_sources/vietcap_iq_fa_mapping_cashflow_probe.md` — mapping re-probe and CASH_FLOW probe results
 - `docs/data_sources/vietcap_iq_fa_parser_hardening.md` — validation checks and test coverage
 - `docs/ingestion_v2_schema_plan.md` — overall ingestion V2 context
 - `scripts/parse_vietcap_iq_fa_payloads_dry_run.py` — parser implementation

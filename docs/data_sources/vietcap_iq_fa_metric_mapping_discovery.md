@@ -51,65 +51,72 @@ Individual codes (e.g., `bsa1` → "Total Assets") are **unknown**.
 
 ## Live Mapping Probe
 
-### Candidate endpoint probed
+### Probe 1 (2026-06-09) — DNS failure, inconclusive
 
-`https://iq.vietcap.com.vn/api/iq-insight-service/v1/company/VCI/financial-statement/metrics`
-
-This endpoint path follows the same base URL and service path as the confirmed FA data endpoint
-(`/financial-statement?section=BALANCE_SHEET`), with `/metrics` appended. It was identified as
-the most likely candidate for a code-to-name mapping response.
-
-### Command used
-
-```
-python scripts/probe_vietcap_iq_fa_httpx_session.py \
-  --diagnostic-target fa-direct \
-  --symbol VCI \
-  --section BALANCE_SHEET \
-  --referer-style trading-company-page \
-  --api-url "https://iq.vietcap.com.vn/api/iq-insight-service/v1/company/VCI/financial-statement/metrics" \
-  --dataset "vietcap_iq_fa_financial_statement_metrics_mapping_probe"
-```
-
-### Result
+`run_id=20260609T091305Z`
 
 | Field | Value |
 |---|---|
-| `run_id` | `20260609T091305Z` |
 | `http_status` | `null` — no HTTP response received |
 | `access_status` | `error` |
 | `error` | `[Errno 11001] getaddrinfo failed` — DNS resolution failure |
 | Payload saved | No |
 | Mapping found | Unknown — probe did not reach the server |
 
-The probe failed at the DNS/connection level before any HTTP exchange occurred. This is **not**
-an HTTP 403/auth-required result — it is a network-level failure. It does not indicate whether
-the endpoint exists, returns 200, or contains mapping data. The result is inconclusive.
+The probe failed at DNS level before any HTTP exchange. Not an auth failure — environmental.
+Result is inconclusive.
 
-The same clean 8-header profile (no Cookie, no Authorization, no `sec-ch-ua*`) was used as for
-the successful FA data probes. The failure is environmental, not caused by the request profile.
+### Probe 2 (2026-06-10) — HTTP 200, mapping payload found
 
----
+`run_id=20260610T025420Z`
 
-## Alternative Mapping Candidates (Not Yet Probed)
+| Field | Value |
+|---|---|
+| `http_status` | `200` |
+| `access_status` | `verified` |
+| Payload saved | Yes |
+| Mapping found | **Yes** |
+| Path | `data/raw/httpx_diagnostic/source=vietcap_iq/run_id=20260610T025420Z/vietcap_iq_fa_metrics_mapping_probe/` |
 
-| Candidate URL | Priority | Notes |
-|---|---|---|
-| `https://iq.vietcap.com.vn/api/iq-insight-service/v1/company/VCI/financial-statement/metrics` | P0 | Primary candidate — re-probe when network available |
-| `https://trading.vietcap.com.vn/vietcap-iq/language/vi/company.json` | P1 | Localization JSON referenced in `01_vietcap_iq.md`; may contain FA field labels for UI |
-| `/financial-statement/template` or `/financial-statement/fields` | P2 | Hypothetical alternatives — not confirmed to exist; requires browser DevTools inspection |
-| Browser DevTools on Vietcap IQ financial statement page | P1 | Most reliable way to discover actual mapping endpoint used by the UI |
+The re-probe succeeded when DNS resolved. The response `data` field is a section-keyed dict:
+
+```
+data:
+  BALANCE_SHEET: [...]   # 208 metric codes + 4 null-field headers
+  INCOME_STATEMENT: [...] # 80 metric codes
+  CASH_FLOW: [...]        # 148 metric codes + 5 null-field headers
+  NOTE: [...]             # 642 metric codes
+  # 1078 non-null codes total; 9 null-field display headers
+```
+
+Each entry has: `field` (code, e.g. `bsa1`), `name` (uppercase, e.g. `BSA1`), `titleEn`,
+`titleVi`, `fullTitleEn`, `fullTitleVi`, `level`, `parent`. Null-field entries are section
+display headers, not metric codes. See `vietcap_iq_fa_mapping_cashflow_probe.md` for full
+payload structure detail.
+
+The same clean 8-header profile (no Cookie, no Authorization) was used as for all FA probes.
 
 ---
 
 ## Mapping Coverage
 
-**Not measurable.** No mapping data was found locally or retrieved via probe. Coverage report
-(`scripts/check_vietcap_iq_fa_mapping_coverage.py` or similar) will be written once a mapping
-payload is available.
+Coverage was computed by `scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py` against saved
+FA probe payloads:
 
-Current parser state: `line_item_name` is empty for all 34,563 fact rows across three parsed
-payloads.
+| Probe | Symbol | Section | Codes in Payload | Covered | Coverage |
+|---|---|---|---|---|---|
+| `20260609T035318Z` | VCI | BALANCE_SHEET | 331 | 208 | **62.8%** |
+| `20260609T075846Z` | VCI | INCOME_STATEMENT | 181 | 79 | **43.6%** |
+| `20260609T075857Z` | FPT | BALANCE_SHEET | 331 | 208 | **62.8%** |
+| `20260610T025429Z` | VCI | CASH_FLOW | 225 | 148 | **65.8%** |
+| `20260610T025440Z` | FPT | CASH_FLOW | 225 | 148 | **65.8%** |
+
+**Coverage is partial — below the 95% DB write gate threshold.** The mapping is a confirmed
+resource but not yet sufficient for production use. The remaining uncovered codes are likely
+firm-type-specific variants not present in the VCI-keyed mapping response.
+
+The parser script `scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py` reads the saved payload,
+outputs a deterministic mapping CSV, and optionally computes coverage. No network or DB.
 
 ---
 
@@ -117,29 +124,23 @@ payloads.
 
 | Unknown | Impact |
 |---|---|
-| Whether `/financial-statement/metrics` exists and returns 200 | Cannot assess until re-probed successfully |
-| Whether mapping endpoint returns a flat code → name dict or a structured list | Parser integration design depends on response shape |
-| Whether names are in Vietnamese, English, or both | Localisation handling may be needed |
-| Whether the mapping is section-specific or shared across all FA sections | Parser must know whether to load one mapping file or one per section |
-| Whether `bsa1` codes are stable across API versions | Mapping table may need a version field |
+| Why IS coverage is only 43.6% (lower than BS/CF) | May indicate the mapping varies by firm type or section; needs investigation |
+| Whether probing with a bank or insurance symbol returns more IS codes | Querying with a different firm type may yield a broader mapping |
+| Whether codes are stable across API versions | Mapping table should include a probe run_id/version stamp |
+| NOTE section codes coverage against real FA data | No saved NOTE section FA payload; cannot measure |
 
 ---
 
 ## Next Recommended Steps
 
-1. **Re-probe `/financial-statement/metrics`** when network access to `iq.vietcap.com.vn` is
-   restored. Use the same command documented above. If HTTP 200 JSON is returned, inspect the
-   payload shape and document it here.
+1. **Probe mapping endpoint with additional symbol types** (bank, insurance) to check if
+   coverage improves for INCOME_STATEMENT beyond 43.6%.
 
-2. **If /metrics returns 403 or 404**: Try the localization JSON endpoints
-   (`/vietcap-iq/language/vi/company.json`) or inspect browser DevTools on the financial
-   statement page to identify the actual mapping endpoint.
+2. **Probe NOTE section FA payloads** for 1–2 symbols to measure NOTE mapping coverage (642 codes
+   in mapping, zero tested FA payloads).
 
-3. **Once mapping payload is confirmed**: Write a coverage check script to count how many of the
-   331 BALANCE_SHEET and 181 INCOME_STATEMENT codes are covered by the mapping.
+3. **Integrate mapping into the parser dry-run** once coverage is sufficient (≥ 95% threshold).
+   Do not write names for uncovered codes — leave `line_item_name` empty.
 
-4. **Only after mapping is verified**: Integrate mapping into the parser dry-run as a
-   `line_item_name` lookup. No production parser, no DB write, until coverage is sufficient.
-
-5. **No full-universe fetch, no DB write, no backtest** until mapping, PIT validation, and
-   parser hardening are complete.
+4. **No full-universe fetch, no DB write, no backtest** until mapping, PIT validation, and
+   parser hardening gates are all met.
