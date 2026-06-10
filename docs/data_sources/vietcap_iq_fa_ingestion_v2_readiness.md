@@ -328,7 +328,7 @@ All of the following gates must be satisfied before any DB write is implemented:
 | `publicDate` PIT semantics confirmed | **Not met** — unconfirmed |
 | Canonical DB schema designed and reviewed | **Not met** — schema defined in long-format only; QuestDB table design not implemented |
 | Natural key / dedup policy for re-ingestion defined | **Not met** — design exists in concept only |
-| Full-history FA fetch tested for at least a small symbol set | **Not met** — only 3 symbols in one probe; no fetcher |
+| Full-history FA fetch tested for at least a small symbol set | **Not met** — only 3 saved payloads / 2 symbols / 3 tested cases have been reviewed so far; no fetcher |
 | Parser `--strict` mode passes on full-universe sample | **Not met** — only 3 saved payloads tested |
 | QuestDB migration implemented and reviewed | **Not met** |
 | Ingestion tests cover round-trip (fetch → parse → write → query) | **Not met** |
