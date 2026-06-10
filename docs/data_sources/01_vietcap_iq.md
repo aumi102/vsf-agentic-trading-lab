@@ -1953,6 +1953,38 @@ python scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py \
   --output-coverage data/processed/vietcap_iq/fa_metric_mapping_coverage.csv
 ```
 
+#### FA Mapping Coverage Bank/Insurance Probe Package
+
+Additional mapping payloads retrieved for VCB (bank), BVH (insurance), and SSI (securities)
+to investigate the INCOME_STATEMENT coverage gap (VCI-only: 43.6%). Key finding: **the mapping
+is firm-type-specific**. SSI returned the identical mapping to VCI. VCB returned bank-specific
+codes (`isb*`, `bsb*`, `cfb*`). BVH returned insurance-specific codes (`isi*`, `bsi*`).
+
+Union of 4 firm-type mappings: 1793 codes, 88 name conflicts (4.9%).
+
+| Section | VCI-only % | Union % | Gate (95%) |
+|---|---|---|---|
+| BALANCE_SHEET | 62.8% | **89.4%** | **blocked** |
+| INCOME_STATEMENT | 43.6% | **92.3%** | **blocked** |
+| CASH_FLOW | 65.8% | **86.7%** | **blocked** |
+
+No section reaches the 95% gate. `line_item_name` remains empty. DB write and backtest remain blocked.
+
+| Artifact | Path | Notes |
+|---|---|---|
+| Probe report | `docs/data_sources/vietcap_iq_fa_mapping_coverage_bank_probe.md` | Bank/insurance probe results, union analysis, coverage table, integration strategy discussion |
+| Union analysis script | `scripts/analyze_vietcap_iq_fa_metric_mapping_union.py` | Offline; reads saved payloads; outputs union mapping CSV and coverage CSV; no network, no DB |
+| Union analysis tests | `tests/test_analyze_vietcap_iq_fa_metric_mapping_union.py` | 39 tests |
+
+Union analysis CLI example:
+
+```
+python scripts/analyze_vietcap_iq_fa_metric_mapping_union.py \
+  --probe-dir data/raw/httpx_diagnostic/source=vietcap_iq \
+  --output-union data/processed/vietcap_iq/fa_metric_mapping_union.csv \
+  --output-coverage data/processed/vietcap_iq/fa_metric_mapping_union_coverage.csv
+```
+
 ---
 
 </details>

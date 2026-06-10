@@ -23,7 +23,7 @@ write is permitted. No DB write or backtest is implemented in this phase.
 | Payload shape reviewed | **Confirmed** — wide-format `data.quarters` + `data.years`; opaque metric codes; `publicDate` present |
 | Parser dry-run | **Implemented** — `scripts/parse_vietcap_iq_fa_payloads_dry_run.py`; 34,563 long-format fact rows from 3 saved payloads |
 | Parser hardening | **Done** — 7 validation checks; `--strict` mode; deterministic sort; 235 tests pass |
-| Metric code-to-name mapping | **Partially retrieved** — mapping payload confirmed (HTTP 200, `run_id=20260610T025420Z`); 1078 codes across 4 sections; coverage 62.8% BS / 43.6% IS / 65.8% CF; below 95% gate threshold |
+| Metric code-to-name mapping | **Partially retrieved** — VCI-only: 1078 codes, BS 62.8% / IS 43.6% / CF 65.8%; union across VCI+VCB+BVH+SSI: 1793 codes, BS 89.4% / IS 92.3% / CF 86.7%; 88 conflicts; no section reaches 95% gate threshold |
 | `publicDate` PIT semantics | **Unconfirmed** — present in payload as candidate field only; semantics not validated against exchange filings |
 | Full-history FA fetch | **Not implemented** — no fetcher script; no symbol universe loop |
 | DB write | **Not implemented** — explicitly blocked |
@@ -52,7 +52,8 @@ write is permitted. No DB write or backtest is implemented in this phase.
 | CASH_FLOW rows have 225 metric columns; `publicDate` is non-null for all quarterly and annual rows | Confirmed from VCI and FPT CASH_FLOW payloads |
 | `/financial-statement/metrics` returns HTTP 200 with a full mapping payload | `run_id=20260610T025420Z`; data keys: BALANCE_SHEET, INCOME_STATEMENT, CASH_FLOW, NOTE |
 | Mapping payload has 1078 non-null metric codes and 9 null-field display headers across 4 sections | Parsed by `scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py` |
-| Mapping coverage against saved probes: 62.8% (BS), 43.6% (IS), 65.8% (CF) | Coverage computed from 5 saved probe payloads; below 95% gate threshold |
+| VCI-only mapping coverage: 62.8% BS / 43.6% IS / 65.8% CF | Coverage computed from 5 saved probe payloads; below 95% gate threshold |
+| Union mapping coverage (VCI+VCB+BVH+SSI): 89.4% BS / 92.3% IS / 86.7% CF | Union has 1793 codes, 88 conflicts; still below 95% gate; mapping is firm-type-specific |
 
 ---
 
@@ -288,16 +289,19 @@ re-ingestion from multiple runs (e.g., a dedup/upsert policy on
 
 ## 15. Metric Mapping Policy
 
-- **Current state:** A mapping payload has been retrieved (`run_id=20260610T025420Z`,
-  HTTP 200). It contains 1078 non-null metric codes across sections BALANCE_SHEET,
-  INCOME_STATEMENT, CASH_FLOW, and NOTE. Coverage against saved probe payloads: 62.8% (BS),
-  43.6% (IS), 65.8% (CF). `line_item_name` remains empty for all parsed fact rows until coverage
-  meets the gate threshold and integration is implemented.
-- **What is needed:** Coverage ≥ 95% for each confirmed section before integration.
-  Current coverage is below threshold. Probing additional symbol types (bank, insurance)
-  may improve IS coverage beyond 43.6%.
+- **Current state:** Mapping payloads retrieved for 4 firm types: VCI (securities, run
+  `20260610T025420Z`), VCB (bank, `20260610T033851Z`), BVH (insurance, `20260610T033856Z`),
+  SSI (securities, `20260610T033900Z`; identical to VCI). SSI confirmed that securities mapping
+  is firm-type-consistent. Union: 1793 codes, 88 name conflicts. Union coverage: 89.4% BS /
+  92.3% IS / 86.7% CF — still below 95% gate. `line_item_name` remains empty for all parsed
+  fact rows.
+- **Key finding:** The mapping endpoint is firm-type-specific. VCB returns bank codes (`isb*`,
+  `bsb*`, `cfb*`); BVH returns insurance codes (`isi*`, `bsi*`). A universal mapping requires
+  either per-symbol querying or a union with conflict resolution.
+- **What is needed:** Coverage ≥ 95% for each confirmed section before integration. An
+  integration strategy (per-symbol vs union) must also be decided.
 - **Sources confirmed:** `/financial-statement/metrics` endpoint returns the mapping.
-  Coverage for some firm-type-specific codes remains unknown.
+  Additional firm types (fund management, etc.) may cover residual uncovered codes.
 - **Integration rule:** Once a verified mapping is available, the parser may populate
   `line_item_name` from the mapping dict. The `_check_no_invented_names` guard must still
   pass — any code not in the mapping must leave `line_item_name` empty.
@@ -331,7 +335,7 @@ All of the following gates must be satisfied before any DB write is implemented:
 
 | Gate | Current Status |
 |---|---|
-| Metric mapping verified and coverage ≥ threshold | **Not met** — mapping payload retrieved (1078 codes, run `20260610T025420Z`); coverage 62.8% BS / 43.6% IS / 65.8% CF; below 95% threshold |
+| Metric mapping verified and coverage ≥ threshold | **Not met** — VCI-only 62.8%/43.6%/65.8%; union (VCI+VCB+BVH+SSI) 89.4%/92.3%/86.7% (BS/IS/CF); no section reaches 95%; 88 name conflicts in union |
 | `publicDate` PIT semantics confirmed | **Not met** — unconfirmed |
 | Canonical DB schema designed and reviewed | **Not met** — schema defined in long-format only; QuestDB table design not implemented |
 | Natural key / dedup policy for re-ingestion defined | **Not met** — design exists in concept only |
