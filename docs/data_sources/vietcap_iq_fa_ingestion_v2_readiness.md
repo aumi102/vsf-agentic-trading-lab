@@ -64,7 +64,7 @@ write is permitted. No DB write or backtest is implemented in this phase.
 | Metric codes (`bsa1`, `isa25`, etc.) map to human-readable line-item names | Mapping payload retrieved (run `20260610T025420Z`); coverage 62.8% BS / 43.6% IS / 65.8% CF — below 95% gate; remaining codes have no verified name | Metric mapping gate (see §13) — coverage must reach ≥ 95% per section |
 | Endpoint returns the same shape for all HOSE/HNX/UPCOM listed firms and all FA sections | Only tested for VCI (securities) and FPT (general) on BS, IS, and CF | Broader symbol/section probe |
 | `accumulatedValue` / trading-value units are consistent across symbols | Not reviewed for FA endpoint; documented open risk for gap-chart | FA-specific payload review |
-| The endpoint is stable at scale (1598-symbol fetch) | Only three symbols have been tested | Rate-limit and access review |
+| The endpoint is stable at scale (1598-symbol fetch) | Only 2 symbols (VCI, FPT) across 5 saved FA payloads have been reviewed; no full-universe stability test has been run | Rate-limit and access review |
 | `organCode` is always equal to `ticker` for all non-securities firms | Sometimes differs; parser emits `WARNING_CODE_TICKER_DIFFER` per row | Source documentation |
 
 ---
@@ -137,8 +137,8 @@ the full available period history for each section without pagination.
 
 **Not yet characterized.** The following constraints apply until empirical evidence is available:
 
-- **Rate limit:** Unknown. Only three symbols have been successfully probed; no 429 or
-  throttle response has been observed.
+- **Rate limit:** Unknown. Only VCI and FPT (2 symbols, 5 saved FA payloads) have been
+  successfully probed; no 429 or throttle response has been observed.
 - **Retry policy:** No retry logic implemented. If the endpoint returns a non-200 response,
   the payload should be recorded as failed and the checkpoint updated. Manual review before
   retry.
