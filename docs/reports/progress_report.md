@@ -21,7 +21,7 @@ No DB write, no backtest, no production agent tools yet.
 | FA endpoint | HTTP 200 (clean 8-header profile); BS/IS/CF confirmed for VCI and FPT |
 | FA parser | Dry-run complete; 7 validation checks; `--strict` mode; deterministic sort |
 | FA mapping integration | Option C resolver wired; 7 output columns; 53,013 rows validated; 0 errors |
-| FA mapping coverage gap probe | 3 general/fund symbols probed; union: 7 payloads, all firm types exhausted; BS 89.7% / IS 94.5% / CF 87.6% |
+| FA mapping coverage gap probe | 3 general/fund symbols probed; union: 7 payloads, all known groups sampled; BS 89.7% / IS 94.5% / CF 87.6%; gap appears structural |
 | Test suite | **560 tests pass** (65 integration + 74 resolver + 54 firm-type + others) |
 | DB write | **Blocked** |
 | Backtest | **Blocked** |
@@ -30,7 +30,7 @@ No DB write, no backtest, no production agent tools yet.
 
 ## Main Blockers
 
-- **Mapping coverage:** Below 95% per section — BS 89.7% / IS 94.5% / CF 87.6% (7 payloads, all firm types exhausted). Gap is structural: residual codes (`bsi*`, `bss*`, `bsb*`, `cfs*`, `cfi*`) absent from `/metrics` endpoint for all firm types.
+- **Mapping coverage:** Below 95% per section — BS 89.7% / IS 94.5% / CF 87.6% (7 payloads, all known groups sampled). Gap appears structural for `/metrics` endpoint: residual codes (`bsi*`, `bss*`, `bsb*`, `cfs*`, `cfi*`) absent from all probed mapping payloads.
 - **PIT semantics:** `publicDate` unconfirmed — cross-check vs HOSE/HNX filing records required before any backtest.
 - **DB write:** Blocked until all §17 gates met (see `vietcap_iq_fa_ingestion_v2_readiness.md`).
 - **Full-history FA fetch:** Not implemented — blocked on mapping, PIT, and schema gates.
@@ -64,11 +64,12 @@ No DB write, no backtest, no production agent tools yet.
 
 ## Next Steps
 
-1. ~~Close mapping coverage gap (probe additional firm types)~~ — gap is structural; all firm types exhausted.
-2. Decide on coverage gate response: lower threshold, or supplement mapping from a secondary source.
-3. Validate `publicDate` PIT semantics — cross-check 5–10 sample rows vs HOSE/HNX filing dates.
-4. Design canonical QuestDB schema and dedup/upsert policy.
-5. Build full-history FA fetcher (after gates above are met).
+1. ~~Close mapping coverage gap (probe additional firm types)~~ — gap appears structural; all known groups sampled.
+2. Activate FPT primary mapping for general symbols (requires parser `_build_symbol_resolver` change; +79 named rows for FPT payloads).
+3. Decide on coverage gate response: lower threshold, or supplement mapping from a secondary source.
+4. Validate `publicDate` PIT semantics — cross-check 5–10 sample rows vs HOSE/HNX filing dates.
+5. Design canonical QuestDB schema and dedup/upsert policy.
+6. Build full-history FA fetcher (after gates above are met).
 
 ---
 

@@ -17,7 +17,7 @@ Master gate table for production Vietcap IQ FA ingestion. No DB write until all 
 | FA endpoint access | **Confirmed** — HTTP 200 (clean 8-header, no Cookie/Auth) for BS/IS/CF on VCI and FPT |
 | Parser dry-run | **Done** — 53,013 fact rows from 5 saved payloads; 7 validation checks; 552 tests pass |
 | Option C mapping integration | **Done** — 7 output columns; 65 tests; dry-run on 5 payloads: 0 errors |
-| Metric mapping coverage | **Below gate** — union (7 payloads): BS 89.7% / IS 94.5% / CF 87.6%; 99 conflicts; all firm types exhausted |
+| Metric mapping coverage | **Below gate** — union (7 payloads, all known groups sampled): BS 89.7% / IS 94.5% / CF 87.6%; 99 conflicts; gap appears structural for `/metrics` endpoint |
 | `publicDate` PIT semantics | **Unconfirmed** — candidate field only; not cross-checked vs filing records |
 | Full-history FA fetch | **Not implemented** |
 | DB write | **Blocked** — DB write gates not met |
@@ -35,7 +35,7 @@ Master gate table for production Vietcap IQ FA ingestion. No DB write until all 
 | `null` and `0.0` are distinct in payload; must stay distinct in output | `value_status` logic; `test_validate_preserves_null_vs_zero_distinction` |
 | `nos*` columns null for non-securities firms (FPT) | `_check_nos_pattern` result |
 | Mapping is firm-type-specific: SSI = VCI; VCB/BVH return different codes | 4 mapping probes |
-| Union mapping (7 payloads: VCI+SSI+VCB+BVH+FPT+HPG+E1VFVN30): 1957 codes, 99 conflicts (5.1%); all firm types exhausted | `scripts/analyze_vietcap_iq_fa_metric_mapping_union.py` |
+| Union mapping (7 payloads: VCI+SSI+VCB+BVH+FPT+HPG+E1VFVN30): 1957 codes, 99 conflicts (5.1%); all known groups sampled | `scripts/analyze_vietcap_iq_fa_metric_mapping_union.py` |
 | CASH_FLOW: same envelope shape; 225 codes; `publicDate` non-null | VCI + FPT CASH_FLOW probes |
 
 ---
@@ -82,7 +82,7 @@ avoidance until cross-checked against HOSE/HNX filing records. `availability_sta
 
 | Gate | Current Status |
 |---|---|
-| Metric mapping coverage ≥ 95% per section | **Not met** — union (7 payloads, all firm types): BS 89.7% / IS 94.5% / CF 87.6%; gap is structural |
+| Metric mapping coverage ≥ 95% per section | **Not met** — union (7 payloads): BS 89.7% / IS 94.5% / CF 87.6%; gap appears structural for `/metrics` endpoint |
 | `publicDate` PIT semantics confirmed | **Not met** |
 | Canonical QuestDB schema designed and reviewed | **Not met** |
 | Natural key / dedup policy for re-ingestion defined | **Not met** |

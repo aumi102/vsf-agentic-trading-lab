@@ -50,7 +50,7 @@ All three returned identical 345-code payloads. The `CT` and `QU` mapping payloa
 
 ---
 
-## 4. Key Finding: All Firm Types Exhausted
+## 4. Key Finding: All Known Groups Sampled
 
 The general mapping (345 codes) is a strict subset of the existing union (1793 codes from
 VCI+VCB+BVH+SSI). It adds only 7 genuinely new codes:
@@ -61,9 +61,9 @@ VCI+VCB+BVH+SSI). It adds only 7 genuinely new codes:
 | INCOME_STATEMENT | `isa8`, `isa12`, `isa13`, `isa14` |
 | CASH_FLOW | `cfa5`, `cfa33` |
 
-All major firm types in the Vietcap IQ universe are now represented in the union mapping:
-securities (VCI, SSI), bank (VCB), insurance (BVH), general/CT (FPT, HPG), fund/QU (E1VFVN30).
-No additional firm-type payloads remain to probe.
+All currently known `company_type_code` groups in the local universe have now been sampled by
+representative symbols: securities (VCI, SSI), bank (VCB), insurance (BVH), general/CT (FPT, HPG),
+fund/QU (E1VFVN30). Additional same-group probes are unlikely to close the residual gap.
 
 ---
 
@@ -112,8 +112,9 @@ absent from the `/metrics` mapping endpoint for all probed firm types:
 - `bsb*` / `cfb*`: bank-specific codes present in VCB FA payloads but absent from VCB mapping
 - `cfi*`: present in insurance CF payloads, absent from BVH mapping
 
-These codes are structurally unmappable from the `/metrics` endpoint alone: they are used in
-financial statement payloads but the mapping endpoint does not define them for any known firm type.
+These codes are absent from the `/metrics` endpoint for all probed firm types, suggesting the
+remaining gap is structural for this endpoint. Further progress likely requires a supplementary
+mapping source, UI-scraped metadata, or a reviewed gate-threshold decision.
 
 ---
 
@@ -125,26 +126,46 @@ financial statement payloads but the mapping endpoint does not define them for a
 | INCOME_STATEMENT ≥ 95% | **Not met** — 94.5% |
 | CASH_FLOW ≥ 95% | **Not met** — 87.6% |
 
-The residual gap is structural: the `/metrics` endpoint does not expose names for certain
-firm-type-specific codes. To reach 95%, a supplementary mapping source would be required
-(e.g., scraping HTML page labels, a separate annotation layer, or accepting `not_covered`
-status as tolerable below a new threshold).
+The remaining gap appears structural for the discovered `/metrics` endpoint: no probed firm type
+exposes names for the residual codes. To reach 95%, next options are a supplementary mapping
+source (HTML scrape, annotation layer), a reviewed gate-threshold decision, or accepting
+`not_covered` as tolerable below a new threshold. DB write remains blocked.
 
 ---
 
-## 9. Planner Script Update
+## 9. Planner and Resolver Design Note
 
 `FPT`, `HPG`, and `E1VFVN30` were added to `_EXPLICIT_OVERRIDES` in
 `scripts/plan_vietcap_iq_fa_firm_type_mapping.py` as `"general"`. This records the direct probe
 evidence without changing `_GROUP_TO_SOURCE_SYMBOL["general"]` (which remains `""`) or
-any fallback policy. Existing tests are unaffected; 9 new tests added in
-`tests/test_plan_vietcap_iq_fa_firm_type_mapping.py`.
+any fallback policy. 8 new tests added in `tests/test_plan_vietcap_iq_fa_firm_type_mapping.py`.
+
+**Mode A vs Mode B analysis (offline, saved payloads only):**
+
+An offline comparison of two resolver modes on saved FPT BS+CF payloads (556 codes total):
+
+| Mode | Named | primary | consensus_fallback | conflict_skipped | not_covered |
+|---|---|---|---|---|---|
+| **A — current** (union-only, `has_primary=False`) | 406 (73%) | 0 | 406 | 81 | 62 |
+| **B — proposed** (FPT primary, then union) | 485 (87%) | 163 | 322 | 2 | 62 |
+
+Mode B would add +79 named rows by resolving `bsa*` conflict codes via FPT's own mapping
+payload rather than skipping them as union conflicts. Names are identical where both modes
+resolve; Mode B adds names for codes the union marks as conflicting.
+
+**Why Mode B is not implemented here:** the current parser's `_build_symbol_resolver()`
+hard-codes `mapping_group == "general"` → `has_primary=False`, ignoring `mapping_source_symbol`
+for general firms. Activating Mode B requires a targeted parser change (deferred to a future PR).
+`_GROUP_TO_SOURCE_SYMBOL["general"]` is deliberately kept `""` to avoid writing a misleading
+`mapping_source_symbol=FPT` into the plan CSV when the parser would discard it.
+`line_item_name` (legacy) remains empty in all modes.
 
 ---
 
 ## 10. Next Recommended Action
 
-The coverage gap is structural and cannot be closed by probing more firm types. Options:
+The remaining gap is unlikely to be closed by additional `/metrics` probes across same or
+different firm types. Options:
 
 1. **Lower the gate threshold** — document that 94.5% IS / 87.6% CF is the practical ceiling
    for the `/metrics`-only mapping approach and accept a revised gate (e.g., 90%).

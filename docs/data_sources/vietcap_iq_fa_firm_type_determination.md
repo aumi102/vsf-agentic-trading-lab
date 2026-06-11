@@ -141,7 +141,7 @@ Every row receiving a name (or `mapping_status`) must record:
 3. **`company_type_code` not cross-checked against SSC/UBCK.** ICB `icb_lv2_raw` provides a corroborating signal but requires JSON parsing.
 4. **No `is_insurance` field.** Insurance detection relies solely on `company_type_code=BH`.
 5. **Stale universe.** If the universe CSV is from an old run, recently reclassified firms will be misclassified until the universe is re-fetched.
-6. **Coverage gap is structural.** Residual uncovered codes (`bsi*`, `bss*`, `bsb*`, `cfs*`, `cfi*`) appear in FA payloads but in no `/metrics` mapping payload for any firm type. No further probing can close this gap.
+6. **Coverage gap appears structural for `/metrics` endpoint.** Residual uncovered codes (`bsi*`, `bss*`, `bsb*`, `cfs*`, `cfi*`) appear in FA payloads but in no probed `/metrics` mapping payload. Additional same-group probes are unlikely to close the gap; a supplementary mapping source or gate-threshold review is needed.
 
 ---
 
