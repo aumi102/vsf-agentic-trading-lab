@@ -61,7 +61,7 @@ _GROUP_TO_SOURCE_SYMBOL: dict[str, str] = {
     "bank":       "VCB",
     "insurance":  "BVH",
     "securities": "VCI",
-    "general":    "",
+    "general":    "FPT",
 }
 
 # Mapping group → human-readable fallback policy
@@ -69,7 +69,7 @@ _GROUP_TO_FALLBACK_POLICY: dict[str, str] = {
     "bank":       "primary=VCB_mapping; fallback=union_consensus_conflict_free_section_matched",
     "insurance":  "primary=BVH_mapping; fallback=union_consensus_conflict_free_section_matched",
     "securities": "primary=VCI_mapping; fallback=union_consensus_conflict_free_section_matched",
-    "general":    "no_primary_mapping; fallback=union_consensus_conflict_free_section_matched_only",
+    "general":    "primary=FPT_mapping; fallback=union_consensus_conflict_free_section_matched",
 }
 
 OUTPUT_COLUMNS = [
@@ -145,7 +145,7 @@ def classify_symbol(
         evidence = f"company_type_code={ctc!r} not in known set; defaulted to general"
     else:
         evidence = "no_classification_signal; defaulted to general"
-    notes.append("no firm-type signal found in metadata; consensus fallback only")
+    notes.append("no firm-type signal found in metadata; general uses FPT primary mapping")
     return _build_row(symbol, group, confidence, evidence, notes)
 
 

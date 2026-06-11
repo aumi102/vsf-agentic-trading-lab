@@ -20,9 +20,9 @@ No DB write, no backtest, no production agent tools yet.
 | Controlled fetcher | Tiny execute passed for FPT/VNM/VCB; full-universe fetch not approved |
 | FA endpoint | HTTP 200 (clean 8-header profile); BS/IS/CF confirmed for VCI and FPT |
 | FA parser | Dry-run complete; 7 validation checks; `--strict` mode; deterministic sort |
-| FA mapping integration | Option C resolver wired; 7 output columns; 53,013 rows validated; 0 errors |
+| FA mapping integration | Option C resolver wired; Mode B active for general symbols; 53,013 rows validated; 0 errors |
 | FA mapping coverage gap probe | 3 general/fund symbols probed; union: 7 payloads, all known groups sampled; BS 89.7% / IS 94.5% / CF 87.6%; gap appears structural |
-| Test suite | **560 tests pass** (65 integration + 74 resolver + 54 firm-type + others) |
+| Test suite | **566 tests pass** (71 integration + 74 resolver + 54 firm-type + others) |
 | DB write | **Blocked** |
 | Backtest | **Blocked** |
 
@@ -46,10 +46,11 @@ No DB write, no backtest, no production agent tools yet.
 | OHLCV gap-chart bars (FPT) | 4,852 (2006–2026) |
 | FA parser fact rows (5 payloads) | 53,013 |
 | FA parser errors | 0 |
-| FA mapping named rows | 43,214 / 53,013 (81.5% at row level) |
-| Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all firm types exhausted |
-| FA tests | 65 integration + 74 resolver + 54 firm-type |
-| Total tests passing | 560 |
+| FA mapping named rows | 46,412 / 53,013 (87.5% combined validation view) |
+| FPT BS+CF Mode B code-row naming | 485 / 556 named (87%); primary=163; consensus=322; conflict_skipped=2; not_covered=62 |
+| Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
+| FA tests | 71 integration + 74 resolver + 54 firm-type |
+| Total tests passing | 566 |
 
 ---
 
@@ -65,7 +66,7 @@ No DB write, no backtest, no production agent tools yet.
 ## Next Steps
 
 1. ~~Close mapping coverage gap (probe additional firm types)~~ — gap appears structural; all known groups sampled.
-2. Activate FPT primary mapping for general symbols (requires parser `_build_symbol_resolver` change; +79 named rows for FPT payloads).
+2. ~~Activate FPT primary mapping for general symbols~~ — Mode B implemented; legacy `line_item_name` remains empty.
 3. Decide on coverage gate response: lower threshold, or supplement mapping from a secondary source.
 4. Validate `publicDate` PIT semantics — cross-check 5–10 sample rows vs HOSE/HNX filing dates.
 5. Design canonical QuestDB schema and dedup/upsert policy.

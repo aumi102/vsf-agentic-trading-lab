@@ -139,8 +139,7 @@ def _build_symbol_resolver(
     mapping_group = plan.get("mapping_group", "general") if plan else "general"
     sym_source_symbol = plan.get("mapping_source_symbol", "") if plan else ""
 
-    # General firms use union-only resolution
-    if not plan or mapping_group == "general":
+    if not plan:
         return MappingResolver(
             primary_rows=None,
             union_rows=union_rows,
@@ -150,8 +149,14 @@ def _build_symbol_resolver(
             has_primary=False,
         )
 
-    # Non-general: check if the provided primary CSV matches this symbol's source
-    if primary_rows is not None and sym_source_symbol and sym_source_symbol == primary_source_symbol:
+    # If a plan names a source symbol and that primary mapping is loaded, use
+    # it first for any group, including general.
+    primary_loaded_for_symbol = (
+        bool(primary_rows)
+        and bool(sym_source_symbol)
+        and sym_source_symbol == primary_source_symbol
+    )
+    if primary_loaded_for_symbol:
         return MappingResolver(
             primary_rows=primary_rows,
             union_rows=union_rows,
@@ -161,7 +166,18 @@ def _build_symbol_resolver(
             has_primary=True,
         )
 
-    # Primary expected for this firm type but not provided for its source symbol
+    # General firms without a loaded primary retain the prior union-only fallback.
+    if mapping_group == "general":
+        return MappingResolver(
+            primary_rows=None,
+            union_rows=union_rows,
+            primary_source_symbol="",
+            primary_source_run_id="",
+            mapping_group="general",
+            has_primary=False,
+        )
+
+    # Primary expected for this firm type but not provided for its source symbol.
     if sym_source_symbol:
         return MappingResolver(
             primary_rows=None,   # empty → no_mapping_available

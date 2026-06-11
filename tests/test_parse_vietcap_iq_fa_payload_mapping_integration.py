@@ -116,6 +116,8 @@ def _make_firm_plan_csv(tmp_path: Path, rows: list[dict]) -> Path:
 # Shared small data
 _PRIMARY_BSA1 = {"section": "BALANCE_SHEET", "line_item_code": "bsa1",
                  "line_item_name_en": "Total assets", "line_item_name_vi": "Tổng tài sản"}
+_PRIMARY_BSA2 = {"section": "BALANCE_SHEET", "line_item_code": "bsa2",
+                 "line_item_name_en": "Cash and cash equivalents", "line_item_name_vi": "Tiền"}
 _PRIMARY_ISA1 = {"section": "INCOME_STATEMENT", "line_item_code": "isa1",
                  "line_item_name_en": "Net revenue", "line_item_name_vi": "Doanh thu thuần"}
 _UNION_CFA1 = {"section": "CASH_FLOW", "line_item_code": "cfa1",
@@ -125,8 +127,10 @@ _UNION_CONFLICT = {"section": "BALANCE_SHEET", "line_item_code": "bsa2",
                    "names_per_source": "VCI=Cash;VCB=Cash and precious metals"}
 _PLAN_VCI = {"symbol": "VCI", "mapping_group": "securities", "mapping_source_symbol": "VCI",
              "proposed_firm_type": "securities"}
-_PLAN_FPT = {"symbol": "FPT", "mapping_group": "general", "mapping_source_symbol": "",
+_PLAN_FPT = {"symbol": "FPT", "mapping_group": "general", "mapping_source_symbol": "FPT",
              "proposed_firm_type": "general"}
+_PLAN_FPT_UNION_ONLY = {"symbol": "FPT", "mapping_group": "general", "mapping_source_symbol": "",
+                        "proposed_firm_type": "general"}
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +258,82 @@ class TestPrimaryLookupHit:
 # ---------------------------------------------------------------------------
 # 3. Primary miss → consensus fallback
 # ---------------------------------------------------------------------------
+
+
+class TestGeneralPrimaryMapping:
+    def test_general_symbol_uses_fpt_primary_mapping(self, tmp_path):
+        facts = _make_facts(symbol="FPT", section="BALANCE_SHEET", codes=["bsa1"])
+        plan = {_PLAN_FPT["symbol"]: _PLAN_FPT}
+        from resolve_vietcap_iq_fa_metric_mapping import load_primary_mapping
+        ppath = _make_primary_csv(tmp_path, [_PRIMARY_BSA1])
+        apply_mapping_to_facts(facts, plan, load_primary_mapping(ppath), "FPT", "runFPT", [])
+        assert facts[0]["mapping_status"] == "primary"
+        assert facts[0]["mapping_source_symbol"] == "FPT"
+        assert facts[0]["mapping_group"] == "general"
+        assert facts[0]["line_item_name_en"] == "Total assets"
+        assert facts[0]["line_item_name"] == ""
+
+    def test_general_primary_rescues_union_conflict(self, tmp_path):
+        facts = _make_facts(symbol="FPT", section="BALANCE_SHEET", codes=["bsa2"])
+        plan = {_PLAN_FPT["symbol"]: _PLAN_FPT}
+        from resolve_vietcap_iq_fa_metric_mapping import load_primary_mapping, load_union_mapping
+        ppath = _make_primary_csv(tmp_path, [_PRIMARY_BSA2])
+        upath = _make_union_csv(tmp_path, [_UNION_CONFLICT])
+        apply_mapping_to_facts(
+            facts,
+            plan,
+            load_primary_mapping(ppath),
+            "FPT",
+            "runFPT",
+            load_union_mapping(upath),
+        )
+        assert facts[0]["mapping_status"] == "primary"
+        assert facts[0]["mapping_conflict"] == "false"
+        assert facts[0]["line_item_name_en"] == "Cash and cash equivalents"
+
+    def test_general_primary_miss_uses_union_consensus(self, tmp_path):
+        facts = _make_facts(symbol="FPT", section="CASH_FLOW", codes=["cfa1"])
+        plan = {_PLAN_FPT["symbol"]: _PLAN_FPT}
+        from resolve_vietcap_iq_fa_metric_mapping import load_primary_mapping, load_union_mapping
+        ppath = _make_primary_csv(tmp_path, [_PRIMARY_BSA1])
+        upath = _make_union_csv(tmp_path, [_UNION_CFA1])
+        apply_mapping_to_facts(
+            facts,
+            plan,
+            load_primary_mapping(ppath),
+            "FPT",
+            "runFPT",
+            load_union_mapping(upath),
+        )
+        assert facts[0]["mapping_status"] == "consensus_fallback"
+        assert facts[0]["mapping_source_symbol"] == "union"
+        assert facts[0]["line_item_name_en"] == "Cash from operations"
+
+    def test_general_primary_miss_not_in_union_is_not_covered(self, tmp_path):
+        facts = _make_facts(symbol="FPT", section="BALANCE_SHEET", codes=["PHANTOM"])
+        plan = {_PLAN_FPT["symbol"]: _PLAN_FPT}
+        from resolve_vietcap_iq_fa_metric_mapping import load_primary_mapping
+        ppath = _make_primary_csv(tmp_path, [_PRIMARY_BSA1])
+        apply_mapping_to_facts(facts, plan, load_primary_mapping(ppath), "FPT", "runFPT", [])
+        assert facts[0]["mapping_status"] == "not_covered"
+        assert facts[0]["line_item_name_en"] == ""
+
+    def test_general_empty_source_symbol_preserves_union_only_behavior(self, tmp_path):
+        facts = _make_facts(symbol="FPT", section="BALANCE_SHEET", codes=["bsa2"])
+        plan = {_PLAN_FPT_UNION_ONLY["symbol"]: _PLAN_FPT_UNION_ONLY}
+        from resolve_vietcap_iq_fa_metric_mapping import load_primary_mapping, load_union_mapping
+        ppath = _make_primary_csv(tmp_path, [_PRIMARY_BSA2])
+        upath = _make_union_csv(tmp_path, [_UNION_CONFLICT])
+        apply_mapping_to_facts(
+            facts,
+            plan,
+            load_primary_mapping(ppath),
+            "FPT",
+            "runFPT",
+            load_union_mapping(upath),
+        )
+        assert facts[0]["mapping_status"] == "conflict_skipped"
+        assert facts[0]["line_item_name_en"] == ""
 
 
 class TestConsensusFallback:
@@ -682,6 +762,24 @@ class TestBuildSymbolResolver:
         assert r is not None
         result = r.resolve("BALANCE_SHEET", "bsa1")
         assert result.mapping_status == "not_covered"
+
+    def test_general_firm_with_matching_primary_uses_primary(self, tmp_path):
+        from resolve_vietcap_iq_fa_metric_mapping import load_primary_mapping
+        ppath = _make_primary_csv(tmp_path, [_PRIMARY_BSA1])
+        primary_rows = load_primary_mapping(ppath)
+        r = _build_symbol_resolver(
+            "FPT",
+            {_PLAN_FPT["symbol"]: _PLAN_FPT},
+            primary_rows,
+            "FPT",
+            "runFPT",
+            [],
+        )
+        assert r is not None
+        result = r.resolve("BALANCE_SHEET", "bsa1")
+        assert result.mapping_status == "primary"
+        assert result.mapping_source_symbol == "FPT"
+        assert result.mapping_group == "general"
 
     def test_securities_firm_with_matching_primary(self, tmp_path):
         from resolve_vietcap_iq_fa_metric_mapping import load_primary_mapping
