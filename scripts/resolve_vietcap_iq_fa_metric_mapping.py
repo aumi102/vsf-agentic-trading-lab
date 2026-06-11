@@ -134,7 +134,7 @@ class MappingResolver:
       primary_source_symbol -- symbol whose mapping payload was used (e.g. 'VCI').
       primary_source_run_id -- run_id of the mapping probe (e.g. '20260610T025420Z').
       mapping_group -- firm-type group: 'securities' / 'bank' / 'insurance' / 'general'.
-      has_primary   -- False for 'general' firms where no primary mapping is expected.
+      has_primary   -- False when no primary mapping is expected or loaded.
                        True means primary should exist; if primary_rows is empty, all
                        results will be no_mapping_available.
 
@@ -186,7 +186,7 @@ class MappingResolver:
         code = line_item_code.strip()
         sec = section.strip()
 
-        # Firm type has no primary mapping (general); skip directly to union
+        # This resolver has no primary mapping; skip directly to union.
         if not self._has_primary:
             return self._union_resolve(sec, code)
 
@@ -289,7 +289,7 @@ def build_resolver(
 ) -> MappingResolver:
     """Build a MappingResolver from CSV file paths.
 
-    Pass primary_path=None to create a general-firm resolver (has_primary=False).
+    Pass primary_path=None to create a union-only resolver (has_primary=False).
     """
     union_rows = load_union_mapping(union_path)
     if primary_path is None:

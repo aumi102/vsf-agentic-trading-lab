@@ -22,7 +22,7 @@ and `mapping_status=""` (not one of the 6 resolver statuses). Existing tests pas
 | `line_item_name_en` | English name from primary or consensus_fallback mapping; empty otherwise |
 | `line_item_name_vi` | Vietnamese name from primary mapping only; empty for consensus_fallback |
 | `mapping_status` | One of 6 resolver statuses, or `""` when mapping not loaded (see below) |
-| `mapping_source_symbol` | `"VCI"` (primary hit), `"union"` (consensus), or `""` |
+| `mapping_source_symbol` | Primary source such as `"VCI"`/`"FPT"`, `"union"` for consensus, or `""` |
 | `mapping_source_run_id` | Run ID of primary mapping probe; `""` for union or no-mapping |
 | `mapping_conflict` | `"true"` / `"false"` from union CSV; `""` for primary or no-mapping |
 | `mapping_group` | Firm type group from firm-type plan (e.g. `securities`, `general`); `""` if unknown |
@@ -79,7 +79,8 @@ The parser builds one `MappingResolver` per unique symbol, governed by the firm-
 | Firm type | `has_primary` | Resolution path |
 |---|---|---|
 | `securities` (e.g. VCI) | `True` | Primary → consensus_fallback → conflict_skipped / not_covered / section_mismatch |
-| `general` (e.g. FPT) | `False` | Union only → consensus_fallback / conflict_skipped / not_covered / section_mismatch |
+| `general` (e.g. FPT) with FPT primary CSV loaded | `True` | FPT primary → consensus_fallback → conflict_skipped / not_covered / section_mismatch |
+| `general` without primary CSV or with empty source | `False` | Union only → consensus_fallback / conflict_skipped / not_covered / section_mismatch |
 | Unknown symbol | `False` (default) | Union only |
 | Non-general without matching primary CSV | `True`, no rows | All codes → `no_mapping_available` |
 
@@ -101,17 +102,20 @@ section_mismatch_count, no_status_count, named_count, unnamed_count
 
 ## Real payload validation (2026-06-10)
 
-Run on 5 saved FA-direct payloads. No live network. No DB write.
+Combined validation view from saved FA-direct payloads. VCI rows use the VCI primary mapping; FPT
+rows use the FPT primary Mode B run. No live network. No DB write.
 
 | Symbol | Section | Total rows | named | primary | consensus | conflict_skip | not_covered | no_map | mismatch |
 |---|---|---|---|---|---|---|---|---|---|
 | VCI | BALANCE_SHEET | 13,571 | 11,849 | 8,241 | 3,608 | 0 | 1,435 | 0 | 287 |
 | VCI | INCOME_STATEMENT | 7,421 | 6,683 | 3,239 | 3,444 | 164 | 574 | 0 | 0 |
 | VCI | CASH_FLOW | 9,225 | 7,995 | 6,068 | 1,927 | 0 | 1,230 | 0 | 0 |
-| FPT | BALANCE_SHEET | 13,571 | 9,471 | 0 | 9,471 | 2,378 | 1,435 | 0 | 287 |
-| FPT | CASH_FLOW | 9,225 | 7,216 | 0 | 7,216 | 779 | 1,230 | 0 | 0 |
+| FPT | BALANCE_SHEET | 13,571 | 11,849 | 5,002 | 6,847 | 41 | 1,394 | 0 | 287 |
+| FPT | CASH_FLOW | 9,225 | 8,036 | 1,681 | 6,355 | 41 | 1,148 | 0 | 0 |
 
-Total: 53,013 fact rows. Errors: 0.
+Total: 53,013 fact rows. Errors: 0. Mode B rescues general-symbol `bsa*` union conflicts via
+FPT primary mapping. The 95% section coverage gate is still below threshold: BS 89.7%, IS 94.5%,
+CF 87.6%. DB write, PIT confirmation, backtest, and QuestDB schema remain blocked/not designed.
 
 **Generated files:**
 - `data/processed/vietcap_iq/financial_statement_facts.csv` — 53,013 rows, 32 columns
@@ -125,7 +129,7 @@ Total: 53,013 fact rows. Errors: 0.
 
 File: `tests/test_parse_vietcap_iq_fa_payload_mapping_integration.py`
 
-65 tests across 14 groups:
+71 tests across 14 groups:
 
 1. No mapping inputs — backward compatibility (9 tests)
 2. Primary lookup hit (7 tests)
@@ -142,7 +146,7 @@ File: `tests/test_parse_vietcap_iq_fa_payload_mapping_integration.py`
 13. Load firm-type plan CSV (3 tests)
 14. Build symbol resolver (4 tests)
 
-Full suite: **552 tests passed** (0 failures, 0 regressions).
+Full suite: **566 tests passed** (0 failures, 0 regressions).
 
 ---
 
@@ -154,4 +158,4 @@ Full suite: **552 tests passed** (0 failures, 0 regressions).
 - `line_item_name` (legacy) is always empty.
 - Existing parser columns unchanged.
 - PIT semantics not confirmed — `public_date_semantics` warnings unchanged.
-- Mapping gate not marked complete — cross-symbol consistency not yet validated.
+- Mapping gate not complete: BS 89.7%, IS 94.5%, CF 87.6%.

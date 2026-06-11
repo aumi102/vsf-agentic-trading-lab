@@ -45,7 +45,7 @@ primary mapping payload.
 | `securities` | VCI (primary), SSI (confirmed identical) | Probed |
 | `bank` | VCB | Probed |
 | `insurance` | BVH | Probed |
-| `general` | FPT, HPG (CT); E1VFVN30 (QU) — all return identical 345-code payload | Probed 2026-06-11 |
+| `general` | FPT primary; HPG (CT) and E1VFVN30 (QU) confirmed identical 345-code payload | Probed 2026-06-11 |
 
 `general` covers approximately 96% of the 2080-symbol universe (`CT`=1778 + `QU`=181 + unknown=34).
 CT and QU firm types return the same 345-code mapping; no dedicated fund payload exists.
@@ -109,12 +109,15 @@ Consistency checks (audit only — never override classification):
 
 | Condition | `mapping_status` |
 |---|---|
-| `mapping_group=general`, code in consensus (conflict-free, section-matched) | `consensus_fallback` |
-| `mapping_group=general`, code not in consensus | `not_covered` |
-| `mapping_group=general`, code in 88-conflict set | `conflict_skipped` |
+| `mapping_group=general`, code in FPT primary, section-matched | `primary` |
+| `mapping_group=general`, primary miss and code in consensus (conflict-free, section-matched) | `consensus_fallback` |
+| `mapping_group=general`, primary miss and code not in consensus | `not_covered` |
+| `mapping_group=general`, primary miss and code in conflict set | `conflict_skipped` |
 | `mapping_group` known but no saved payload for that group | `no_mapping_available` |
 
-**No name is ever invented.** `general` means "skip primary lookup; use consensus fallback only."
+**No name is ever invented.** Mode B means general symbols use FPT as a verified representative
+primary mapping source, then union consensus fallback. Conflicting union codes do not block a
+valid FPT primary hit.
 
 ---
 
@@ -125,7 +128,7 @@ Every row receiving a name (or `mapping_status`) must record:
 | Field | Value |
 |---|---|
 | `mapping_group` | One of `bank` / `insurance` / `securities` / `general` |
-| `mapping_source_symbol` | Probed symbol used (e.g., `VCB`, `VCI`) or `""` for general |
+| `mapping_source_symbol` | Probed symbol used (e.g., `VCB`, `VCI`, `FPT`) or `"union"` for fallback |
 | `mapping_source_run_id` | `run_id` of the mapping payload loaded |
 | `mapping_status` | One of the six values in the strategy doc §6.3 |
 | `mapping_conflict` | `"true"` if in 88-conflict set; `"false"` otherwise |
@@ -154,7 +157,7 @@ Every row receiving a name (or `mapping_status`) must record:
 | Coverage report generated | Done |
 | Firm-type planner script | Done — `scripts/plan_vietcap_iq_fa_firm_type_mapping.py` |
 | Planner tests | Done — `tests/test_plan_vietcap_iq_fa_firm_type_mapping.py` (46 tests) |
-| Option C lookup tests | Done — 65 integration tests + 74 resolver tests |
+| Option C lookup tests | Done — 71 integration tests + 74 resolver tests |
 | Parser integration reviewed and merged | Done — `8886058` (main) |
 
 ---
@@ -169,6 +172,7 @@ Every row receiving a name (or `mapping_status`) must record:
 | Backtest blocked | Unchanged |
 | `publicDate` PIT unconfirmed | Unchanged |
 | Mapping coverage gate (95%) not met | Unchanged — union (7 payloads): BS 89.7% / IS 94.5% / CF 87.6%; gap is structural |
+| QuestDB schema | Not designed |
 
 ---
 

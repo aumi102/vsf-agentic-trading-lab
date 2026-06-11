@@ -100,7 +100,7 @@ class TestClassifySymbolCompanyTypeCode:
     def test_ct_is_general(self):
         row = classify_symbol("FPT", company_type_code="CT", is_bank="False")
         assert row["mapping_group"] == "general"
-        assert row["mapping_source_symbol"] == ""
+        assert row["mapping_source_symbol"] == "FPT"
 
     def test_qu_is_general(self):
         row = classify_symbol("FUETPVND", company_type_code="QU", is_bank="False")
@@ -132,16 +132,17 @@ class TestClassifySymbolFallback:
         row = classify_symbol("UNKNOWN")
         assert row["mapping_group"] == "general"
         assert row["confidence"] == "none"
-        assert row["mapping_source_symbol"] == ""
+        assert row["mapping_source_symbol"] == "FPT"
 
     def test_unknown_company_type_code_defaults_to_general(self):
         row = classify_symbol("XYZ", company_type_code="XX", is_bank="False")
         assert row["mapping_group"] == "general"
         assert row["confidence"] == "none"
 
-    def test_general_fallback_policy_says_no_primary(self):
+    def test_general_fallback_policy_says_fpt_primary_then_union(self):
         row = classify_symbol("FPT", company_type_code="CT")
-        assert "no_primary_mapping" in row["fallback_policy"]
+        assert "primary=FPT_mapping" in row["fallback_policy"]
+        assert "fallback=union_consensus_conflict_free_section_matched" in row["fallback_policy"]
 
     def test_bank_fallback_policy_says_vcb(self):
         row = classify_symbol("MBB", company_type_code="NH", is_bank="True")
@@ -187,14 +188,13 @@ class TestGapProbeExplicitOverrides:
         assert row["mapping_group"] == "general"
         assert row["confidence"] == "high"
 
-    def test_general_override_source_symbol_still_empty(self):
-        # _GROUP_TO_SOURCE_SYMBOL["general"] remains "" — no primary payload for general
+    def test_general_override_source_symbol_is_fpt(self):
         row = classify_symbol("FPT")
-        assert row["mapping_source_symbol"] == ""
+        assert row["mapping_source_symbol"] == "FPT"
 
-    def test_general_override_fallback_policy_unchanged(self):
+    def test_general_override_fallback_policy_uses_fpt_primary(self):
         row = classify_symbol("HPG")
-        assert "no_primary_mapping" in row["fallback_policy"]
+        assert "primary=FPT_mapping" in row["fallback_policy"]
 
 
 # ---------------------------------------------------------------------------
@@ -211,9 +211,9 @@ class TestFPTNotMisclassified:
         row = classify_symbol("FPT")
         assert row["mapping_group"] == "general"
 
-    def test_fpt_general_has_no_primary_source_symbol(self):
+    def test_fpt_general_uses_fpt_primary_source_symbol(self):
         row = classify_symbol("FPT", company_type_code="CT")
-        assert row["mapping_source_symbol"] == ""
+        assert row["mapping_source_symbol"] == "FPT"
 
 
 # ---------------------------------------------------------------------------
@@ -475,8 +475,8 @@ class TestConfigIntegrity:
         for group in ("bank", "insurance", "securities", "general"):
             assert group in _GROUP_TO_FALLBACK_POLICY
 
-    def test_general_source_symbol_is_empty(self):
-        assert _GROUP_TO_SOURCE_SYMBOL["general"] == ""
+    def test_general_source_symbol_is_fpt(self):
+        assert _GROUP_TO_SOURCE_SYMBOL["general"] == "FPT"
 
     def test_explicit_overrides_are_consistent_with_group_table(self):
         for sym, group in _EXPLICIT_OVERRIDES.items():

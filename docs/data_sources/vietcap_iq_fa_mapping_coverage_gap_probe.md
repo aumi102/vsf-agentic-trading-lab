@@ -133,12 +133,12 @@ source (HTML scrape, annotation layer), a reviewed gate-threshold decision, or a
 
 ---
 
-## 9. Planner and Resolver Design Note
+## 9. Mode B Implemented
 
 `FPT`, `HPG`, and `E1VFVN30` were added to `_EXPLICIT_OVERRIDES` in
 `scripts/plan_vietcap_iq_fa_firm_type_mapping.py` as `"general"`. This records the direct probe
-evidence without changing `_GROUP_TO_SOURCE_SYMBOL["general"]` (which remains `""`) or
-any fallback policy. 8 new tests added in `tests/test_plan_vietcap_iq_fa_firm_type_mapping.py`.
+evidence. Mode B now sets `_GROUP_TO_SOURCE_SYMBOL["general"] = "FPT"`, so general symbols use
+FPT as the representative verified primary mapping before union consensus fallback.
 
 **Mode A vs Mode B analysis (offline, saved payloads only):**
 
@@ -146,19 +146,17 @@ An offline comparison of two resolver modes on saved FPT BS+CF payloads (556 cod
 
 | Mode | Named | primary | consensus_fallback | conflict_skipped | not_covered |
 |---|---|---|---|---|---|
-| **A — current** (union-only, `has_primary=False`) | 406 (73%) | 0 | 406 | 81 | 62 |
-| **B — proposed** (FPT primary, then union) | 485 (87%) | 163 | 322 | 2 | 62 |
+| **A - prior** (union-only, `has_primary=False`) | 406 (73%) | 0 | 406 | 81 | 62 |
+| **B - implemented** (FPT primary, then union) | 485 (87%) | 163 | 322 | 2 | 62 |
 
-Mode B would add +79 named rows by resolving `bsa*` conflict codes via FPT's own mapping
+Mode B adds +79 named rows by resolving `bsa*` conflict codes via FPT's own mapping
 payload rather than skipping them as union conflicts. Names are identical where both modes
 resolve; Mode B adds names for codes the union marks as conflicting.
 
-**Why Mode B is not implemented here:** the current parser's `_build_symbol_resolver()`
-hard-codes `mapping_group == "general"` → `has_primary=False`, ignoring `mapping_source_symbol`
-for general firms. Activating Mode B requires a targeted parser change (deferred to a future PR).
-`_GROUP_TO_SOURCE_SYMBOL["general"]` is deliberately kept `""` to avoid writing a misleading
-`mapping_source_symbol=FPT` into the plan CSV when the parser would discard it.
-`line_item_name` (legacy) remains empty in all modes.
+Parser `_build_symbol_resolver()` is now driven by non-empty `mapping_source_symbol`: if the
+matching primary CSV is loaded, general symbols get primary lookup first; otherwise they keep the
+safe union-only fallback. Union conflicts no longer block a valid FPT primary hit. `line_item_name`
+(legacy) remains empty in all modes.
 
 ---
 
@@ -174,7 +172,8 @@ different firm types. Options:
 3. **Block on PIT validation** — redirect effort to the other DB write gate
    (`publicDate` PIT confirmation) while the mapping gap is noted but deprioritised.
 
-No action taken in this probe branch. Gate remains blocked.
+Mapping gate remains blocked: BS 89.7%, IS 94.5%, CF 87.6%. DB write remains blocked, PIT remains
+unconfirmed, backtest remains blocked, and QuestDB schema is not designed.
 
 ---
 
