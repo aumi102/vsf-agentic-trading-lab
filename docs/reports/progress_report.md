@@ -155,6 +155,25 @@ Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architectu
 
 ---
 
+## Docs Debt (2026-06-11)
+
+Mentor policy: each doc ≤1500 words. The following files exceed this limit and are marked as debt for a future cleanup PR (do not rewrite in this PR — references and Docusaurus build must be verified first):
+
+| File | ~Words | Notes |
+|---|---|---|
+| `docs/data_sources/01_vietcap_iq.md` | 13,266 | Historical source-review accumulation; needs major split |
+| `docs/data_sources/vietcap_iq_fa_ingestion_v2_readiness.md` | ~3,800 | Gate-tracking doc; compress policy sections into tables |
+| `docs/data_sources/vietcap_iq_fa_mapping_integration_strategy.md` | ~2,700 | Design record; options A/B/C could be summarized |
+| `docs/data_sources/vietcap_iq_fa_firm_type_determination.md` | ~2,700 | Detailed design; compress examples |
+| `docs/data_sources/vietcap_iq_fa_mapping_coverage_bank_probe.md` | ~1,800 | Probe log; partially archival |
+| `docs/data_sources/vietcap_iq_fa_mapping_cashflow_probe.md` | ~1,700 | Probe log; partially archival |
+| `docs/ingestion_v2_schema_plan.md` | ~5,200 | Schema design; compress or split |
+| `docs/reports/progress_report.md` | ~2,600 | This file; trim TL;DR and tracker details |
+
+Compliant files (≤1500 words): `vietcap_iq_fa_parser_mapping_integration.md` (876), `vietcap_iq_fa_mapping_resolver_tests.md` (700), `vietcap_iq_fa_metric_mapping_discovery.md` (1020).
+
+---
+
 ## Minimal Architecture Summary
 
 - Detailed architecture is in `docs/architecture/02_trading_agent_architecture_overview.md`.

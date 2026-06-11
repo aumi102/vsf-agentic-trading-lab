@@ -2082,3 +2082,20 @@ See `docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md`.
 ---
 
 </details>
+
+## FA Docs Map
+
+Core state lives in this file (`01_vietcap_iq.md`). Detailed FA block notes:
+
+| Doc | Purpose |
+|---|---|
+| `vietcap_iq_fa_ingestion_v2_readiness.md` | Master gate table — confirmed facts, open gates, policies, DB/backtest blockers |
+| `vietcap_iq_fa_mapping_integration_strategy.md` | Option C design record — options A/B/C, lookup contract, integration gates |
+| `vietcap_iq_fa_parser_mapping_integration.md` | Parser integration block note — dry-run validation, 7 output columns, 65 tests |
+| `vietcap_iq_fa_mapping_resolver_tests.md` | Resolver implementation and test coverage (74 tests) |
+| `vietcap_iq_fa_firm_type_determination.md` | Firm-type determination design (Approach D) |
+| `vietcap_iq_fa_mapping_coverage_bank_probe.md` | Bank/insurance union coverage analysis |
+| `vietcap_iq_fa_mapping_cashflow_probe.md` | VCI mapping baseline and CASH_FLOW probe |
+| `vietcap_iq_fa_metric_mapping_discovery.md` | VCI-only and union coverage tables |
+
+**Current blockers (as of 2026-06-11):** mapping coverage below 95% gate; 88 conflicts; `publicDate` PIT unconfirmed; full-history fetch not implemented; DB write blocked; backtest blocked.

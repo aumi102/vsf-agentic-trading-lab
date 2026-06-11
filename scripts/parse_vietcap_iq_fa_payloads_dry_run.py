@@ -392,18 +392,29 @@ def _check_publicdate_format(facts: list[dict]) -> list[dict]:
 
 
 def _check_mapping_coverage(facts: list[dict]) -> list[dict]:
-    """Explicitly verify mapping coverage — expected 0% until mapping is loaded."""
+    """Report mapping coverage.
+
+    line_item_name (legacy) must always be 0% — empty by design.
+    line_item_name_en reflects resolver output when mapping is loaded.
+    """
     unique_codes = {f.get("line_item_code", "") for f in facts if f.get("line_item_code")}
-    rows_with_name = sum(1 for f in facts if f.get("line_item_name", ""))
     total = len(facts)
-    pct = rows_with_name / total * 100 if total else 0.0
+    rows_with_legacy = sum(1 for f in facts if f.get("line_item_name", ""))
+    rows_with_en = sum(1 for f in facts if f.get("line_item_name_en", ""))
+    pct_en = rows_with_en / total * 100 if total else 0.0
+    mapping_loaded = any(f.get("mapping_status", "") for f in facts)
+    mapping_note = (
+        f"line_item_name_en (resolver output): {rows_with_en:,}/{total:,} rows named ({pct_en:.1f}%)."
+        if mapping_loaded else
+        "mapping not loaded — line_item_name_en will be empty; see vietcap_iq_fa_metric_mapping_discovery.md."
+    )
     return [{
         "check": "mapping_coverage",
         "severity": "info",
         "detail": (
-            f"line_item_name populated for {rows_with_name}/{total} rows ({pct:.1f}%). "
+            f"line_item_name (legacy): {rows_with_legacy}/{total} rows (always 0% by design). "
             f"Unique line_item_codes: {len(unique_codes)}. "
-            "No mapping loaded — see vietcap_iq_fa_metric_mapping_discovery.md."
+            + mapping_note
         ),
     }]
 
@@ -1197,14 +1208,18 @@ def main(argv: list[str] | None = None) -> None:
     # Generate report after validation but before max_rows truncation.
     report = generate_report(all_stats, all_facts, all_errors, validation_findings)
 
+    # Build mapping summary from full (untruncated) facts before truncation.
+    summary_rows: list[dict] = []
+    if _mapping_enabled and args.mapping_summary_output:
+        summary_rows = build_mapping_summary(all_facts)
+
     if args.max_rows is not None:
         all_facts = all_facts[: args.max_rows]
 
     paths = write_outputs(all_facts, all_errors, report, args.output_root, args.format)
 
-    # Write optional mapping summary CSV.
+    # Write mapping summary CSV (built from full untruncated facts above).
     if _mapping_enabled and args.mapping_summary_output:
-        summary_rows = build_mapping_summary(all_facts)
         args.mapping_summary_output.parent.mkdir(parents=True, exist_ok=True)
         with args.mapping_summary_output.open("w", encoding="utf-8", newline="") as fh:
             writer = csv.DictWriter(fh, fieldnames=_SUMMARY_COLUMNS)

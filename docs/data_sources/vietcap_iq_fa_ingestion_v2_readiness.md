@@ -299,36 +299,32 @@ re-ingestion from multiple runs (e.g., a dedup/upsert policy on
 - **Key finding:** The mapping endpoint is firm-type-specific. VCB returns bank codes (`isb*`,
   `bsb*`, `cfb*`); BVH returns insurance codes (`isi*`, `bsi*`). A universal mapping requires
   either per-symbol querying or a union with conflict resolution.
-- **What is needed:** Coverage ≥ 95% per section is still required before parser integration
-  proceeds. The integration strategy has been documented (Option C).
+- **What is needed:** Coverage ≥ 95% per section is still required before the DB write mapping
+  gate (§17) is met. Option C integration is implemented in dry-run.
 - **Sources confirmed:** `/financial-statement/metrics` endpoint returns the mapping.
   Additional firm types (fund management, etc.) may cover residual uncovered codes.
-- **Integration strategy:** Option C (Hybrid gated mapping) is the documented recommended
-  approach — per-symbol mapping as primary, union consensus as fallback for conflict-free,
-  section-matched codes, with full provenance tracking. See
-  `docs/data_sources/vietcap_iq_fa_mapping_integration_strategy.md` for the full design.
-  The strategy is **designed, not implemented.** Parser code has not been changed.
-- **Firm-type determination:** How the parser selects the correct firm-type mapping group for
-  each symbol is designed in `docs/data_sources/vietcap_iq_fa_firm_type_determination.md`.
+- **Integration strategy:** Option C (Hybrid gated mapping) implemented in dry-run — see
+  `docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md`. DB write remains blocked
+  on PIT validation, QuestDB schema design, and all §17 gates.
+- **Firm-type determination:** Wired into parser dry-run via `--firm-type-plan-csv`.
   Classification uses `company_type_code` from the Vietcap IQ universe CSV (`NH`=bank,
-  `BH`=insurance, `CK`=securities, others=general) with an explicit override table for the
-  four directly-probed symbols (VCI, SSI, VCB, BVH). Planner script:
-  `scripts/plan_vietcap_iq_fa_firm_type_mapping.py`. Not yet integrated into the parser.
-- **Future integration rule:** When the parser integration is eventually implemented, it
-  must populate `line_item_name_en` (and `line_item_name_vi`) via the hybrid lookup, not
-  the legacy `line_item_name` column. The `_check_no_invented_names` guard must still pass —
-  conflicting, uncovered, and section-mismatched codes must leave `line_item_name_en` empty.
-  The existing `line_item_name` column must remain empty until a deliberate deprecation or
-  migration decision is separately documented and reviewed.
+  `BH`=insurance, `CK`=securities, others=general) with an explicit override table for
+  VCI/SSI/VCB/BVH. Planner script: `scripts/plan_vietcap_iq_fa_firm_type_mapping.py`.
+  See `docs/data_sources/vietcap_iq_fa_firm_type_determination.md`.
+- **Integration rule (implemented):** `line_item_name_en` / `line_item_name_vi` are populated
+  via the hybrid lookup in dry-run output. `line_item_name` (legacy) remains empty.
+  Conflicting, uncovered, and section-mismatched codes leave `line_item_name_en` empty.
+  `_check_no_invented_names` still enforced.
 - **Mapping integration does not unblock DB write by itself.** DB write remains blocked until
   PIT validation, QuestDB schema design, full-history fetch, and all §17 quality gates are
-  cleared — independent of whether mapping integration is implemented.
+  cleared.
 - **Do not invent names.** Prefix-level inferences (`bsa*` ≈ balance sheet assets) are
   not verified and must not be written into any name field.
 - **Coverage threshold:** The mapping must cover ≥95% of observed codes per section before
   the mapping gate in §17 can be marked met.
-- **Current parser output:** `line_item_name` remains empty in all current parser output.
-  `line_item_name_en` does not yet exist in parser output — it is a planned future column.
+- **Current parser output:** `line_item_name` (legacy) is empty for all rows.
+  `line_item_name_en` / `line_item_name_vi` are populated via resolver; empty for
+  conflict/uncovered/section-mismatch codes.
 
 ---
 
@@ -402,7 +398,7 @@ All DB write gates (§17) must be met first. Additionally:
 | 1. Re-probe `/financial-statement/metrics` | ~~Network access restored~~ | **Done** — HTTP 200, `run_id=20260610T025420Z`; 1078 codes, coverage 43–66%; see `vietcap_iq_fa_mapping_cashflow_probe.md` |
 | 2. Probe CASH_FLOW section for VCI and FPT | ~~None~~ | **Done** — `run_id=20260610T025429Z` (VCI) and `20260610T025440Z` (FPT); identical envelope; 33Q + 8Y; 225 codes; publicDate non-null |
 | 3. Probe 3–5 additional symbols across HOSE/HNX/UPCOM | None | Check that payload shape is consistent across firm types |
-| 4. Build metric mapping integration | Step 1; strategy designed | **Resolver implemented** — Option C resolver in `scripts/resolve_vietcap_iq_fa_metric_mapping.py` (74 tests); parser not yet integrated; `line_item_name_en`/`line_item_name_vi` not yet in parser output |
+| 4. Build metric mapping integration | Step 1; strategy designed | **Parser integration implemented** — Option C resolver wired into parser dry-run (`phase/fa-parser-mapping-integration`, pending PR review/merge); 7 new output columns; 65 integration tests; dry-run on 5 payloads: 53,013 rows, 0 errors; DB write still blocked; see `vietcap_iq_fa_parser_mapping_integration.md` |
 | 5. Run mapping coverage check | Step 4 | Verify ≥ threshold coverage before DB gate discussion |
 | 6. Validate `publicDate` PIT semantics | External filing records | Cross-check 5–10 sample rows against HOSE/HNX filing dates |
 | 7. Design canonical DB schema | Steps 4–6 complete | Define QuestDB table(s), dedup key, and upsert policy |
