@@ -67,7 +67,7 @@ No DB write, no backtest, no production agent tools yet.
 2. Validate `publicDate` PIT semantics — cross-check 5–10 sample rows vs HOSE/HNX filing dates.
 3. Design canonical QuestDB schema and dedup/upsert policy.
 4. Build full-history FA fetcher (after gates above are met).
-5. Merge PR #7 (FA parser mapping integration dry-run) after review.
+5. Merge docs cleanup PR #8 after review, then iterate on coverage gap and PIT validation.
 
 ---
 
