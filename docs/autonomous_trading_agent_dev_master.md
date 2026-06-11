@@ -8,115 +8,46 @@ toc_max_heading_level: 3
 
 ## 1. Purpose
 
-This is the single source of truth for implementation and coding agents working on the Autonomous Trading Agent MVP.
+Single source of truth for implementation and coding agents working on the Autonomous Trading Agent MVP.
 
-Use this document to implement source/vendor/provider ingestion, raw evidence capture, canonical schemas, data quality checks, feature generation, signal generation, backtesting, validation gates, trace storage, and answer composition. Do not treat this as a research summary. Domain notes and paper notes remain supporting material, not coding instructions.
+Use this document to implement source/vendor/provider ingestion, raw evidence capture, canonical schemas, data quality checks, feature generation, signal generation, backtesting, validation gates, trace storage, and answer composition. Domain notes and paper notes are supporting material, not coding instructions.
 
-The project direction is source-first and focused only on the mentor-named sources: HSX/HOSE, Vietcap IQ, VBMA, and FRED/fredapi.
+Active source scope: HSX/HOSE, Vietcap IQ, VBMA, and FRED/fredapi.
 
 ## 2. Consolidated Sources
 
 | Source doc | Contribution |
 |---|---|
-| `docs/architecture/02_trading_agent_architecture_overview.md` | module map, decision states, MVP boundary, end-to-end flow. |
-| `docs/architecture/03_data_pipeline_architecture.md` | raw -> bronze -> silver -> gold pipeline, data quality outputs, lineage fields. |
+| `docs/architecture/02_trading_agent_architecture_overview.md` | Module map, decision states, MVP boundary, end-to-end flow. |
+| `docs/architecture/03_data_pipeline_architecture.md` | raw → bronze → silver → gold pipeline, data quality outputs, lineage fields. |
 | `docs/architecture/04_db_infrastructure_options.md` | MVP storage direction: keep moving parts small, use files/Parquet first, defer heavier infra. |
-| `docs/architecture/05_schema_design_principles.md` | entity boundaries, stable IDs, point-in-time rules, validation gates. |
-| `docs/plans/01_data_crawling_plan.md` | crawl scope, source priority, raw capture contract, failure handling. |
-| `docs/plans/02_database_schema_plan.md` | entity plan, schema implementation order, reproducibility invariants. |
+| `docs/architecture/05_schema_design_principles.md` | Entity boundaries, stable IDs, point-in-time rules, validation gates. |
+| `docs/plans/01_data_crawling_plan.md` | Crawl scope, source priority, raw capture contract, failure handling. |
+| `docs/plans/02_database_schema_plan.md` | Entity plan, schema implementation order, reproducibility invariants. |
 | `docs/plans/03_mvp_6_week_plan.md` | MVP scope, demo scenarios, acceptance signals. |
-| `docs/plans/04_agent_architecture_plan.md` | agent roles, tool contract shape, answer policy, unanswered behavior. |
-| `docs/plans/05_sample_user_questions.md` | later evaluation questions for market, strategy, evidence, and safety paths. |
-| `docs/plans/06_risk_register.md` | data, backtest, LLM, and product risks that become validation gates. |
-| `docs/data_sources/01_vietcap_iq.md` | reports/evidence source ideas; not primary OHLCV. |
-| `docs/data_sources/02_hsx_hose.md` | official market-data source direction and schema ideas. |
-| `docs/data_sources/03_vbma.md` | optional later local bond/rates context. |
-| `docs/data_sources/04_fred_api.md` | optional later global macro context and point-in-time macro caution. |
+| `docs/plans/04_agent_architecture_plan.md` | Agent roles, tool contract shape, answer policy, unanswered behavior. |
+| `docs/plans/05_sample_user_questions.md` | Evaluation questions for market, strategy, evidence, and safety paths. |
+| `docs/plans/06_risk_register.md` | Data, backtest, LLM, and product risks that become validation gates. |
+| `docs/data_sources/01_vietcap_iq.md` | Reports/evidence source ideas; not primary OHLCV. |
+| `docs/data_sources/02_hsx_hose.md` | Official market-data source direction and schema ideas. |
+| `docs/data_sources/03_vbma.md` | Optional later local bond/rates context. |
+| `docs/data_sources/04_fred_api.md` | Optional later global macro context and point-in-time macro caution. |
 
-Excluded from consolidation:
-
-- `docs/domain_knowledge/*` = TA/FA/reference material only.
-- `docs/research_notes/*` = paper and research notes only.
-- Paper notes are not copied here unless they directly affect implementation contracts.
+Excluded: `docs/domain_knowledge/*` (TA/FA reference only), `docs/research_notes/*` (paper notes only).
 
 ## 3. MVP Boundary
 
-In scope:
+In scope: source/vendor probing; official daily OHLCV and symbol master ingestion; raw evidence preservation; canonical `securities`, `daily_prices`, `corporate_events` tables; data quality validation; feature generation; deterministic buy/sell/hold signals; backtest with cost/slippage; validation gates.
 
-- Direct source/vendor/provider probing before full ingestion.
-- Official or vendor-level daily OHLCV and symbol master ingestion where access is verified.
-- Raw evidence preservation for every source response, export, or page payload.
-- Canonical `securities`, `daily_prices`, and `corporate_events` tables.
-- Data quality validation.
-- Feature generation from canonical daily OHLCV.
-- Deterministic buy/sell/hold or position signals.
-- Backtest with cost and slippage assumptions.
-- Validation gates for data quality, cost, drawdown, benchmark, sample size, leakage, and source limitations.
-- Trace records for tool inputs, outputs, warnings, failures, source IDs, and final decisions.
+Optional later: FRED macro, VBMA bond context, Vietcap IQ reports, company news, vector search.
 
-Optional later:
-
-- FRED macro series.
-- VBMA bond/rates context.
-- Vietcap IQ reports and research evidence.
-- Company news.
-- Macro/evidence retrieval.
-- Vector search over reports/news.
-
-Out of scope:
-
-- Live trading.
-- Broker execution.
-- High-frequency order book strategy.
-- RL-based trading.
-- Real-money buy/sell advice.
+Out of scope: live trading, broker execution, HFT, RL-based trading, real-money advice.
 
 ## 4. Source-First Ingestion Strategy
 
-### Why Source First
+Source-level adapters expose the real fields, timestamps, adjustment flags, identifiers, and access constraints that shape schema and DB design. Wrapper libraries hide field provenance; the agent must be able to explain where each value came from.
 
-<details open>
-<summary>Source-level crawling is the main learning and implementation path.</summary>
-
----
-
-#### Rationale
-
-- Source data exposes the real fields, timestamps, adjustment flags, identifiers, and access constraints that shape schema and DB design.
-- Wrapper libraries hide field provenance and may rename, drop, join, or transform values before the project can audit them.
-- The trading agent must be able to explain where a price, event, report, or macro value came from.
-- Source-specific adapters make data quality, legal/access constraints, point-in-time rules, and failure handling explicit.
-
----
-
-#### Raw evidence that must be preserved
-
-- Raw response body, downloaded file, page snapshot, or serialized payload.
-- Request URL or endpoint name when allowed.
-- Request parameters, symbol, date range, headers/auth mode without secrets.
-- Crawl timestamp and source-provided timestamp if present.
-- HTTP status, provider status, content type, row count, original columns, parser version.
-- Content hash and local raw path.
-- Error payload or failure reason.
-
----
-
-#### Why source fields matter
-
-- Schema design depends on provider identifiers, exchange codes, timestamp names, corporate-action flags, adjusted-price fields, and security type fields.
-- DB design needs stable source IDs, crawl run IDs, source-specific row keys, and provenance fields.
-- Backtest correctness depends on adjusted/unadjusted price flags, corporate-action fields, release timestamps, and next-bar execution assumptions.
-- Agent answers must distinguish observed source facts from inferred interpretation.
-
----
-
-#### Adapter mapping rule
-
-Each source-specific adapter maps raw source fields into canonical tables, but must keep raw fields available through `raw_path`, `source`, `source_id`, `schema_version`, and parser metadata.
-
----
-
-</details>
+Required raw evidence per response: raw body or file, request URL or endpoint name, request params/headers/auth mode (no secrets), crawl timestamp, HTTP status, content type, row count, original columns, parser version, content hash, raw path, error payload.
 
 ## 5. Target Implementation Pipeline
 
@@ -126,245 +57,105 @@ source -> raw capture -> bronze parser -> silver canonical table -> gold feature
 
 | Layer | Coding meaning | Required output |
 |---|---|---|
-| `source` | verified HSX/HOSE, Vietcap IQ, VBMA, or FRED/fredapi surface, including public pages, APIs, downloads, or permitted exports. | source probe result and access notes. |
-| `raw` | exact response, export, page payload, or serialized object before interpretation. | raw file path, crawl metadata, source ID, content hash. |
-| `bronze` | minimally parsed source-shaped rows; preserve original names where useful. | parse status, parser version, schema version, raw path. |
-| `silver` | canonical normalized tables with stable IDs, types, units, and quality status. | Parquet tables such as `securities`, `daily_prices`, `corporate_events`. |
-| `gold` | feature-ready tables derived from silver with point-in-time rules. | returns, moving averages, volatility, volume ratios, feature timestamps. |
-| `signal` | rule output from features. | signal rows with date, security, action, score, reason code, intended execution. |
-| `backtest` | historical simulation using signal, price, cost, and slippage assumptions. | trades, metrics, equity curve, assumptions, status. |
-| `validation` | gates that decide reject/revise/promote/unanswered. | gate results, failed gates, warnings, decision proposal. |
-| `agent answer` | final user-facing summary based only on tool outputs. | observed facts, interpretation, decision, limitations, next steps. |
+| `source` | Verified HSX/HOSE, Vietcap IQ, VBMA, or FRED surface. | Source probe result and access notes. |
+| `raw` | Exact response, export, or serialized object before interpretation. | Raw file path, crawl metadata, source ID, content hash. |
+| `bronze` | Minimally parsed source-shaped rows; preserve original names. | Parse status, parser version, schema version, raw path. |
+| `silver` | Canonical normalized tables with stable IDs, types, units, quality status. | Parquet tables: `securities`, `daily_prices`, `corporate_events`. |
+| `gold` | Feature-ready tables derived from silver with point-in-time rules. | Returns, moving averages, volatility, volume ratios, feature timestamps. |
+| `signal` | Rule output from features. | Signal rows with date, security, action, score, reason code, intended execution. |
+| `backtest` | Historical simulation using signal, price, cost, and slippage assumptions. | Trades, metrics, equity curve, assumptions, status. |
+| `validation` | Gates that decide reject/revise/promote/unanswered. | Gate results, failed gates, warnings, decision proposal. |
+| `agent answer` | Final user-facing summary based only on tool outputs. | Observed facts, interpretation, decision, limitations, next steps. |
 
 ## 6. Module Map
 
-### `source_probe_tool`
-
-- **responsibility:** verify what each source exposes before building a full crawler.
-- **input:** source name, endpoint/page/download candidate, sample symbols, date range.
-- **output:** probe status, access/auth status, available fields, sample raw path, legal/terms notes.
-- **failure modes:** inaccessible source, auth required, blocked request, unknown schema, manual-only access.
-- **must not do:** claim a source is usable without a probe result.
-
-### `source_adapter`
-
-- **responsibility:** fetch source-level payloads and expose a common interface for raw capture.
-- **input:** source config, symbols, dates, credentials from environment when needed.
-- **output:** `FetchResult` with raw payload metadata and source-specific fields.
-- **failure modes:** auth failure, rate limit, network failure, schema drift, empty response.
-- **must not do:** hide source errors, store secrets, or silently transform fields without raw evidence.
-
-### `market_data_tool`
-
-- **responsibility:** load canonical market data for requested symbols and date range.
-- **input:** symbols, exchange filter, start date, end date, dataset version, adjusted-price preference.
-- **output:** `daily_prices` rows plus dataset metadata.
-- **failure modes:** symbol not found, date range unavailable, source file missing, schema mismatch.
-- **must not do:** silently fill large gaps, invent adjusted prices, return rows without `source_id`.
-
-### `data_quality_tool`
-
-- **responsibility:** validate schema, duplicates, OHLC consistency, date order, missing dates, units, source linkage.
-- **input:** canonical table name, rows or dataset path, expected schema, quality thresholds.
-- **output:** `quality_status`, `quality_reasons`, failed rows if available, warnings.
-- **failure modes:** missing required column, duplicate key, unparseable date, invalid OHLC, missing source metadata.
-- **must not do:** downgrade blocking errors to warnings without an explicit diagnostic mode.
-
-### `feature_tool`
-
-- **responsibility:** compute point-in-time features from clean silver data.
-- **input:** `daily_prices`, feature config, lookback windows, date range.
-- **output:** feature table with `security_id`, `trade_date`, feature names, values, and `feature_timestamp`.
-- **failure modes:** insufficient lookback history, missing close/volume, non-trading date alignment issue.
-- **must not do:** use future rows, mix adjusted and unadjusted prices without a warning, recompute with hidden defaults.
-
-### `signal_tool`
-
-- **responsibility:** convert features into deterministic signal rows.
-- **input:** feature table, strategy config, signal rules, allowed positions.
-- **output:** signal table with action, score, reason code, and rule version.
-- **failure modes:** undefined strategy rule, missing feature, ambiguous signal conflict.
-- **must not do:** create discretionary LLM signals or change strategy rules after seeing backtest results.
+| Module | Responsibility | Must not do |
+|---|---|---|
+| `source_probe_tool` | Verify what each source exposes before building a full crawler. | Claim a source is usable without a probe result. |
+| `source_adapter` | Fetch source-level payloads and expose a common interface for raw capture. | Hide source errors, store secrets, or silently transform fields without raw evidence. |
+| `market_data_tool` | Load canonical market data for requested symbols and date range. | Silently fill large gaps, invent adjusted prices, or return rows without `source_id`. |
+| `data_quality_tool` | Validate schema, duplicates, OHLC consistency, date order, missing dates, units, source linkage. | Downgrade blocking errors to warnings without an explicit diagnostic mode. |
+| `feature_tool` | Compute point-in-time features from clean silver data. | Use future rows, mix adjusted and unadjusted prices without a warning. |
+| `signal_tool` | Convert features into deterministic signal rows. | Create discretionary LLM signals or change strategy rules after seeing backtest results. |
 
 ## 7. Focused Source Priority
 
 | Priority | Source | Role | Blocking for MVP? |
 |---|---|---|---|
-| P0 | HSX/HOSE official data surfaces | canonical stock-market target for universe stocks, OHLCV, order book/price board, corporate actions, indexes, and trading calendar. | yes, once verified. |
-| P1/P2 | Vietcap IQ | company profiles, financial statements, ratios, reports, documents, and evidence. | no for primary OHLCV. |
-| P2 | VBMA | Vietnam bonds, auctions, issuance, yields, rates, and local macro context. | no for primary stock OHLCV. |
-| P2/P3 | FRED/fredapi | global macro series, observations, rates, yields, inflation, unemployment, and regime context. | no for primary stock OHLCV. |
+| P0 | HSX/HOSE | Canonical stock-market target: universe, OHLCV, corporate actions, indexes, trading calendar. | Yes, once verified. |
+| P1/P2 | Vietcap IQ | Company profiles, financial statements, ratios, reports, evidence. | No for primary OHLCV. |
+| P2 | VBMA | Vietnam bonds, auctions, yields, rates, local macro context. | No for primary stock OHLCV. |
+| P2/P3 | FRED/fredapi | Global macro series, observations, rates, inflation, regime context. | No for primary stock OHLCV. |
 
-Do not add other sources to active scope unless the mentor explicitly asks for them. Do not claim a source is production-usable until access, terms, response fields, and sample raw capture are verified.
+Do not add other sources unless the mentor explicitly asks. Do not claim a source is production-usable until access, terms, response fields, and sample raw capture are verified.
 
 ## 8. Canonical Data Contracts
-
-Canonical tables are source-agnostic. For the current roadmap, active source-specific adapters are limited to HSX/HOSE, Vietcap IQ, VBMA, and FRED/fredapi.
 
 ### 8.1 `securities`
 
 | Field | Contract |
 |---|---|
-| source dataset | official/vendor symbol master, listing page, securities API, or equivalent source-level payload. |
-| target canonical table | `securities`. |
-| MVP priority | P0. |
-| role in pipeline | symbol master, exchange mapping, stable ID for all downstream tables. |
-| primary key | `security_id`. |
-| output path | `data/silver/securities.parquet`. |
+| source dataset | Official/vendor symbol master, listing page, or securities API. |
+| target canonical table | `securities` |
+| MVP priority | P0 |
+| role in pipeline | Symbol master, exchange mapping, stable ID for all downstream tables. |
+| primary key | `security_id` |
+| output path | `data/silver/securities.parquet` |
 
-Required fields:
-
-- `security_id: string`
-- `symbol: string`
-- `exchange: string`
-- `company_name: string | null`
-- `security_type: string | null`
-- `industry: string | null`
-- `market_cap: float | null`
-- `foreign_room: float | null`
-- `source: string`
-- `source_id: string`
-- `raw_path: string | null`
-- `crawled_at: datetime`
-- `schema_version: string`
-
-MVP `security_id` rule:
-
-- If exchange exists: `{source_family}:{exchange}:{symbol}` or `vn:{exchange}:{symbol}` after a canonical VN namespace is chosen.
-- If exchange is missing: `{source_family}:UNKNOWN:{symbol}`.
-- If one symbol appears on multiple known exchanges, keep separate `security_id` values.
+MVP `security_id` rule: `{source_family}:{exchange}:{symbol}` or `{source_family}:UNKNOWN:{symbol}` if exchange is missing. Keep separate IDs for the same symbol on multiple exchanges.
 
 ### 8.2 `daily_prices`
 
 | Field | Contract |
 |---|---|
-| source dataset | source/vendor daily OHLCV endpoint, file, page, or official feed. |
-| target canonical table | `daily_prices`. |
-| MVP priority | P0. |
-| role in pipeline | source for features, signals, backtests, validation, and basic risk metrics. |
-| primary key | `security_id + trade_date + source_id`. |
-| output path | `data/silver/daily_prices.parquet`. |
+| source dataset | Source/vendor daily OHLCV endpoint, file, page, or official feed. |
+| target canonical table | `daily_prices` |
+| MVP priority | P0 |
+| role in pipeline | Source for features, signals, backtests, validation, and basic risk metrics. |
+| primary key | `security_id + trade_date + source_id` |
+| output path | `data/silver/daily_prices.parquet` |
 
-Required fields:
-
-- `security_id: string`
-- `symbol: string`
-- `exchange: string`
-- `trade_date: date`
-- `open: float`
-- `high: float`
-- `low: float`
-- `close: float`
-- `volume: float`
-- `value: float | null`
-- `adjusted_close: float | null`
-- `adjustment_status: string | null`
-- `source: string`
-- `source_id: string`
-- `raw_path: string`
-- `crawled_at: datetime`
-- `schema_version: string`
-- `quality_status: string`
-- `quality_reasons: list[string]`
-
-Quality checks:
-
-- no duplicate `security_id + trade_date`.
-- `trade_date` parseable.
-- price fields numeric.
-- `high >= max(open, close)`.
-- `low <= min(open, close)`.
-- `volume >= 0`.
-- `source_id` and `raw_path` not null.
-- dates sorted per symbol.
-- warn if `adjusted_close` is missing or unclear.
+Quality checks: no duplicate `security_id + trade_date`; price fields numeric; `high >= max(open, close)`; `low <= min(open, close)`; `volume >= 0`; `source_id` and `raw_path` not null; dates sorted per symbol; warn if `adjusted_close` missing.
 
 ### 8.3 `corporate_events`
 
 | Field | Contract |
 |---|---|
-| source dataset | source/vendor corporate action endpoint, page, event file, or issuer disclosure source. |
-| target canonical table | `corporate_events`. |
-| MVP priority | P1. |
-| role in pipeline | corporate-action awareness, price-adjustment warning, point-in-time event context. |
-| primary key | `event_id`. |
-| output path | `data/silver/corporate_events.parquet`. |
+| source dataset | Source/vendor corporate action endpoint, page, event file, or issuer disclosure. |
+| target canonical table | `corporate_events` |
+| MVP priority | P1 |
+| role in pipeline | Corporate-action awareness, price-adjustment warning, point-in-time event context. |
+| primary key | `event_id` |
+| output path | `data/silver/corporate_events.parquet` |
 
-Required fields:
-
-- `event_id: string`
-- `security_id: string`
-- `symbol: string`
-- `event_type: string | null`
-- `title: string | null`
-- `description: string | null`
-- `announcement_date: date | null`
-- `ex_date: date | null`
-- `record_date: date | null`
-- `payment_date: date | null`
-- `effective_date: date | null`
-- `cash_dividend: float | null`
-- `stock_dividend_ratio: float | null`
-- `issue_ratio: float | null`
-- `source: string`
-- `source_id: string`
-- `raw_path: string`
-- `crawled_at: datetime`
-- `schema_version: string`
-- `quality_status: string`
-- `quality_reasons: list[string]`
 
 ## 9. Data Quality Gates
 
 | Gate | Applies to | Blocking rule |
 |---|---|---|
-| source probe | all new sources | source cannot be used as canonical until access, fields, and terms are recorded. |
-| schema validation | all canonical tables | required fields missing or wrong type -> fail. |
-| duplicate checks | all primary keys | duplicate primary key -> fail or quarantine. |
-| OHLC consistency | `daily_prices`, realtime snapshots when fields exist | `high < max(open, close)` or `low > min(open, close)` -> fail. |
-| missing data | `daily_prices` | missing trading days above threshold -> unanswered for backtest. |
-| unit checks | prices, volume, value, financials | unknown unit -> warn; conflicting unit -> fail if used for metrics. |
-| adjusted/unadjusted warning | `daily_prices`, `corporate_events` | missing adjusted price/corporate-action handling -> warn in backtest output. |
-| source ID requirement | all canonical tables | missing `source_id` or `raw_path` -> fail. |
-| point-in-time checks | reports, macro, financial statements, news | missing publication/release/announcement date -> do not use for historical causal claims. |
-| tool failure propagation | all tools | required upstream tool failure -> downstream tools stop unless diagnostic mode. |
+| source probe | All new sources | Source cannot be used as canonical until access, fields, and terms are recorded. |
+| schema validation | All canonical tables | Required fields missing or wrong type → fail. |
+| duplicate checks | All primary keys | Duplicate primary key → fail or quarantine. |
+| OHLC consistency | `daily_prices`, realtime snapshots | `high < max(open, close)` or `low > min(open, close)` → fail. |
+| missing data | `daily_prices` | Missing trading days above threshold → unanswered for backtest. |
+| unit checks | Prices, volume, value, financials | Unknown unit → warn; conflicting unit → fail if used for metrics. |
+| adjusted/unadjusted warning | `daily_prices`, `corporate_events` | Missing adjusted price or corporate-action handling → warn in backtest. |
+| source ID requirement | All canonical tables | Missing `source_id` or `raw_path` → fail. |
+| point-in-time checks | Reports, macro, FA, news | Missing publication/release date → do not use for historical causal claims. |
 
-Canonical quality statuses:
+Quality statuses: `pass` (usable), `warn` (usable with limitation), `fail` (not usable downstream).
 
-- `pass`: usable for MVP pipeline.
-- `warn`: usable with limitation in trace and answer.
-- `fail`: not usable for downstream conclusion.
-
-## 10. First Implementation Target After This Doc
+## 10. First Implementation Target
 
 Next coding target: source-level probing, not full ingestion.
 
-Required outputs:
+Outputs: `scripts/probe_sources.py`; source adapter skeletons; raw sample files under `data/raw/source_probe/...`; probe metadata JSON per source.
 
-- `scripts/probe_sources.py`
-- source adapter skeletons for source-level probing.
-- raw sample files under `data/raw/source_probe/...`.
-- probe metadata JSON per source.
-- `reports/source_probe_report.md`.
-
-Prototype behavior:
-
-- Probe HSX/HOSE, Vietcap IQ, VBMA, and FRED/fredapi configured targets only.
-- Record access status as `verified`, `auth_required`, `manual_only`, `blocked`, `not_configured`, or `unknown`.
-- Preserve raw evidence for every successful probe.
-- Do not build full ingestion until at least one canonical OHLCV-capable source is verified.
-
-Do not implement backtest, agent orchestration, vector search, FRED/VBMA/Vietcap ingestion, or production DB infrastructure in the source probe task.
+Probe behavior: record access status (`verified`, `auth_required`, `manual_only`, `blocked`, `not_configured`, `unknown`); preserve raw evidence; do not build full ingestion until at least one canonical OHLCV-capable source is verified.
 
 ## 11. Acceptance Criteria
 
-This document is acceptable if:
-
-- source-first ingestion is the canonical path.
-- active source scope is limited to HSX/HOSE, Vietcap IQ, VBMA, and FRED/fredapi.
-- data contracts are source-agnostic and concrete.
-- the first source-first coding target is unambiguous.
-- raw evidence, source IDs, parser metadata, and source terms are required before canonical ingestion.
-- FRED and VBMA are clearly non-blocking macro/rates context.
-- Vietcap IQ is clearly company/financial reports/evidence context, not primary OHLCV.
-- no `domain_knowledge` or long paper notes are copied.
+- Source-first ingestion is the canonical path; active scope is limited to HSX/HOSE, Vietcap IQ, VBMA, and FRED/fredapi.
+- Data contracts are source-agnostic and concrete; the first coding target is unambiguous.
+- Raw evidence, source IDs, parser metadata, and source terms are required before canonical ingestion.
+- FRED and VBMA are non-blocking macro/rates context; Vietcap IQ is company/FA evidence context, not primary OHLCV.

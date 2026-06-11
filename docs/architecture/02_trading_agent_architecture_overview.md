@@ -50,7 +50,6 @@ flowchart TB
 - **Risk Tools:** đánh giá risk flags như volatility, drawdown, liquidity, data quality caveat.
 - **Report Tools:** format answer/report bằng tiếng Việt, có evidence và limitation.
 - **RAG Tools:** retrieve reports/news/text evidence theo timestamp-safe policy.
-- **Data Platform / Feature Store / Backtest Results / Report Store:** storage layers dùng chung cho offline và online flows.
 
 ---
 
@@ -77,10 +76,6 @@ flowchart LR
 - **Parser:** chuyển source-shaped payload thành rows; ví dụ gap-chart arrays `o/h/l/c/v/t` thành `daily_price_bar`.
 - **Quality check:** phân loại `pass`, `warn`, `fail` theo required fields, OHLC rules, duplicates, missing values, timestamp rules.
 - **Quarantine:** fail rows không được silent drop hoặc auto-fix; giữ riêng để review.
-- **Canonical tables:** future normalized DB tables cho universe, OHLCV, macro, bond, FA, reports.
-- **Feature store:** lưu features dùng chung cho strategy, risk, backtest, và online answer.
-- **Dynamic universe:** chọn tradable assets theo date/rebalance period dựa trên liquidity, completeness, exchange eligibility, strategy constraints.
-- **Strategy input:** feature + dynamic universe + quality status; không dùng raw payload trực tiếp.
 
 ---
 
@@ -105,7 +100,7 @@ flowchart TB
 - **Online path:** `user query -> agent -> tool calls -> reasoning -> answer`.
 - Online nên ưu tiên đọc cache/store/canonical data thay vì làm heavy fetch hoặc backtest mỗi lần user hỏi.
 - Backtest không bắt buộc cho mọi câu hỏi: `HPG hôm nay thế nào?` cần latest data/features/risk/signal hơn là simulation.
-- Heavy fetch/backtest nên là explicit job hoặc research flow có trace, cost assumption, data-quality gates, và async handling nếu cần.
+- Heavy fetch and backtest should not be triggered per user question — schedule them as explicit jobs.
 
 ---
 
@@ -141,13 +136,6 @@ sequenceDiagram
   UI-->>User: Vietnamese answer
 ```
 
-- Agent parse intent: user đang hỏi tình hình hôm nay, không yêu cầu backtest.
-- Agent resolve symbol: `HPG`.
-- Market data tool trả latest OHLCV/snapshot và quality status.
-- Feature tool tính latest features cần cho đọc nhanh.
-- Strategy/signal tool trả signal summary, không tự biến thành advice.
-- Risk tool trả risk flags và caveats.
-- Report generator tạo câu trả lời có số liệu, limitation, và source/tool trace nếu cần.
 
 ---
 
@@ -221,11 +209,6 @@ Contract rule:
 | Warn | `11,290` |
 | Fail quarantined | `8` |
 
-### Controlled fetcher
-
-- Plan-only passed.
-- `network_requests_made=False`.
-- Tiny execute has not been run yet.
 
 ---
 
@@ -234,13 +217,8 @@ Contract rule:
 - Adjusted vs unadjusted OHLCV semantics are not confirmed.
 - Corporate actions/dividend/split handling is not defined.
 - `accumulatedValue` is missing before `2022-09-15` in older gap-chart history.
-- `8` OHLC fail rows are quarantined and should not be auto-fixed.
-- Full-universe fetch safety needs controlled batch, random sleep, checkpoint/resume, and retry policy.
-- Rate-limit behavior is unknown until tiny controlled execute.
 - Online freshness policy is open: cache/store only vs controlled live tool calls.
 - Point-in-time availability is required for reports, statements, macro, adjusted data, and backtests.
-- Agent tool contracts need first implementation-ready schemas.
-- DB, backtest, and RAG are not implemented.
 
 ---
 
@@ -252,4 +230,4 @@ Contract rule:
 - Discover financial statement endpoints.
 - Define canonical OHLCV schema, including `price_basis`, `adjustment_type`, lineage, and quality fields.
 - Define feature store contract.
-- Define backtest tool boundary: when it runs, what assumptions are required, and how results are stored.
+- Define backtest tool boundary: run conditions, required assumptions, and result storage.
