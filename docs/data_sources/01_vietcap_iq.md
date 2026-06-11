@@ -62,7 +62,7 @@ Probe stage only — not promoted to canonical storage.
 | `vietcap_iq_fa_mapping_coverage_bank_probe.md` | Bank/insurance union coverage analysis |
 | `vietcap_iq_fa_mapping_cashflow_probe.md` | VCI mapping baseline and CASH_FLOW probe |
 | `vietcap_iq_fa_metric_mapping_discovery.md` | VCI-only coverage tables |
-| `archive/01_vietcap_iq_legacy_notes.md` | Full historical probe logs, URL inventory, field semantics |
+| `notes/archive/vietcap_iq_legacy_notes.md` (outside docs) | Historical probe logs, URL inventory, field semantics — non-canonical |
 
 ---
 
@@ -72,4 +72,4 @@ Probe stage only — not promoted to canonical storage.
 - Compact overview first; detailed historical probes belong in archival files.
 - Future work: update existing block notes — do not create new long reports.
 - Core current status lives in this file and the block notes under `docs/data_sources/`.
-- Historical detail is preserved in `docs/data_sources/archive/01_vietcap_iq_legacy_notes.md`.
+- Historical raw notes are in `notes/archive/vietcap_iq_legacy_notes.md` — outside canonical docs, non-navigable.
