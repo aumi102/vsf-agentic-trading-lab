@@ -4,286 +4,84 @@ toc_min_heading_level: 2
 toc_max_heading_level: 3
 ---
 
-# Progress Report - Autonomous Trading Agent
+# Progress Report — Autonomous Trading Agent
 
-## Executive Summary
-
-- **Current focus:** source discovery, OHLCV safety planning, và chuẩn hóa architecture direction sau mentor feedback.
-- **Completed:** Vietcap IQ broad universe, listed-market fetch candidate `1598` symbols, index universe separation, gap-chart `FPT/VNM/VCB`, parser dry-run, controlled fetcher plan-only, tiny controlled execute.
-- **Blocked:** full-universe fetch, DB ingestion, backtest, financial statement ingestion, and production agent tools.
-- **Next:** review Vietcap IQ FA endpoint access after FPT-only non-secret probes returned `403`, review architecture with mentor, define first tool contracts.
-
-Kiến trúc chi tiết nằm ở `docs/architecture/02_trading_agent_architecture_overview.md`.
+**Phase:** Source discovery, parser dry-run, safe fetch planning.
+No DB write, no backtest, no production agent tools yet.
 
 ---
 
-## TL;DR cho mentor
+## Current Status
 
-- Product nên được hiểu là **agent/tool product**, không phải chỉ là backtest pipeline.
-- Architecture canonical doc: `docs/architecture/02_trading_agent_architecture_overview.md`.
-- Backtest là một module/tool, không phải toàn bộ product.
-- Progress hiện tại là data discovery + parser dry-run + safe fetch planning, chưa phải DB/backtest.
-- Vietcap IQ universe: `2080` rows, `2078` unique symbols, `1598` listed-market fetch candidates, `34` index candidates.
-- Gap-chart `countBack=5000`: `FPT=4,852`, `VNM=5,000`, `VCB=4,227` bars.
-- Parser dry-run: `14,079` rows, `2,781` pass, `11,290` warn, `8` fail quarantined.
-- Controlled fetcher plan-only passed: `network_requests_made=False`, `planned_request_count=3`.
-- Tiny execute passed for `FPT,VNM,VCB`: `network_requests_made=True`, `planned_request_count=3`, `failed_symbols=0`.
-- FA endpoint discovery is in FPT-only probe stage; five non-secret FA candidates returned `403/auth_required`, so row-level FA JSON is still not captured.
-- One-endpoint short-financial header-context diagnostic also returned `403/auth_required`; no Cookie/Auth was used and no raw FA JSON was saved.
-- `httpx` session diagnostic loaded the VCI financial page with `200`, but the FA API still returned `403/auth_required`; metadata only, no raw FA JSON.
-- `httpx` browser-session warm-up diagnostic (run `20260609T024007Z`): `trading.*` public warm-ups returned `200`; all `iq.*` warm-up + FA API endpoints returned `403/auth_required`; warm-up session state (trading subdomain cookies or `sec-ch-ua*` headers) was a likely contributing factor in the earlier `403` responses.
-- `httpx` search-bar parity diagnostic (run `20260609T032924Z`): fresh `httpx.Client`, 8-header profile (no `sec-ch-ua*`, no `Cookie`, no `Authorization`), `trading-company-page` referer style — returned `200 JSON`, `data_length=2083`; shows `iq.*` is accessible with a clean request profile.
-- `httpx` FA direct clean-profile diagnostic (run `20260609T035318Z`): same clean 8-header profile, `VCI/financial-statement?section=BALANCE_SHEET` — returned `200 JSON`, `data_keys=quarters,years`, `byte_size=354443`; FA endpoint accessible with clean profile.
-- FA BALANCE_SHEET payload-shape review added (`docs/data_sources/vietcap_iq_fa_payload_shape_review.md`): wide-format, 33 quarters + 8 years, 331 opaque metric codes, `publicDate` present as candidate availability field (PIT semantics unconfirmed); no parser implemented yet.
-- FA shape cross-check added (`docs/data_sources/vietcap_iq_fa_shape_cross_check.md`): VCI INCOME_STATEMENT (run `20260609T075846Z`) and FPT BALANCE_SHEET (run `20260609T075857Z`) both returned HTTP 200; initial section/symbol cross-check passed (three tested cases); `nos*` columns are null for FPT (not applicable for non-securities firms); parser dry-run design can start; no parser or DB write yet.
-- FA parser dry-run implemented (`scripts/parse_vietcap_iq_fa_payloads_dry_run.py`): wide-to-long pivot on all three saved payloads; `34,563` total fact rows (`8,695` present, `23,885` zero, `1,983` missing/null); no DB write, no backtest; `line_item_name` empty (no mapping); `publicDate` PIT semantics unconfirmed; see `docs/data_sources/vietcap_iq_fa_parser_dry_run.md`.
-- FA metric mapping discovery run: initial probe (run `20260609T091305Z`) failed at DNS level — inconclusive; re-probe (run `20260610T025420Z`) succeeded HTTP 200; 1078 non-null metric codes across BALANCE_SHEET / INCOME_STATEMENT / CASH_FLOW / NOTE; VCI-only coverage 62.8% BS / 43.6% IS / 65.8% CF — below 95% gate threshold; mapping dry-run parser `scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py` added (offline, 50 tests); CASH_FLOW confirmed (VCI + FPT, HTTP 200, 33Q + 8Y, 225 codes, publicDate non-null); probe report at `docs/data_sources/vietcap_iq_fa_mapping_cashflow_probe.md`; see also `docs/data_sources/vietcap_iq_fa_metric_mapping_discovery.md`.
-- FA mapping union coverage — bank/insurance probe: VCB (bank, run `20260610T033851Z`), BVH (insurance, `20260610T033856Z`), SSI (securities, `20260610T033900Z`) mapping payloads retrieved; all HTTP 200; mapping is firm-type-specific (SSI identical to VCI; VCB/BVH return different codes); union of 4 firm types = 1793 codes, 88 name conflicts (4.9%); **union coverage: BS 89.4% / IS 92.3% / CF 86.7% — still below 95% gate**; union analysis script `scripts/analyze_vietcap_iq_fa_metric_mapping_union.py` added (offline, 39 tests, 367 total passing); probe report at `docs/data_sources/vietcap_iq_fa_mapping_coverage_bank_probe.md`.
-- FA mapping integration strategy designed (Option C — Hybrid gated mapping): per-symbol primary + union consensus fallback; provenance columns specified; parser not yet modified; `line_item_name` still empty; see `docs/data_sources/vietcap_iq_fa_mapping_integration_strategy.md`.
-- FA firm-type determination logic designed (Approach D — Hybrid metadata-primary): `company_type_code` from Vietcap IQ universe CSV (`NH`=bank, `BH`=insurance, `CK`=securities, others=general) + explicit override table for 4 probed symbols; planner script `scripts/plan_vietcap_iq_fa_firm_type_mapping.py` (offline, 46 tests, 413 total passing); parser not modified; see `docs/data_sources/vietcap_iq_fa_firm_type_determination.md`.
-- FA dry-run parser hardened: 7 validation checks added (`duplicate_keys`, `publicdate_format`, `mapping_coverage`, `nos_pattern`, `value_status_validity`, `no_invented_names`, `metric_columns_detected`); `--strict` flag; deterministic sort; 30 new tests (235 total); see `docs/data_sources/vietcap_iq_fa_parser_hardening.md`.
-- Main blocker: FA metric mapping coverage below 95% gate; 88 conflicts; Option C resolver integrated into parser (dry-run 53,013 rows verified, 552 tests pass); `publicDate` PIT validation; full-history FA fetch not implemented; DB write blocked; backtest blocked.
+| Area | Status |
+|---|---|
+| Vietcap IQ universe | 2,080 rows; 1,598 listed-market candidates (HOSE/HNX/UPCOM) |
+| OHLCV gap-chart | FPT/VNM/VCB confirmed HTTP 200; parser dry-run: 14,079 rows |
+| Controlled fetcher | Tiny execute passed for FPT/VNM/VCB; full-universe fetch not approved |
+| FA endpoint | HTTP 200 (clean 8-header profile); BS/IS/CF confirmed for VCI and FPT |
+| FA parser | Dry-run complete; 7 validation checks; `--strict` mode; deterministic sort |
+| FA mapping integration | Option C resolver wired; 7 output columns; 53,013 rows validated; 0 errors |
+| Test suite | **552 tests pass** (65 integration + 74 resolver + 46 firm-type + others) |
+| DB write | **Blocked** |
+| Backtest | **Blocked** |
 
 ---
 
-## Progress Tracker
+## Main Blockers
 
-### Data source discovery
-
-- [x] Vietcap IQ identified as full-market universe candidate.
-- [x] HOSE/HSX kept as HOSE-specific source, not full-market source.
-- [x] Some macro/bond context dry-run proofs exist.
-- [x] Vietcap IQ financial statement endpoint candidates manually discovered for FPT.
-- [x] Vietcap IQ financial statement endpoint access verified — HTTP 200 JSON with clean 8-header profile for VCI BS, VCI IS, FPT BS, VCI CF, FPT CF.
-- [ ] Vietcap IQ report/document endpoints not discovered yet.
-
-### Vietcap IQ universe
-
-- [x] `company/search-bar?language=1` verified as row-level universe JSON.
-- [x] Saved payload parsed into local dry-run tables.
-- [x] `index_universe.csv` separated.
-- [x] Listed-market fetch candidate set created with `1598` symbols.
-- [x] Excluded rows preserved for audit.
-- [ ] Mentor/source confirmation needed for `floor`, `comTypeCode`, `isIndex`, `bank`, `index`, `icbLv*`.
-
-### Vietcap IQ OHLCV / gap-chart
-
-- [x] `gap-chart` verified for `FPT`, `VNM`, `VCB`.
-- [x] `countBack=5000` tested for `FPT/VNM/VCB`.
-- [x] `FPT/VNM/VCB` controlled raw outputs parsed locally: 14,079 rows, 2,781 pass, 11,290 warn, 8 OHLC fail rows quarantined.
-- [x] `REE/SAM countBack=10000` tiny execute reached `2000-07-28` to `2026-06-05`; countBack remains a fallback, not true from/to.
-- [x] `REE/SAM countBack=10000` controlled raw outputs parsed locally: 12,580 rows, 1,854 pass, 10,721 warn, 5 OHLC fail rows quarantined.
-- [x] Saved-payload parser dry-run completed.
-- [x] `8` source OHLC inconsistency rows quarantined.
-- [ ] Adjusted/unadjusted semantics not confirmed.
-- [ ] Corporate action/dividend/split handling not confirmed.
-
-### Controlled fetcher
-
-- [x] Skeleton exists.
-- [x] Plan-only mode passed.
-- [x] Checkpoint/resume and controlled batch design exists.
-- [x] Random sleep design exists.
-- [x] Tiny execute for `FPT/VNM/VCB` passed.
-- [ ] Full `1598` symbol fetch not approved.
-
-### Data preprocessing pipeline
-
-- [x] Raw payload preservation pattern exists.
-- [x] Parser dry-run pattern exists.
-- [x] Quality split `pass/warn/fail` exists.
-- [x] Fail rows are quarantined, not silently dropped.
-- [ ] Canonical DB tables not implemented.
-- [ ] Feature store not implemented.
-- [ ] Dynamic universe layer not implemented.
-
-### Product architecture
-
-- [x] Mentor clarified backtest is not the whole product.
-- [x] Canonical architecture doc created/updated at `docs/architecture/02_trading_agent_architecture_overview.md`.
-- [ ] Mentor confirmation needed for agent/tool architecture and module boundaries.
-
-### Agent/tool architecture
-
-- [x] Direction: agent calls data, feature, strategy, risk, report tools directly.
-- [x] First-draft tool contracts documented in architecture overview.
-- [ ] Implementation-ready schemas still needed.
-
-### Backtest/research module
-
-- [x] Backtest reframed as one module/tool.
-- [ ] Backtest engine not implemented.
-- [ ] Backtest result schema not implemented.
-- [ ] Strategy research loop not implemented.
-
-### Financial statements / FA data
-
-- [x] Vietcap IQ identified as candidate for profiles, statements, ratios, reports.
-- [x] FA discovery plan added after controlled OHLCV proof.
-- [x] FPT-only FA endpoint candidates added to local source-probe config.
-- [ ] FPT-only non-secret FA probe returned `403/auth_required`; no raw JSON saved.
-- [ ] FPT-only short-financial header-context diagnostic returned `403/auth_required`; parser planning remains blocked.
-- [ ] VCI `httpx` session diagnostic returned page `200` but FA API `403/auth_required`; no raw FA JSON saved.
-- [ ] VCI `httpx` browser-session warm-up diagnostic (run `20260609T024007Z`): `trading.*` public warm-ups `200`; all `iq.*` endpoints `403/auth_required`; warm-up session state (cookies or `sec-ch-ua*`) was a likely contributing factor; no raw FA JSON saved.
-- [x] Search-bar parity diagnostic (run `20260609T032924Z`): fresh `httpx.Client`, 8-header profile — `iq.*` search-bar returned `200 JSON`, `data_length=2083`; `iq.*` accessible with clean request profile.
-- [x] FA direct clean-profile diagnostic (run `20260609T035318Z`): same clean 8-header profile, `VCI/financial-statement?section=BALANCE_SHEET` — returned `200 JSON`, `data_keys=quarters,years`, `byte_size=354443`; FA endpoint accessible; raw payload captured.
-- [x] FA BALANCE_SHEET payload-shape review written: wide-format, 33 quarters + 8 years, 331 opaque metric codes, `publicDate` present as candidate availability field (PIT semantics unconfirmed); no parser implemented; see `docs/data_sources/vietcap_iq_fa_payload_shape_review.md`.
-- [x] FA shape cross-check: VCI INCOME_STATEMENT and FPT BALANCE_SHEET both HTTP 200; initial section/symbol cross-check passed (three tested cases); `nos*` null for non-securities firms; parser dry-run design can start; see `docs/data_sources/vietcap_iq_fa_shape_cross_check.md`.
-- [x] FA dry-run parser implemented: `scripts/parse_vietcap_iq_fa_payloads_dry_run.py`; `34,563` fact rows from 3 saved payloads; no DB write, no backtest; `publicDate` PIT semantics unconfirmed; see `docs/data_sources/vietcap_iq_fa_parser_dry_run.md`.
-- [x] FA metric mapping re-probe succeeded (run `20260610T025420Z`, HTTP 200): 1078 metric codes across 4 sections; VCI-only coverage 62.8% BS / 43.6% IS / 65.8% CF — below 95% DB write gate threshold; mapping dry-run parser added (50 tests); see `docs/data_sources/vietcap_iq_fa_mapping_cashflow_probe.md`.
-- [x] FA CASH_FLOW section confirmed: VCI and FPT CASH_FLOW HTTP 200; 33Q + 8Y; 225 metric codes per row; `publicDate` non-null for all rows; same envelope as BALANCE_SHEET / INCOME_STATEMENT.
-- [x] FA parser hardened: 7 validation checks (`duplicate_keys`, `publicdate_format`, `mapping_coverage`, `nos_pattern`, `value_status_validity`, `no_invented_names`, `metric_columns_detected`); `--strict` flag; deterministic sort; 235 tests pass; see `docs/data_sources/vietcap_iq_fa_parser_hardening.md`.
-- [x] FA ingestion V2 readiness package added: readiness doc (`docs/data_sources/vietcap_iq_fa_ingestion_v2_readiness.md`) defines confirmed facts, open gates, all policies, and DB/backtest gates; manifest planner (`scripts/plan_vietcap_iq_fa_full_history_manifest.py`) generates deterministic fetch-plan CSV, no network; 43 new tests (278 total passing); branch `phase/fa-ingestion-v2-readiness`.
-- [x] FA mapping union — bank/insurance probe: VCB/BVH/SSI mapping payloads retrieved (all HTTP 200); mapping is firm-type-specific; union 1793 codes, 88 conflicts; union coverage BS 89.4% / IS 92.3% / CF 86.7% — still below 95% gate; union analysis script added (39 tests, 367 total passing); see `docs/data_sources/vietcap_iq_fa_mapping_coverage_bank_probe.md`.
-- [x] FA mapping integration strategy designed: Option C (Hybrid gated mapping) — per-symbol primary, union consensus fallback, provenance columns; parser not modified; `line_item_name` still empty; see `docs/data_sources/vietcap_iq_fa_mapping_integration_strategy.md`.
-- [x] FA firm-type determination logic designed: Approach D (Hybrid metadata-primary) — `company_type_code` from universe CSV + explicit override table for 4 probed symbols; planner script added (46 tests, 413 total passing); parser not modified; see `docs/data_sources/vietcap_iq_fa_firm_type_determination.md`.
-- [x] FA Option C mapping resolver implemented: pure offline `scripts/resolve_vietcap_iq_fa_metric_mapping.py` (74 tests); 6 statuses (`primary`, `consensus_fallback`, `conflict_skipped`, `not_covered`, `no_mapping_available`, `section_mismatch`); see `docs/data_sources/vietcap_iq_fa_mapping_resolver_tests.md`.
-- [x] FA parser mapping integration implemented: resolver wired into `scripts/parse_vietcap_iq_fa_payloads_dry_run.py`; 7 new output columns (`line_item_name_en`, `line_item_name_vi`, `mapping_status`, `mapping_source_symbol`, `mapping_source_run_id`, `mapping_conflict`, `mapping_group`); 65 new integration tests (552 total passing); dry-run on 5 saved payloads (VCI BS/IS/CF + FPT BS/CF) = 53,013 fact rows, 0 errors; `line_item_name` (legacy) still empty; see `docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md`.
-- [ ] Metric mapping coverage below 95% gate — best observed union (VCI+VCB+BVH+SSI): BS 89.4% / IS 92.3% / CF 86.7%; 88 conflicts; DB write still blocked.
-- [ ] Full-history FA fetch not implemented — blocked on mapping integration, PIT, and schema gates.
-- [ ] PIT availability (`publicDate` semantics) still unconfirmed.
-- [ ] DB write still blocked — mapping, PIT, and schema gates not met.
-- [ ] Backtest still blocked — DB write not implemented.
-
-### RAG / text data future module
-
-- [x] Reports/news identified as future evidence layer.
-- [ ] Report-list endpoint not discovered.
-- [ ] Document download/chunking not implemented.
-- [ ] Vector DB/RAG pipeline not implemented.
-- [ ] Citation and timestamp safety not implemented.
+- **Mapping coverage:** Below 95% per section — BS 89.4% / IS 92.3% / CF 86.7%; 88 name conflicts in union mapping.
+- **PIT semantics:** `publicDate` unconfirmed — cross-check vs HOSE/HNX filing records required before any backtest.
+- **DB write:** Blocked until all §17 gates met (see `vietcap_iq_fa_ingestion_v2_readiness.md`).
+- **Full-history FA fetch:** Not implemented — blocked on mapping, PIT, and schema gates.
+- **Backtest:** Blocked on DB write.
 
 ---
 
-## Docs Debt (2026-06-11)
-
-Mentor policy: each doc ≤1500 words. The following files exceed this limit and are marked as debt for a future cleanup PR (do not rewrite in this PR — references and Docusaurus build must be verified first):
-
-| File | ~Words | Notes |
-|---|---|---|
-| `docs/data_sources/01_vietcap_iq.md` | 13,266 | Historical source-review accumulation; needs major split |
-| `docs/data_sources/vietcap_iq_fa_ingestion_v2_readiness.md` | ~3,800 | Gate-tracking doc; compress policy sections into tables |
-| `docs/data_sources/vietcap_iq_fa_mapping_integration_strategy.md` | ~2,700 | Design record; options A/B/C could be summarized |
-| `docs/data_sources/vietcap_iq_fa_firm_type_determination.md` | ~2,700 | Detailed design; compress examples |
-| `docs/data_sources/vietcap_iq_fa_mapping_coverage_bank_probe.md` | ~1,800 | Probe log; partially archival |
-| `docs/data_sources/vietcap_iq_fa_mapping_cashflow_probe.md` | ~1,700 | Probe log; partially archival |
-| `docs/ingestion_v2_schema_plan.md` | ~5,200 | Schema design; compress or split |
-| `docs/reports/progress_report.md` | ~2,600 | This file; trim TL;DR and tracker details |
-
-Compliant files (≤1500 words): `vietcap_iq_fa_parser_mapping_integration.md` (876), `vietcap_iq_fa_mapping_resolver_tests.md` (700), `vietcap_iq_fa_metric_mapping_discovery.md` (1020).
-
----
-
-## Minimal Architecture Summary
-
-- Detailed architecture is in `docs/architecture/02_trading_agent_architecture_overview.md`.
-- `Trading Agent Orchestrator` is the product center.
-- Agent should call data/feature/strategy/risk/report/RAG/backtest tools as needed.
-- Backtest is only required when the user or research flow asks for simulation.
-- Online questions like `HPG hôm nay thế nào?` should usually read cache/store through tools, not trigger heavy fetch/backtest.
-- Current status is pre-DB, pre-backtest, pre-production agent tools.
-
----
-
-## Current Technical Evidence
-
-### Universe evidence
-
-| Metric | Value |
-|---|---:|
-| Vietcap IQ search-bar JSON rows | `2080` |
-| Vietcap IQ unique symbols | `2078` |
-| Listed-market fetch candidate rows | `1598` |
-| Listed-market fetch candidate unique symbols | `1598` |
-| Index universe rows | `34` |
-| HOSE overlap | `403/403` |
-
-### Gap-chart `countBack=5000` evidence
-
-| Symbol | Bars | Coverage |
-|---|---:|---|
-| `FPT` | `4,852` | `2006-12-13` to `2026-06-05` |
-| `VNM` | `5,000` | `2006-05-18` to `2026-06-05` |
-| `VCB` | `4,227` | `2009-06-30` to `2026-06-05` |
-
-### Parser and fetcher evidence
+## Key Validation Numbers
 
 | Metric | Value |
 |---|---|
-| Parser total rows | `14,079` |
-| Parser pass | `2,781` |
-| Parser warn | `11,290` |
-| Parser fail quarantined | `8` |
-| Controlled fetcher mode | `plan_only` |
-| Network requests made | `False` |
-| Planned request count | `3` |
-| Tiny execute | Passed for `FPT,VNM,VCB`; `failed_symbols=0` |
+| Universe symbols | 2,080 total / 1,598 listed-market candidates |
+| OHLCV gap-chart bars (FPT) | 4,852 (2006–2026) |
+| FA parser fact rows (5 payloads) | 53,013 |
+| FA parser errors | 0 |
+| FA mapping named rows | 43,214 / 53,013 (81.5% at row level) |
+| Mapping coverage gate (95%) | Not met — union peak 92.3% (IS only) |
+| FA tests | 65 integration + 74 resolver + 46 firm-type |
+| Total tests passing | 552 |
 
 ---
 
-## Current Risks / Blockers
+## Architecture
 
-- **Full `1598`-symbol fetch safety:** needs checkpoint/resume, controlled batches, random sleep, no aggressive async.
-- **Rate-limit behavior:** unknown until tiny controlled execute.
-- **Adjusted vs unadjusted semantics:** not confirmed.
-- **Corporate action / dividend / split handling:** not defined.
-- **`accumulatedValue` missing before `2022-09-15`:** trading value completeness caveat.
-- **`8` OHLC failed rows quarantined:** source inconsistency, should not be auto-fixed.
-- **QuestDB schema/migration:** not implemented.
-- **Backtest:** not implemented.
-- **Financial statement endpoints:** not discovered.
-- **Agent tool interface:** first draft exists in architecture doc, but implementation schemas not finalized.
-- **Online freshness policy:** cache/store vs controlled live calls not decided.
-- **Point-in-time availability:** needed for statements, reports, macro, adjusted data, and backtest.
+- Product: **agent/tool product** — not just a backtest pipeline.
+- Full doc: `docs/architecture/02_trading_agent_architecture_overview.md`.
+- Backtest is one module/tool; current state is pre-DB, pre-backtest, pre-production.
+- Online questions (e.g. "HPG hôm nay thế nào?") should read cache/store, not trigger heavy fetches.
 
 ---
 
 ## Next Steps
 
-### Immediate next steps
-
-- [x] Refactor architecture content into canonical architecture doc.
-- [ ] Review architecture with mentor.
-- [x] Run tiny controlled execute for `FPT/VNM/VCB`.
-- [x] Parse controlled raw outputs from tiny execute.
-- [x] Start Vietcap IQ financial statement endpoint discovery.
-- [ ] Resolve FPT-only FA endpoint access before parser planning.
-
-### Short-term next steps
-
-- [ ] Finalize safe fetcher execution policy.
-- [ ] Expand controlled batch only after tiny execute review.
-- [ ] Design dynamic universe/filter rules.
-- [ ] Design feature engineering and feature store contract.
-- [ ] Finalize first market data tool contract.
-
-### Later steps
-
-- [ ] QuestDB ingestion and dedup/upsert implementation.
-- [ ] Backtest engine and result store.
-- [ ] Strategy tools exposed to agent.
-- [ ] RAG for reports/news.
-- [ ] User-facing report generation.
+1. Close mapping coverage gap (probe additional firm types; target ≥95% per section).
+2. Validate `publicDate` PIT semantics — cross-check 5–10 sample rows vs HOSE/HNX filing dates.
+3. Design canonical QuestDB schema and dedup/upsert policy.
+4. Build full-history FA fetcher (after gates above are met).
+5. Merge PR #7 (FA parser mapping integration dry-run) after review.
 
 ---
 
-## Mentor Confirmation Questions
+## Docs Debt
 
-- Kiến trúc agent/tool trong `docs/architecture/02_trading_agent_architecture_overview.md` đã đúng hướng chưa?
-- Data tool cho agent nên expose function nào trước?
-- Với OHLCV, nên ưu tiên full-history theo `countBack` lớn hay tìm API theo `from/to` date?
-- Vietcap IQ financial statements nên ưu tiên income statement, balance sheet, cash flow, hay ratios trước?
-- Tiny execute `FPT/VNM/VCB` đã đủ để bắt đầu mở rộng controlled batch chưa?
-- Dynamic tradable universe nên filter theo tiêu chí nào trước?
-- Backtest tool nên là research-only, user-callable, hay internal-only ở MVP?
-- Online agent nên chỉ đọc cache/store hay có quyền gọi controlled live data tool?
-- Với `accumulatedValue` thiếu trước `2022-09-15`, có cho phép features không cần trading value chạy trước không?
-- Có cần bắt buộc lưu cả adjusted và unadjusted OHLCV ngay từ MVP nếu source chưa expose rõ không?
+Files exceeding the 1500-word policy limit — marked for future cleanup:
 
----
+| File | ~Words | Action |
+|---|---|---|
+| `docs/data_sources/vietcap_iq_fa_ingestion_v2_readiness.md` | ~3,800 | Compress policy sections |
+| `docs/data_sources/vietcap_iq_fa_mapping_integration_strategy.md` | ~2,700 | Options A/B/C could be summarized |
+| `docs/data_sources/vietcap_iq_fa_firm_type_determination.md` | ~2,700 | Compress examples |
+| `docs/data_sources/vietcap_iq_fa_mapping_coverage_bank_probe.md` | ~1,800 | Partially archival |
+| `docs/data_sources/vietcap_iq_fa_mapping_cashflow_probe.md` | ~1,700 | Partially archival |
+| `docs/ingestion_v2_schema_plan.md` | ~5,200 | Compress or split |
 
-## Report Pointers
-
-- Architecture: `docs/architecture/02_trading_agent_architecture_overview.md`.
-- Source details: `docs/data_sources/01_vietcap_iq.md`, `docs/data_sources/hose_pipeline.md`.
-- Ingestion plan: `docs/ingestion_v2_schema_plan.md`.
+Compliant (≤1500 words): `01_vietcap_iq.md` (slimmed this PR), `vietcap_iq_fa_parser_mapping_integration.md` (876), `vietcap_iq_fa_mapping_resolver_tests.md` (700), `vietcap_iq_fa_metric_mapping_discovery.md` (1020).
