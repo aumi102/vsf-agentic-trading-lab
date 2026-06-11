@@ -1,6 +1,7 @@
 # Source Field Mapping Review — Archived
 
-**Source:** `docs/source_field_mapping_review.md` (archived 2026-06-11)
+**Source:** `docs/source_field_mapping_review.md`
+**Archived:** 2026-06-11
 **Why archived:** This early-phase source probe review (from 2026-06-02) is now superseded by
 source-specific canonical docs (`hose_pipeline.md`, `ingestion_v2_schema_plan.md`, the Vietcap IQ
 FA series). The summary decisions and field mappings are preserved here for historical reference.

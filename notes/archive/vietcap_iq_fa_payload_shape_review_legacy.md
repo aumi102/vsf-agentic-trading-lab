@@ -1,6 +1,7 @@
 # Vietcap IQ FA Payload Shape Review — Archived
 
-**Source:** `docs/data_sources/vietcap_iq_fa_payload_shape_review.md` (archived 2026-06-11)
+**Source:** `docs/data_sources/vietcap_iq_fa_payload_shape_review.md`
+**Archived:** 2026-06-11
 **Why archived:** This is the initial VCI BALANCE_SHEET payload shape review from 2026-06-09
 (run `20260609T035318Z`). The FA parser is now fully implemented (PR #7, 2026-06-10); the
 "Design Only — Not Implemented" schema proposals are superseded by the live parser output.

@@ -140,7 +140,7 @@ Excluded symbols include covered warrant-like rows (`CACB2510`, `CFPT2517`) and 
 
 ---
 
-## 7. Unit And EOD Confirmation Checklist
+## 6. Unit And EOD Confirmation Checklist
 
 Fields requiring mentor/source confirmation before DB/backtest use:
 
@@ -160,7 +160,7 @@ Fields requiring mentor/source confirmation before DB/backtest use:
 
 ---
 
-## 8. Data-Quality Gates Before DB/Backtest
+## 7. Data-Quality Gates Before DB/Backtest
 
 Required gates:
 
@@ -175,7 +175,7 @@ Required gates:
 
 ---
 
-## 9. Current Scripts
+## 8. Current Scripts
 
 | Script | Purpose |
 |---|---|
@@ -188,7 +188,7 @@ Required gates:
 
 ---
 
-## 10. Current Tests
+## 9. Current Tests
 
 | Test file | Purpose |
 |---|---|
@@ -200,7 +200,7 @@ Required gates:
 
 ---
 
-## 11. Recommended Next Step
+## 10. Recommended Next Step
 
 Recommended order:
 

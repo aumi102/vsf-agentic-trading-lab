@@ -1,6 +1,7 @@
-# HOSE Pipeline — Archived Sections
+# HOSE Pipeline — Archived
 
-**Source:** `docs/data_sources/hose_pipeline.md` (archived 2026-06-11)
+**Source:** `docs/data_sources/hose_pipeline.md`
+**Archived:** 2026-06-11
 **Why archived:** §6 (Saved-Output Units And History Audit) and §12 (Appendix: Old Docs Merged) were
 removed from the canonical doc during the word-count compaction pass (PR #9). These sections
 contain historical audit run tables and a merge provenance log that exceed the 1500-word policy

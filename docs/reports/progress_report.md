@@ -77,7 +77,7 @@ All docs under `docs/` target ≤1500 words. All files comply as of PR #9 (2026-
 
 | File | Words | Status |
 |---|---|---|
-| `docs/architecture/02_trading_agent_architecture_overview.md` | 1498 | Compliant |
+| `docs/architecture/02_trading_agent_architecture_overview.md` | 1497 | Compliant |
 | `docs/data_sources/hose_pipeline.md` | 1151 | Compliant |
 | `docs/autonomous_trading_agent_dev_master.md` | 1496 | Compliant |
 | `docs/data_sources/vietcap_iq_fa_ingestion_v2_readiness.md` | 846 | Compliant |

@@ -1,6 +1,7 @@
 # Autonomous Trading Agents - Architecture & Pipeline Notes Day 3 — Archived
 
-**Source:** `docs/research_notes/paper_notes/27-05-2026_Phuc_report.md` (archived 2026-06-11)
+**Source:** `docs/research_notes/paper_notes/27-05-2026_Phuc_report.md`
+**Archived:** 2026-06-11
 **Why archived:** Daily paper study notes (Vietnamese) plus synthesized architecture diagrams.
 Historical research material; not a project technical doc or implementation contract.
 Preserved here for personal reference.

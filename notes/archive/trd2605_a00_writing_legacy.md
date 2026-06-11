@@ -1,6 +1,7 @@
 # trd2605 Writing and Structure Reference — Archived
 
-**Source:** `docs/conventions/trd2605_a00_writing.md` (archived 2026-06-11)
+**Source:** `docs/conventions/trd2605_a00_writing.md`
+**Archived:** 2026-06-11
 **Why archived:** Writing style guide for the `trd2605_*` doc series. Exceeded the 1500-word
 policy; content is a style reference rather than a project technical doc. Preserved here for
 reference when authoring `trd2605_*` series docs.

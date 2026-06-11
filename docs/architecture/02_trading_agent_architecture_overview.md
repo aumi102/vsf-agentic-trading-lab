@@ -100,7 +100,7 @@ flowchart TB
 - **Online path:** `user query -> agent -> tool calls -> reasoning -> answer`.
 - Online nên ưu tiên đọc cache/store/canonical data thay vì làm heavy fetch hoặc backtest mỗi lần user hỏi.
 - Backtest không bắt buộc cho mọi câu hỏi: `HPG hôm nay thế nào?` cần latest data/features/risk/signal hơn là simulation.
-- Heavy fetch/backtest should be an explicit job with trace and data-quality gates — not triggered per user question.
+- Heavy fetch and backtest should not be triggered per user question — schedule them as explicit jobs.
 
 ---
 
@@ -219,7 +219,6 @@ Contract rule:
 - `accumulatedValue` is missing before `2022-09-15` in older gap-chart history.
 - Online freshness policy is open: cache/store only vs controlled live tool calls.
 - Point-in-time availability is required for reports, statements, macro, adjusted data, and backtests.
-- DB, backtest, and RAG are not implemented.
 
 ---
 
@@ -231,4 +230,4 @@ Contract rule:
 - Discover financial statement endpoints.
 - Define canonical OHLCV schema, including `price_basis`, `adjustment_type`, lineage, and quality fields.
 - Define feature store contract.
-- Define backtest tool boundary: when it runs, what assumptions are required, and how results are stored.
+- Define backtest tool boundary: run conditions, required assumptions, and result storage.

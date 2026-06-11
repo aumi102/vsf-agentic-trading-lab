@@ -1,6 +1,7 @@
 # Autonomous Trading Agents - Paper Notes (Day 1) — Archived
 
-**Source:** `docs/research_notes/paper_notes/25-05-2026_Phuc_report.md` (archived 2026-06-11)
+**Source:** `docs/research_notes/paper_notes/25-05-2026_Phuc_report.md`
+**Archived:** 2026-06-11
 **Why archived:** Daily paper study notes (Vietnamese). Historical research material; not a
 project technical doc or implementation contract. Preserved here for personal reference.
 
