@@ -6,332 +6,156 @@ toc_max_heading_level: 3
 
 # Vietcap IQ FA Metric Mapping Integration Strategy
 
-**Status:** Design complete. Parser integration implemented (2026-06-10) — see `docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md`.  
-**Date:** 2026-06-10  
+**Status:** Design complete. Parser integration implemented (2026-06-10).  
 **Branch:** `phase/fa-mapping-integration-strategy` (design); `phase/fa-parser-mapping-integration` (implementation)
 
 ---
 
 ## 1. Purpose
 
-This document defines the strategy for integrating FA metric mapping into the Vietcap IQ FA
-parser. It records the options considered, the evidence driving the decision, and the
-implementation contract that must be satisfied before any parser code changes are made.
-
-**Parser integration implemented (2026-06-10)** — see
-`docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md` for dry-run validation.
-This document is the design record.
+Defines the strategy for integrating FA metric mapping into the Vietcap IQ FA parser.
+Records the evidence driving the decision and the implementation contract.
+Parser integration is done — see `vietcap_iq_fa_parser_mapping_integration.md` for dry-run
+validation. This document is the design record.
 
 ---
 
-## 2. Current Evidence Summary
+## 2. Evidence Summary
 
-### FA parser output
+### Coverage (union of VCI, SSI, VCB, BVH mapping payloads)
 
-- Script: `scripts/parse_vietcap_iq_fa_payloads_dry_run.py`
-- Output column: `line_item_name` — **always empty** (`""`)
-- Guard: `_check_no_invented_names` ensures no names are written without a verified mapping
-- 53,013 long-format fact rows parsed from 5 saved payloads; `line_item_name` empty in all
-
-### Mapping payloads retrieved
-
-| Symbol | Firm type | Run ID | HTTP | Notes |
-|---|---|---|---|---|
-| VCI | Securities | `20260610T025420Z` | 200 | Baseline probe |
-| SSI | Securities | `20260610T033900Z` | 200 | Identical to VCI; confirms securities-type consistency |
-| VCB | Bank | `20260610T033851Z` | 200 | Returns bank-specific codes (`isb*`, `bsb*`, `cfb*`) |
-| BVH | Insurance | `20260610T033856Z` | 200 | Returns insurance-specific codes (`isi*`, `bsi*`, `noi*`) |
-
-### Key finding: mapping is firm-type-specific
-
-The `/financial-statement/metrics` endpoint does not return a universal mapping. It returns a
-firm-type-specific mapping: securities firms (VCI, SSI) receive one mapping; banks (VCB) receive
-another; insurance firms (BVH) receive another. Querying with a different symbol of the same firm
-type returns the same mapping (SSI = VCI confirms this).
-
-### Coverage summary
-
-Coverage computed by `scripts/analyze_vietcap_iq_fa_metric_mapping_union.py` against 5 saved
-FA probe payloads:
-
-| Section | VCI-only | Union (VCI+VCB+BVH+SSI) | Consensus-only | Gate (95%) |
+| Section | VCI-only | Union (4 symbols) | Consensus-only | Gate (95%) |
 |---|---|---|---|---|
 | BALANCE_SHEET | 62.8% | **89.4%** | 71.9% | **not met** |
 | INCOME_STATEMENT | 43.6% | **92.3%** | 86.2% | **not met** |
 | CASH_FLOW | 65.8% | **86.7%** | 78.2% | **not met** |
-| NOTE | untested | untested | untested | untested |
 
-- **Union coverage** = code present in any mapping payload (including conflicting codes)
-- **Consensus coverage** = code with a conflict-free, consistent `titleEn` across all payloads
-- Best observed union coverage is below 95% for all three tested sections
-
-### Conflict summary
-
-- 88 codes appear in multiple mapping payloads with **different `titleEn` values**
-- These conflicts exist across firm types (e.g., `bsa2` = "Cash" in VCI, "Cash and precious
-  metals" in VCB)
-- Conflicting codes are flagged with `conflict=true` and an empty `line_item_name_en_consensus`
-  in the union CSV (`data/processed/vietcap_iq/fa_metric_mapping_union.csv`)
-- A universal mapping cannot safely assign a single name to a conflicting code without knowing
-  the firm type of the symbol being parsed
+- **88 codes** appear across multiple payloads with different `titleEn` values (4.9% of union codes).
+- Mapping is firm-type-specific: VCI = SSI (securities); VCB (bank); BVH (insurance) return distinct code sets.
+- Union coverage is below 95% for all three tested sections.
 
 ---
 
-## 3. Why Mapping Integration Is Not Safe Yet
+## 3. Why Mapping Integration Requires Care
 
-The following conditions make parser integration premature:
-
-1. **Coverage below gate:** No FA section reaches the 95% coverage threshold. Using a union
-   with < 95% coverage would leave 8–13% of codes with empty `line_item_name_en` even after
-   integration — acceptable only if the integration strategy handles this explicitly.
-
-2. **88 name conflicts:** If the parser writes a conflicting name for a code, the output would
-   contain a wrong or misleading name that depends on which firm type's mapping happened to be
-   loaded. This is a data corruption risk for downstream consumers.
-
-3. **Firm-type determination logic integrated into parser (2026-06-10):** The determination
-   logic (`scripts/plan_vietcap_iq_fa_firm_type_mapping.py`) is wired into the parser via
-   `--firm-type-plan-csv`. See `docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md`.
-   DB write remains blocked — firm-type integration alone does not satisfy the mapping coverage
-   or PIT gates.
-
-4. **`publicDate` PIT unconfirmed:** Even with correct names, DB write remains blocked on PIT
-   validation. Rushing mapping integration does not unblock DB write by itself.
-
-5. **No integration tests written:** The test suite validates that `line_item_name` is always
-   empty. Integration would require new tests covering lookup, fallback, and conflict handling
-   before any code change.
+1. **Coverage below gate:** No section reaches 95%. Using a sub-gate union leaves 8–13% of codes
+   unnamed even after integration — acceptable only with explicit handling.
+2. **88 name conflicts:** A conflicting code must never receive a name from a different firm type's
+   mapping — this is a data-integrity risk requiring Option C's conflict-skip policy.
+3. **`publicDate` PIT unconfirmed:** Correct names do not unblock DB write. Rushing integration
+   does not advance the DB write timeline.
 
 ---
 
-## 4. Integration Options
+## 4. Options Compared
 
-### Option A — Per-symbol mapping
-
-**Behavior:** Before parsing a symbol's FA payload, query `/financial-statement/metrics` with
-that symbol. Use the returned firm-type-specific mapping to populate `line_item_name_en`. No
-union mapping involved.
-
-| Dimension | Assessment |
-|---|---|
-| Correctness | High — names match the firm type exactly; no cross-type conflicts |
-| Coverage per parse | Lower than union — securities firms get 62.8% BS / 43.6% IS / 65.8% CF; banks and insurance get their own coverage |
-| Conflict risk | None — single source per symbol |
-| Implementation complexity | Medium — parser must accept a mapping file or query the mapping endpoint before each symbol's parse; introduces a live network dependency if mapping is fetched at parse time |
-| Auditability | Good — the `mapping_source_symbol` and `mapping_source_run_id` fields clearly identify the mapping used |
-| DB-readiness | Still blocked on PIT and schema gates |
-| Backtest-readiness | Still blocked |
-
-**Limitation:** Requires either a live mapping probe per symbol (network dependency) or a
-pre-cached mapping file per symbol (storage and freshness concern). Does not benefit from the
-additional codes discovered by bank/insurance mapping probes when parsing a securities symbol.
-
----
-
-### Option B — Universal union mapping
-
-**Behavior:** Build the union mapping from all available firm-type payloads. Apply it
-universally to every symbol regardless of firm type. Skip conflicting codes (leave `line_item_name_en`
-empty for codes in the 88-conflict set).
-
-| Dimension | Assessment |
-|---|---|
-| Correctness | Moderate — non-conflicting codes are correct; conflicting codes are skipped rather than wrong; but non-conflicting bank codes applied to a securities symbol may be misleading |
-| Coverage | Highest — union gives 89.4% / 92.3% / 86.7%, still below 95% |
-| Conflict risk | Managed — conflicting codes are silently skipped; but consensus codes may still be firm-type-inappropriate for some symbols |
-| Implementation complexity | Low — one union CSV loaded at parse time; no per-symbol logic |
-| Auditability | Poor — `mapping_source_symbol` would be ambiguous; not clear which firm type's name was used for codes shared across types |
-| DB-readiness | Still blocked |
-| Backtest-readiness | Still blocked |
-
-**Limitation:** Applying bank-specific `bsb*` names to a securities firm's fact rows (where
-those codes appear as zero/missing) is technically harmless but confusing in output. The
-auditability of "which mapping produced this name" is lost.
-
----
-
-### Option C — Hybrid gated mapping (Recommended)
-
-**Behavior:**
-
-1. **Primary lookup:** Use the firm-type-specific mapping for the symbol being parsed.
-   - Determine the firm type using the Approach D hybrid logic (see
-     `docs/data_sources/vietcap_iq_fa_firm_type_determination.md`): explicit override table
-     for directly-probed symbols, then `company_type_code` from the Vietcap IQ universe CSV.
-   - If a saved mapping payload for that firm type exists, use it as primary.
-2. **Consensus fallback:** For codes not covered by the primary mapping, fall back to the
-   union consensus mapping — but only if:
-   - the code has `conflict=false` in the union CSV;
-   - the code's `section` matches the FA section being parsed.
-3. **No name for uncovered, conflicting, or mismatched codes.** Leave `line_item_name_en` empty
-   with explicit `mapping_status` values (see §6.3).
-4. **Record the mapping provenance** for every populated name via new output columns.
-
-| Dimension | Assessment |
-|---|---|
-| Correctness | High — firm-type primary avoids cross-type mislabeling; consensus fallback is safe because conflict-free codes have identical names across firm types |
-| Coverage | Medium-high — primary gives firm-type-accurate names; consensus fallback adds non-conflicting codes from other firm types; still < 95% until residual gap is closed |
-| Conflict risk | Low — conflicting codes are never populated; provenance is recorded |
-| Implementation complexity | Medium — requires firm-type determination logic and two-level lookup; but both mapping inputs (per-symbol CSV and union consensus CSV) already exist |
-| Auditability | High — `mapping_source_symbol`, `mapping_source_run_id`, `mapping_conflict`, and `mapping_status` make the provenance traceable per row |
-| DB-readiness | Still blocked on PIT and coverage gates, but the output is closer to production quality |
-| Backtest-readiness | Still blocked |
+| Dimension | A — Per-symbol | B — Union (universal) | C — Hybrid (chosen) |
+|---|---|---|---|
+| Correctness | High — firm-type exact | Moderate — bank codes applied to securities rows | High — per-type primary + safe consensus fallback |
+| Coverage | Lower (VCI: 62.8% BS) | Highest (peak 92.3%) | Medium-high; below 95% until gap closed |
+| Conflict risk | None | Managed (skip 88 codes) | Low — conflicts never populated; provenance tracked |
+| Complexity | Medium — live probe or per-symbol CSV | Low — one union CSV | Medium — firm-type determination + two-level lookup |
+| Auditability | Good | Poor — which firm type's name? | High — full provenance columns per row |
+| Live network needed | Yes (or pre-cached per symbol) | No | No — both inputs are pre-computed offline CSVs |
 
 ---
 
 ## 5. Recommended Strategy
 
-**Recommended: Option C — Hybrid gated mapping.**
-
-Rationale:
-- Per-symbol mapping (Option A) gives the most correct names but requires either a live
-  network dependency or a pre-cached file per symbol. It also does not benefit from the
-  coverage improvement that bank/insurance mapping adds for general codes shared across
-  firm types.
-- Universal union (Option B) is simpler but loses auditability and may apply bank-specific
-  names in securities firm rows.
-- Hybrid (Option C) combines the correctness of per-symbol mapping with the coverage
-  improvement of the consensus union fallback, while keeping all provenance traceable.
-  It does not require live network at parse time — both inputs are saved CSV files.
-
-**The hybrid design is an enrichment layer, not a pre-condition for DB write.** Even after
-implementation, DB write remains blocked on PIT validation, QuestDB schema design, and the
-full-history fetch gate.
+**Option C — Hybrid gated mapping.** Combines per-symbol correctness with union consensus
+coverage improvement. Does not require live network at parse time. DB write remains blocked
+regardless — this enrichment does not satisfy PIT or schema gates.
 
 ---
 
 ## 6. Parser Integration Contract (Implemented)
 
-This section documents the implemented behavior. See
-`docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md` for dry-run validation results.
+See `vietcap_iq_fa_parser_mapping_integration.md` for dry-run validation (5 payloads, 53,013 rows, 0 errors).
 
 ### 6.1 Input files
 
 | Input | Format | Description |
 |---|---|---|
-| Per-symbol mapping CSV | `_MAPPING_COLUMNS` schema | Output of `scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py` run with the symbol-matched mapping payload |
-| Union consensus CSV | `_UNION_COLUMNS` schema | Output of `scripts/analyze_vietcap_iq_fa_metric_mapping_union.py`; filtered to `conflict=false` rows only |
-| FA payload file(s) | Saved `payload.json` files | No change from current parser input |
+| Per-symbol mapping CSV | `_MAPPING_COLUMNS` schema | From `scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py` for the symbol-matched firm type |
+| Union consensus CSV | `_UNION_COLUMNS` schema | From `scripts/analyze_vietcap_iq_fa_metric_mapping_union.py`; filtered to `conflict=false` rows |
+| FA payload file(s) | Saved `payload.json` | No change from current parser input |
 
-Both mapping CSVs must be pre-generated offline before the parser is invoked. The parser
-must not fetch them from the network.
+Both mapping CSVs must be pre-generated offline. The parser must not fetch them from the network.
 
 ### 6.2 Mapping lookup order
 
 For each `(section, line_item_code)` in a parsed FA row:
 
-1. Look up `line_item_code` in the per-symbol (firm-type-specific) mapping for the current
-   symbol's firm type.
-   - If found and `section` matches → use `line_item_name_en`, set `mapping_status=primary`,
-     set `mapping_source_symbol` to the symbol used for that mapping payload.
-2. If not found in primary, look up in the union consensus mapping (conflict-free only).
-   - If found and `section` matches → use `line_item_name_en_consensus`, set
-     `mapping_status=consensus_fallback`, set `mapping_source_symbol=union`.
-3. If not found in either → `line_item_name_en=""`, `mapping_status=not_covered`.
-4. If the code appears in the union CSV with `conflict=true` → `line_item_name_en=""`,
-   `mapping_status=conflict_skipped`, `mapping_conflict=true`.
+1. Look up code in the per-symbol (firm-type-specific) mapping.
+   - Found and `section` matches → `line_item_name_en` populated, `mapping_status=primary`.
+2. If not found in primary, look up in union consensus (conflict-free only).
+   - Found and `section` matches → `mapping_status=consensus_fallback`.
+3. Not found in either → `mapping_status=not_covered`.
+4. Code in union with `conflict=true` → `mapping_status=conflict_skipped`, `mapping_conflict=true`.
 
 ### 6.3 Behavior by case
 
 | Case | `line_item_name_en` | `mapping_status` | `mapping_conflict` |
 |---|---|---|---|
-| Code found in per-symbol mapping, section matches | populated | `primary` | `false` |
-| Code found in consensus union, section matches, no conflict | populated | `consensus_fallback` | `false` |
-| Code in union but `conflict=true` | `""` | `conflict_skipped` | `true` |
+| Per-symbol mapping hit, section matches | populated | `primary` | `false` |
+| Consensus union hit, section matches, no conflict | populated | `consensus_fallback` | `false` |
+| Code in union with `conflict=true` | `""` | `conflict_skipped` | `true` |
 | Code found in no mapping payload | `""` | `not_covered` | `false` |
 | Symbol has no mapping payload for its firm type | `""` (all rows) | `no_mapping_available` | `false` |
 | Code found but section does not match mapping section | `""` | `section_mismatch` | `false` |
 
-### 6.4 Output columns to add
+### 6.4 Output columns added
 
-The parser's `_LONG_FORMAT_COLUMNS` must be extended. The existing `line_item_name` column
-is kept (and kept empty) for backwards compatibility until a migration decision is made.
-New columns to add alongside it:
+The existing `line_item_name` column is kept empty (backwards compatibility). New columns:
 
-| New column | Type | Description |
+| Column | Type | Description |
 |---|---|---|
-| `line_item_name_en` | string | English name from mapping; empty if not covered or conflicting |
-| `line_item_name_vi` | string | Vietnamese name from mapping; empty if not covered |
-| `mapping_status` | string | One of `primary`, `consensus_fallback`, `conflict_skipped`, `not_covered`, `no_mapping_available`, `section_mismatch` |
-| `mapping_source_symbol` | string | Symbol whose mapping payload was used (e.g., `VCI`, `VCB`, or `union`) |
-| `mapping_source_run_id` | string | `run_id` of the mapping payload used; empty if not applicable |
-| `mapping_conflict` | string | `true` if code is in a known conflict set; `false` otherwise |
+| `line_item_name_en` | string | English name; empty if not covered or conflicting |
+| `line_item_name_vi` | string | Vietnamese name; empty if not covered |
+| `mapping_status` | string | One of the six values in §6.3 |
+| `mapping_source_symbol` | string | Symbol whose mapping payload was used (`VCI`, `VCB`, or `union`) |
+| `mapping_source_run_id` | string | `run_id` of the mapping payload used |
+| `mapping_conflict` | string | `true` if code is in the 88-conflict set; `false` otherwise |
 
-The existing `line_item_name` column **must remain empty** during integration until a
-deliberate deprecation decision is documented and the column is formally replaced.
-
-### 6.5 Validation checks required before code integration
-
-All of the following checks must be added to the parser and must pass before any mapping
-integration is merged:
-
-| Check | Severity | Description |
-|---|---|---|
-| `_check_mapping_status_validity` | error | `mapping_status` must be one of the six defined values |
-| `_check_no_invented_names` (extended) | error | `line_item_name_en` must be empty for every code with `mapping_status` in `{conflict_skipped, not_covered, no_mapping_available, section_mismatch}` |
-| `_check_conflict_flag_consistency` | error | If `mapping_conflict=true`, `line_item_name_en` must be empty |
-| `_check_primary_coverage` | info/warning | Report what fraction of fact rows received `mapping_status=primary`; warn if below 50% |
-| `_check_fallback_coverage` | info | Report what fraction received `consensus_fallback`; informational only |
-| `_check_not_covered_fraction` | warning | Warn if `not_covered` exceeds configured threshold |
-| `_check_mapping_source_run_id_present` | warning | Warn if `mapping_source_run_id` is empty for rows with `mapping_status=primary` |
-
-### 6.6 Tests required before code integration
-
-Before any parser integration code is merged, the following test groups must exist and pass:
-
-| Test group | Description |
-|---|---|
-| Primary lookup — hit | Code found in per-symbol mapping with matching section; verify `line_item_name_en` populated and `mapping_status=primary` |
-| Primary lookup — section mismatch | Code found in mapping but section differs; verify `line_item_name_en` empty and `mapping_status=section_mismatch` |
-| Primary lookup — miss, consensus hit | Code not in primary, found in consensus (conflict-free); verify `mapping_status=consensus_fallback` |
-| Conflict code skipped | Code in union with `conflict=true`; verify `line_item_name_en` empty and `mapping_status=conflict_skipped` |
-| Not covered | Code in neither primary nor consensus; verify `mapping_status=not_covered` |
-| No mapping file for firm type | Symbol with no available mapping payload; verify all rows have `mapping_status=no_mapping_available` |
-| Backwards compatibility | Existing `line_item_name` column is still present and empty |
-| No invented names | `_check_no_invented_names` still passes with the extended logic |
-| Deterministic output | Same inputs → same output column order and row order |
-| No network calls | Parser must not import `httpx` or `requests` |
-| No DB calls | Parser must not write to any DB file format (`.db`, `.sqlite`, etc.) |
+`line_item_name` must remain empty until a formal deprecation decision is made.
 
 ---
 
 ## 7. Integration Readiness Gates
 
-### Gates before parser integration may proceed
+### Gates before parser integration (all done)
 
-| Gate | Current Status |
+| Gate | Status |
 |---|---|
-| Mapping integration strategy documented | **Done** — this document |
-| Conflict policy accepted (never populate for conflicting codes) | **Done** — defined in §6.3 |
-| Mapping coverage report generated from current saved payloads | **Done** — `data/processed/vietcap_iq/fa_metric_mapping_union_coverage.csv` |
-| Firm-type determination logic designed | **Done** — `docs/data_sources/vietcap_iq_fa_firm_type_determination.md`; planner script `scripts/plan_vietcap_iq_fa_firm_type_mapping.py`; 46 tests |
-| Tests for all lookup behaviors written (§6.6) | **Done** — 65 integration tests + 74 resolver tests |
-| Parser integration dry-run implemented | **Done** — `phase/fa-parser-mapping-integration`; pending PR review/merge |
+| Mapping strategy documented | Done |
+| Conflict policy accepted (never populate for conflicts) | Done |
+| Coverage report generated | Done — `fa_metric_mapping_union_coverage.csv` |
+| Firm-type determination logic designed | Done — `vietcap_iq_fa_firm_type_determination.md` |
+| Tests for all Option C lookup behaviors | Done — 65 integration tests + 74 resolver tests |
+| Parser integration dry-run implemented and merged | Done — `8886058` (main) |
 
-### Gates before DB write (unchanged from readiness doc §17)
+### Gates before DB write (all blocked)
 
-| Gate | Current Status |
+| Gate | Status |
 |---|---|
-| Mapping integration dry-run passes on 5+ saved payloads | **Done** — 5 payloads, 53,013 rows, 0 errors |
 | Mapping coverage ≥ 95% per section | **Not met** — best union: 89.4% / 92.3% / 86.7% |
 | `publicDate` PIT semantics confirmed | **Not met** |
 | Canonical QuestDB schema designed and reviewed | **Not met** |
-| Natural key / dedup policy for re-ingestion defined | **Not met** |
-| Full-history FA fetch tested for a small symbol set | **Not met** |
-| Parser `--strict` mode passes on full-universe sample | **Not met** |
+| Natural key / dedup policy defined | **Not met** |
+| Full-history FA fetch tested (small symbol set) | **Not met** |
+| Parser `--strict` on full-universe sample | **Not met** |
 
 ---
 
-## 8. Constraints That Remain Unchanged
+## 8. Constraints Unchanged
 
 | Constraint | Status |
 |---|---|
-| `line_item_name` is empty in all current parser output | **Unchanged** |
-| DB write is blocked | **Unchanged** — §17 gates not met |
-| Backtest is blocked | **Unchanged** — §18 gates not met |
-| `publicDate` PIT semantics are unconfirmed | **Unchanged** |
-| No invented metric names | **Unchanged** — `_check_no_invented_names` enforced |
-| Full-history FA fetch is not implemented | **Unchanged** |
+| `line_item_name` empty in all parser output | Unchanged |
+| DB write blocked | Unchanged — DB write gates not met |
+| Backtest blocked | Unchanged |
+| `publicDate` PIT unconfirmed | Unchanged |
+| No invented metric names | Unchanged — `_check_no_invented_names` enforced |
 
 ---
 
@@ -339,12 +163,11 @@ Before any parser integration code is merged, the following test groups must exi
 
 | Document | Role |
 |---|---|
-| `docs/data_sources/vietcap_iq_fa_ingestion_v2_readiness.md` | Master gate table (§13, §15, §17, §18) — this doc extends §15 |
-| `docs/data_sources/vietcap_iq_fa_mapping_cashflow_probe.md` | VCI mapping baseline and CASH_FLOW shape evidence |
-| `docs/data_sources/vietcap_iq_fa_mapping_coverage_bank_probe.md` | Bank/insurance union coverage analysis and Options A/B/C overview |
-| `docs/data_sources/vietcap_iq_fa_metric_mapping_discovery.md` | VCI-only and union coverage tables |
-| `scripts/parse_vietcap_iq_fa_payloads_dry_run.py` | Current parser — `line_item_name` empty |
-| `scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py` | Offline per-symbol mapping parser |
-| `scripts/analyze_vietcap_iq_fa_metric_mapping_union.py` | Union mapping builder and coverage analysis |
-| `data/processed/vietcap_iq/fa_metric_mapping_union.csv` | Union mapping output (conflict flags included) |
-| `data/processed/vietcap_iq/fa_metric_mapping_union_coverage.csv` | Coverage output |
+| `vietcap_iq_fa_ingestion_v2_readiness.md` | Master gate table — DB write and backtest gates |
+| `vietcap_iq_fa_parser_mapping_integration.md` | Parser dry-run validation block note |
+| `vietcap_iq_fa_firm_type_determination.md` | Approach D firm-type determination design |
+| `vietcap_iq_fa_mapping_coverage_bank_probe.md` | Bank/insurance union coverage analysis |
+| `vietcap_iq_fa_mapping_cashflow_probe.md` | VCI mapping baseline and CASH_FLOW probe |
+| `scripts/parse_vietcap_iq_fa_payloads_dry_run.py` | Parser |
+| `scripts/analyze_vietcap_iq_fa_metric_mapping_union.py` | Union mapping builder and coverage |
+| `data/processed/vietcap_iq/fa_metric_mapping_union.csv` | Union mapping with conflict flags |
