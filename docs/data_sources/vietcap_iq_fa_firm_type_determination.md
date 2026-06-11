@@ -186,4 +186,4 @@ Every row receiving a name (or `mapping_status`) must record:
 | `vietcap_iq_fa_ingestion_v2_readiness.md` | Master gate table |
 | `scripts/plan_vietcap_iq_fa_firm_type_mapping.py` | Planner script — produces firm-type CSV |
 | `data/processed/dry_run/vietcap_iq_universe/<run_id>/instrument_universe.csv` | Primary metadata |
-| `vietcap_iq_fa_mapping_coverage_gap_probe.md` | General/fund gap probe; all firm types exhausted |
+| `vietcap_iq_fa_mapping_coverage_gap_probe.md` | General/fund gap probe; all known groups sampled |

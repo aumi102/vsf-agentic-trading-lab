@@ -48,7 +48,7 @@ No DB write, no backtest, no production agent tools yet.
 | FA parser errors | 0 |
 | FA mapping named rows | 46,412 / 53,013 (87.5% combined validation view) |
 | FPT BS+CF Mode B code-row naming | 485 / 556 named (87%); primary=163; consensus=322; conflict_skipped=2; not_covered=62 |
-| Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all firm types exhausted |
+| Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Total tests passing | 566 |
 

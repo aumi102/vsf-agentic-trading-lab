@@ -113,7 +113,7 @@ All DB write gates must be met first. Additionally:
 
 | Step | Depends On |
 |---|---|
-| ~~Probe additional firm types~~ — gap is structural; all firm types exhausted | Done |
+| ~~Probe additional firm types~~ — gap is structural; all known groups sampled | Done |
 | Consider supplementary mapping source or revised gate threshold | Coverage gap analysis |
 | Validate `publicDate` PIT vs HOSE/HNX filing records | External records |
 | Design canonical QuestDB schema + dedup/upsert policy | Coverage + PIT |
@@ -130,7 +130,7 @@ All DB write gates must be met first. Additionally:
 - `vietcap_iq_fa_parser_mapping_integration.md` — parser integration block note
 - `vietcap_iq_fa_firm_type_determination.md` — firm-type determination (Approach D)
 - `vietcap_iq_fa_mapping_coverage_bank_probe.md` — bank/insurance union coverage
-- `vietcap_iq_fa_mapping_coverage_gap_probe.md` — general/fund gap probe; all firm types exhausted
+- `vietcap_iq_fa_mapping_coverage_gap_probe.md` — general/fund gap probe; all known groups sampled
 - `vietcap_iq_fa_mapping_cashflow_probe.md` — VCI mapping baseline and CASH_FLOW probe
 - `vietcap_iq_fa_metric_mapping_discovery.md` — VCI-only coverage tables
 - `notes/archive/vietcap_iq_fa_readiness_legacy.md` — full historical policy sections (§4–§13, §19)
