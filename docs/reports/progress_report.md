@@ -67,16 +67,19 @@ No DB write, no backtest, no production agent tools yet.
 2. Validate `publicDate` PIT semantics — cross-check 5–10 sample rows vs HOSE/HNX filing dates.
 3. Design canonical QuestDB schema and dedup/upsert policy.
 4. Build full-history FA fetcher (after gates above are met).
-5. Merge docs cleanup PR #8 after review, then iterate on coverage gap and PIT validation.
+5. Merge core docs compaction PR #9 after review, then iterate on coverage gap and PIT validation.
 
 ---
 
 ## Docs Policy
 
-All docs under `docs/` target ≤1500 words. All current FA/Vietcap docs comply.
+All docs under `docs/` target ≤1500 words. All files comply as of PR #9 (2026-06-11).
 
 | File | Words | Status |
 |---|---|---|
+| `docs/architecture/02_trading_agent_architecture_overview.md` | 1498 | Compliant |
+| `docs/data_sources/hose_pipeline.md` | 1151 | Compliant |
+| `docs/autonomous_trading_agent_dev_master.md` | 1496 | Compliant |
 | `docs/data_sources/vietcap_iq_fa_ingestion_v2_readiness.md` | 846 | Compliant |
 | `docs/data_sources/vietcap_iq_fa_mapping_integration_strategy.md` | 1159 | Compliant |
 | `docs/data_sources/vietcap_iq_fa_firm_type_determination.md` | 1110 | Compliant |
@@ -84,8 +87,6 @@ All docs under `docs/` target ≤1500 words. All current FA/Vietcap docs comply.
 | `docs/data_sources/vietcap_iq_fa_mapping_cashflow_probe.md` | 887 | Compliant |
 | `docs/ingestion_v2_schema_plan.md` | 1473 | Compliant |
 | `docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md` | 876 | Compliant |
-| `docs/data_sources/vietcap_iq_fa_mapping_resolver_tests.md` | ~700 | Compliant |
-| `docs/data_sources/vietcap_iq_fa_metric_mapping_discovery.md` | ~1020 | Compliant |
-| `docs/data_sources/01_vietcap_iq.md` | ~487 | Compliant |
+| All other `docs/` files (stubs + minor docs) | below 500 | Compliant |
 
-Archived historical detail lives in `notes/archive/` (outside Docusaurus tree).
+Archived historical detail (probe notes, paper notes, writing guide, legacy sections) lives in `notes/archive/` (outside Docusaurus tree).
