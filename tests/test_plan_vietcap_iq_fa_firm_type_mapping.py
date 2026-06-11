@@ -153,6 +153,51 @@ class TestClassifySymbolFallback:
 
 
 # ---------------------------------------------------------------------------
+# classify_symbol — gap-probe explicit overrides (FPT, HPG, E1VFVN30)
+# ---------------------------------------------------------------------------
+
+
+class TestGapProbeExplicitOverrides:
+    """FPT, HPG, E1VFVN30 were directly probed 2026-06-11 and added to overrides."""
+
+    def test_fpt_in_explicit_overrides_as_general(self):
+        assert "FPT" in _EXPLICIT_OVERRIDES
+        assert _EXPLICIT_OVERRIDES["FPT"] == "general"
+
+    def test_hpg_in_explicit_overrides_as_general(self):
+        assert "HPG" in _EXPLICIT_OVERRIDES
+        assert _EXPLICIT_OVERRIDES["HPG"] == "general"
+
+    def test_e1vfvn30_in_explicit_overrides_as_general(self):
+        assert "E1VFVN30" in _EXPLICIT_OVERRIDES
+        assert _EXPLICIT_OVERRIDES["E1VFVN30"] == "general"
+
+    def test_fpt_override_high_confidence(self):
+        row = classify_symbol("FPT")
+        assert row["confidence"] == "high"
+        assert "explicit_override" in row["evidence"]
+
+    def test_hpg_override_is_general_high_confidence(self):
+        row = classify_symbol("HPG")
+        assert row["mapping_group"] == "general"
+        assert row["confidence"] == "high"
+
+    def test_e1vfvn30_override_is_general_high_confidence(self):
+        row = classify_symbol("E1VFVN30")
+        assert row["mapping_group"] == "general"
+        assert row["confidence"] == "high"
+
+    def test_general_override_source_symbol_still_empty(self):
+        # _GROUP_TO_SOURCE_SYMBOL["general"] remains "" — no primary payload for general
+        row = classify_symbol("FPT")
+        assert row["mapping_source_symbol"] == ""
+
+    def test_general_override_fallback_policy_unchanged(self):
+        row = classify_symbol("HPG")
+        assert "no_primary_mapping" in row["fallback_policy"]
+
+
+# ---------------------------------------------------------------------------
 # classify_symbol — FPT must not be falsely classified as bank/insurance/securities
 # ---------------------------------------------------------------------------
 

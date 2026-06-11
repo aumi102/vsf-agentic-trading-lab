@@ -17,7 +17,7 @@ Master gate table for production Vietcap IQ FA ingestion. No DB write until all 
 | FA endpoint access | **Confirmed** — HTTP 200 (clean 8-header, no Cookie/Auth) for BS/IS/CF on VCI and FPT |
 | Parser dry-run | **Done** — 53,013 fact rows from 5 saved payloads; 7 validation checks; 552 tests pass |
 | Option C mapping integration | **Done** — 7 output columns; 65 tests; dry-run on 5 payloads: 0 errors |
-| Metric mapping coverage | **Below gate** — union (VCI+VCB+BVH+SSI): BS 89.4% / IS 92.3% / CF 86.7%; 88 conflicts |
+| Metric mapping coverage | **Below gate** — union (7 payloads, all known groups sampled): BS 89.7% / IS 94.5% / CF 87.6%; 99 conflicts; gap appears structural for `/metrics` endpoint |
 | `publicDate` PIT semantics | **Unconfirmed** — candidate field only; not cross-checked vs filing records |
 | Full-history FA fetch | **Not implemented** |
 | DB write | **Blocked** — DB write gates not met |
@@ -35,7 +35,7 @@ Master gate table for production Vietcap IQ FA ingestion. No DB write until all 
 | `null` and `0.0` are distinct in payload; must stay distinct in output | `value_status` logic; `test_validate_preserves_null_vs_zero_distinction` |
 | `nos*` columns null for non-securities firms (FPT) | `_check_nos_pattern` result |
 | Mapping is firm-type-specific: SSI = VCI; VCB/BVH return different codes | 4 mapping probes |
-| Union mapping (VCI+VCB+BVH+SSI): 1793 codes, 88 name conflicts (4.9%) | `scripts/analyze_vietcap_iq_fa_metric_mapping_union.py` |
+| Union mapping (7 payloads: VCI+SSI+VCB+BVH+FPT+HPG+E1VFVN30): 1957 codes, 99 conflicts (5.1%); all known groups sampled | `scripts/analyze_vietcap_iq_fa_metric_mapping_union.py` |
 | CASH_FLOW: same envelope shape; 225 codes; `publicDate` non-null | VCI + FPT CASH_FLOW probes |
 
 ---
@@ -82,7 +82,7 @@ avoidance until cross-checked against HOSE/HNX filing records. `availability_sta
 
 | Gate | Current Status |
 |---|---|
-| Metric mapping coverage ≥ 95% per section | **Not met** — union: BS 89.4% / IS 92.3% / CF 86.7% |
+| Metric mapping coverage ≥ 95% per section | **Not met** — union (7 payloads): BS 89.7% / IS 94.5% / CF 87.6%; gap appears structural for `/metrics` endpoint |
 | `publicDate` PIT semantics confirmed | **Not met** |
 | Canonical QuestDB schema designed and reviewed | **Not met** |
 | Natural key / dedup policy for re-ingestion defined | **Not met** |
@@ -111,7 +111,8 @@ All DB write gates must be met first. Additionally:
 
 | Step | Depends On |
 |---|---|
-| Probe additional firm types to close coverage gap | — |
+| ~~Probe additional firm types~~ — gap is structural; all firm types exhausted | Done |
+| Consider supplementary mapping source or revised gate threshold | Coverage gap analysis |
 | Validate `publicDate` PIT vs HOSE/HNX filing records | External records |
 | Design canonical QuestDB schema + dedup/upsert policy | Coverage + PIT |
 | Build full-history FA fetcher | Mapping + PIT + schema gates |
@@ -127,6 +128,7 @@ All DB write gates must be met first. Additionally:
 - `vietcap_iq_fa_parser_mapping_integration.md` — parser integration block note
 - `vietcap_iq_fa_firm_type_determination.md` — firm-type determination (Approach D)
 - `vietcap_iq_fa_mapping_coverage_bank_probe.md` — bank/insurance union coverage
+- `vietcap_iq_fa_mapping_coverage_gap_probe.md` — general/fund gap probe; all firm types exhausted
 - `vietcap_iq_fa_mapping_cashflow_probe.md` — VCI mapping baseline and CASH_FLOW probe
 - `vietcap_iq_fa_metric_mapping_discovery.md` — VCI-only coverage tables
 - `notes/archive/vietcap_iq_fa_readiness_legacy.md` — full historical policy sections (§4–§13, §19)

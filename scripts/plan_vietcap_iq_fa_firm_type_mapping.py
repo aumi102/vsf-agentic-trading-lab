@@ -40,6 +40,11 @@ _EXPLICIT_OVERRIDES: dict[str, str] = {
     "SSI": "securities",
     "VCB": "bank",
     "BVH": "insurance",
+    # Gap-probe 2026-06-11: CT and QU firm types confirmed to return identical
+    # 345-code general mapping (bsa*/isa*/cfa* codes; no bss*/bsb*/bsi* variants).
+    "FPT": "general",
+    "HPG": "general",
+    "E1VFVN30": "general",
 }
 
 # company_type_code → mapping group
@@ -48,7 +53,7 @@ _COMPANY_TYPE_TO_GROUP: dict[str, str] = {
     "BH": "insurance",  # Bảo hiểm
     "CK": "securities", # Chứng khoán
     "CT": "general",    # Công ty (general)
-    "QU": "general",    # Quỹ (fund — no dedicated mapping probed yet)
+    "QU": "general",    # Quỹ (fund — confirmed identical to CT mapping via E1VFVN30 probe)
 }
 
 # Mapping group → representative source symbol whose payload file to use

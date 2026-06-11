@@ -45,9 +45,10 @@ primary mapping payload.
 | `securities` | VCI (primary), SSI (confirmed identical) | Probed |
 | `bank` | VCB | Probed |
 | `insurance` | BVH | Probed |
-| `general` | FPT and all `CT`/`QU` firms | No dedicated payload — consensus fallback only |
+| `general` | FPT, HPG (CT); E1VFVN30 (QU) — all return identical 345-code payload | Probed 2026-06-11 |
 
 `general` covers approximately 96% of the 2080-symbol universe (`CT`=1778 + `QU`=181 + unknown=34).
+CT and QU firm types return the same 345-code mapping; no dedicated fund payload exists.
 
 ---
 
@@ -85,6 +86,7 @@ Classification order (first match wins):
 
 1. **Explicit override table** (directly probed — highest confidence):
    - `VCI` → `securities`; `SSI` → `securities`; `VCB` → `bank`; `BVH` → `insurance`
+   - `FPT` → `general`; `HPG` → `general`; `E1VFVN30` → `general` (added 2026-06-11)
 2. **`company_type_code` from `instrument_universe.csv`**:
    - `NH` → `bank`; `BH` → `insurance`; `CK` → `securities`; `CT` / `QU` / `""` → `general`
 3. **`is_bank` fallback** (only if `company_type_code` missing):
@@ -134,11 +136,12 @@ Every row receiving a name (or `mapping_status`) must record:
 
 ## 9. Limitations
 
-1. **Fund (`QU`) mapping not probed.** 181 fund symbols treated as `general`. Re-classify when a dedicated fund probe is run.
-2. **`general` code uniformity not confirmed.** FPT uses the same codes as VCI, but not all `CT` firms have been verified. Cross-check `VHM` or `HPG` in a future probe.
+1. ~~**Fund (`QU`) mapping not probed.**~~ Resolved 2026-06-11: E1VFVN30 (QU) probed and confirmed identical to CT general mapping (345 codes).
+2. ~~**`general` code uniformity not confirmed.**~~ Resolved 2026-06-11: FPT (tech/CT) and HPG (steel/CT) both return the identical 345-code general mapping.
 3. **`company_type_code` not cross-checked against SSC/UBCK.** ICB `icb_lv2_raw` provides a corroborating signal but requires JSON parsing.
 4. **No `is_insurance` field.** Insurance detection relies solely on `company_type_code=BH`.
 5. **Stale universe.** If the universe CSV is from an old run, recently reclassified firms will be misclassified until the universe is re-fetched.
+6. **Coverage gap appears structural for `/metrics` endpoint.** Residual uncovered codes (`bsi*`, `bss*`, `bsb*`, `cfs*`, `cfi*`) appear in FA payloads but in no probed `/metrics` mapping payload. Additional same-group probes are unlikely to close the gap; a supplementary mapping source or gate-threshold review is needed.
 
 ---
 
@@ -165,7 +168,7 @@ Every row receiving a name (or `mapping_status`) must record:
 | DB write blocked | Unchanged — DB write gates not met |
 | Backtest blocked | Unchanged |
 | `publicDate` PIT unconfirmed | Unchanged |
-| Mapping coverage gate (95%) not met | Unchanged — union: BS 89.4% / IS 92.3% / CF 86.7% |
+| Mapping coverage gate (95%) not met | Unchanged — union (7 payloads): BS 89.7% / IS 94.5% / CF 87.6%; gap is structural |
 
 ---
 
@@ -179,3 +182,4 @@ Every row receiving a name (or `mapping_status`) must record:
 | `vietcap_iq_fa_ingestion_v2_readiness.md` | Master gate table |
 | `scripts/plan_vietcap_iq_fa_firm_type_mapping.py` | Planner script — produces firm-type CSV |
 | `data/processed/dry_run/vietcap_iq_universe/<run_id>/instrument_universe.csv` | Primary metadata |
+| `vietcap_iq_fa_mapping_coverage_gap_probe.md` | General/fund gap probe; all firm types exhausted |
