@@ -71,17 +71,21 @@ No DB write, no backtest, no production agent tools yet.
 
 ---
 
-## Docs Debt
+## Docs Policy
 
-Files exceeding the 1500-word policy limit — marked for future cleanup:
+All docs under `docs/` target ≤1500 words. All current FA/Vietcap docs comply.
 
-| File | ~Words | Action |
+| File | Words | Status |
 |---|---|---|
-| `docs/data_sources/vietcap_iq_fa_ingestion_v2_readiness.md` | ~3,800 | Compress policy sections |
-| `docs/data_sources/vietcap_iq_fa_mapping_integration_strategy.md` | ~2,700 | Options A/B/C could be summarized |
-| `docs/data_sources/vietcap_iq_fa_firm_type_determination.md` | ~2,700 | Compress examples |
-| `docs/data_sources/vietcap_iq_fa_mapping_coverage_bank_probe.md` | ~1,800 | Partially archival |
-| `docs/data_sources/vietcap_iq_fa_mapping_cashflow_probe.md` | ~1,700 | Partially archival |
-| `docs/ingestion_v2_schema_plan.md` | ~5,200 | Compress or split |
+| `docs/data_sources/vietcap_iq_fa_ingestion_v2_readiness.md` | 846 | Compliant |
+| `docs/data_sources/vietcap_iq_fa_mapping_integration_strategy.md` | 1159 | Compliant |
+| `docs/data_sources/vietcap_iq_fa_firm_type_determination.md` | 1110 | Compliant |
+| `docs/data_sources/vietcap_iq_fa_mapping_coverage_bank_probe.md` | 892 | Compliant |
+| `docs/data_sources/vietcap_iq_fa_mapping_cashflow_probe.md` | 887 | Compliant |
+| `docs/ingestion_v2_schema_plan.md` | 1473 | Compliant |
+| `docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md` | 876 | Compliant |
+| `docs/data_sources/vietcap_iq_fa_mapping_resolver_tests.md` | ~700 | Compliant |
+| `docs/data_sources/vietcap_iq_fa_metric_mapping_discovery.md` | ~1020 | Compliant |
+| `docs/data_sources/01_vietcap_iq.md` | ~487 | Compliant |
 
-Compliant (≤1500 words): `01_vietcap_iq.md` (slimmed this PR), `vietcap_iq_fa_parser_mapping_integration.md` (876), `vietcap_iq_fa_mapping_resolver_tests.md` (700), `vietcap_iq_fa_metric_mapping_discovery.md` (1020).
+Archived historical detail lives in `notes/archive/` (outside Docusaurus tree).

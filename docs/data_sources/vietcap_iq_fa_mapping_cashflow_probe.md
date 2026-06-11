@@ -6,92 +6,35 @@ toc_max_heading_level: 3
 
 # Vietcap IQ FA Mapping and CASH_FLOW Probe Report
 
-**Date:** 2026-06-10  
-**Branch:** `phase/fa-mapping-cashflow-probe`
+**Date:** 2026-06-10
 
 ---
 
 ## Purpose
 
-This document records the results of two controlled probes:
+Two controlled probes:
 
-1. **Metric mapping re-probe** — a repeat attempt of the `/financial-statement/metrics` endpoint
-   that previously failed at DNS level (run `20260609T091305Z`). Objective: retrieve a code-to-name
-   mapping for FA metric codes.
-2. **CASH_FLOW shape probe** — a first-time FA probe of the CASH_FLOW section for VCI and FPT.
-   Objective: confirm the payload envelope, metric code count, `publicDate` presence, and whether
-   the shape matches BALANCE_SHEET and INCOME_STATEMENT.
+1. **Metric mapping re-probe** — repeat attempt of `/financial-statement/metrics` (prior run DNS-failed).
+   Goal: retrieve a code-to-name mapping for FA metric codes.
+2. **CASH_FLOW shape probe** — first FA probe of CASH_FLOW for VCI and FPT.
+   Goal: confirm payload envelope, code count, `publicDate` presence, shape consistency.
 
-No DB writes. No backtests. No invented metric names. All conclusions are drawn solely from saved
-probe payloads.
+No DB writes. No backtests. No invented names.
 
 ---
 
 ## 1. Metric Mapping Probe
 
-### Endpoint
-
-`https://iq.vietcap.com.vn/api/iq-insight-service/v1/company/VCI/financial-statement/metrics`
-
-This is the same endpoint targeted in the prior inconclusive probe (`run_id=20260609T091305Z`,
-DNS failure). It was re-probed on 2026-06-10 when DNS resolution was available.
-
-### Command
-
-```
-python scripts/probe_vietcap_iq_fa_httpx_session.py \
-  --diagnostic-target fa-direct \
-  --symbol VCI \
-  --section BALANCE_SHEET \
-  --referer-style trading-company-page \
-  --api-url "https://iq.vietcap.com.vn/api/iq-insight-service/v1/company/VCI/financial-statement/metrics" \
-  --dataset "vietcap_iq_fa_metrics_mapping_probe"
-```
-
-### Result
-
 | Field | Value |
 |---|---|
 | `run_id` | `20260610T025420Z` |
-| `http_status` | `200` |
+| `http_status` | 200 |
 | `access_status` | `verified` |
-| Payload saved | Yes |
-| Mapping found | **Yes** |
+| Symbol | VCI |
 
-**Path:** `data/raw/httpx_diagnostic/source=vietcap_iq/run_id=20260610T025420Z/vietcap_iq_fa_metrics_mapping_probe/`
+### Code counts from mapping payload
 
-### Payload Structure
-
-The response `data` field is a dict keyed by FA section name. Each value is an ordered list of
-entry objects:
-
-```
-data:
-  BALANCE_SHEET: [entry, ...]      # 212 entries: 208 metric codes, 4 section headers
-  INCOME_STATEMENT: [entry, ...]   # 80 entries: all metric codes, 0 headers
-  CASH_FLOW: [entry, ...]          # 153 entries: 148 metric codes, 5 section headers
-  NOTE: [entry, ...]               # 642 entries: all metric codes, 0 headers
-```
-
-Each entry has the following fields:
-
-| Field | Type | Notes |
-|---|---|---|
-| `field` | `str \| null` | Metric code (e.g., `bsa1`). Null for section-level display headers. |
-| `name` | `str` | Uppercase variant of the code (e.g., `BSA1`). |
-| `titleEn` | `str` | English label (e.g., `"CURRENT ASSETS"`). |
-| `titleVi` | `str` | Vietnamese label. |
-| `fullTitleEn` | `str` | Full English label (may equal `titleEn`). |
-| `fullTitleVi` | `str` | Full Vietnamese label. |
-| `level` | `int` | Hierarchy depth (1 = top-level). |
-| `parent` | `str \| null` | Parent code, or null if top-level. |
-
-**Null-field entries** (section headers) are display items in the Vietcap IQ UI, not metric codes.
-They must be excluded from the code-to-name mapping index. They are identified by `field=null`.
-
-### Total Codes
-
-| Section | Total entries | Null-field (headers) | Non-null (metric codes) |
+| Section | Total entries | Null-field headers | Metric codes |
 |---|---|---|---|
 | BALANCE_SHEET | 212 | 4 | 208 |
 | INCOME_STATEMENT | 80 | 0 | 80 |
@@ -99,14 +42,16 @@ They must be excluded from the code-to-name mapping index. They are identified b
 | NOTE | 642 | 0 | 642 |
 | **Total** | **1087** | **9** | **1078** |
 
+Null-field entries are UI display headers (no `field` value) — excluded from the mapping index.
+Each metric entry has `field`, `titleEn`, `titleVi`, `fullTitleEn`, `fullTitleVi`, `level`, `parent`.
+
 ---
 
-## 2. Mapping Coverage Analysis
+## 2. Mapping Coverage (VCI-only)
 
-Coverage was computed by `scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py --probe-dir`
-against the saved FA probe payloads. See §4 for the parser script.
+Coverage computed against 5 saved FA probe payloads:
 
-| Probe | Symbol | Section | Codes in Payload | Covered by Mapping | Coverage |
+| Probe | Symbol | Section | Codes in Payload | Covered | Coverage |
 |---|---|---|---|---|---|
 | `20260609T035318Z` | VCI | BALANCE_SHEET | 331 | 208 | **62.8%** |
 | `20260609T075846Z` | VCI | INCOME_STATEMENT | 181 | 79 | **43.6%** |
@@ -114,39 +59,22 @@ against the saved FA probe payloads. See §4 for the parser script.
 | `20260610T025429Z` | VCI | CASH_FLOW | 225 | 148 | **65.8%** |
 | `20260610T025440Z` | FPT | CASH_FLOW | 225 | 148 | **65.8%** |
 
-**Coverage is partial and below the 95% DB write threshold.** The uncovered codes are firm-type-specific
-or section-specific variants not included in the mapping response for this symbol (VCI, a securities firm).
-
-Possible reasons for uncovered codes:
-- The mapping endpoint may return a template appropriate for the queried symbol's firm type.
-  A universal mapping across all firm types might require querying multiple symbols.
-- Firm-type variants (`bss*`, `bsb*`, `bsi*`) may have limited coverage for their specialized codes.
-- The NOTE section (642 codes) was not tested in saved probe payloads — coverage there is unknown.
-
-**The mapping is a genuine discovery but is not yet sufficient for a DB write gate.**
+**Below the 95% DB write gate.** Uncovered codes are firm-type-specific variants not in the VCI
+(securities) mapping. Bank and insurance probes later confirmed union coverage improves to
+BS 89.4% / IS 92.3% / CF 86.7% — still below gate. See `vietcap_iq_fa_mapping_coverage_bank_probe.md`.
 
 ---
 
-## 3. CASH_FLOW Section Probe
+## 3. CASH_FLOW Shape Probe
 
-### Probes Executed
+| run_id | Symbol | http_status |
+|---|---|---|
+| `20260610T025429Z` | VCI | 200 |
+| `20260610T025440Z` | FPT | 200 |
 
-| run_id | Symbol | Section | Command target |
-|---|---|---|---|
-| `20260610T025429Z` | VCI | CASH_FLOW | `fa-direct` with CASH_FLOW URL |
-| `20260610T025440Z` | FPT | CASH_FLOW | `fa-direct` with CASH_FLOW URL |
+Both used the clean 8-header profile (no Cookie, no Authorization).
 
-Both probes used the same clean 8-header profile (no Cookie, no Authorization) as all prior FA probes.
-
-### Results
-
-Both probes returned HTTP 200 with `access_status=verified`.
-
-**Paths:**
-- `data/raw/httpx_diagnostic/source=vietcap_iq/run_id=20260610T025429Z/vietcap_iq_fa_cash_flow_vci_probe/`
-- `data/raw/httpx_diagnostic/source=vietcap_iq/run_id=20260610T025440Z/vietcap_iq_fa_cash_flow_fpt_probe/`
-
-### CASH_FLOW Payload Shape
+### CASH_FLOW payload shape
 
 | Field | VCI | FPT |
 |---|---|---|
@@ -155,133 +83,68 @@ Both probes returned HTTP 200 with `access_status=verified`.
 | Metric columns per row | 225 | 225 |
 | `publicDate` non-null (quarterly) | 33/33 | 33/33 |
 | `publicDate` non-null (annual) | 8/8 | 8/8 |
-| First quarterly `publicDate` | `2018-08-17T00:00:00` | (same format) |
+| First quarterly `publicDate` | `2018-08-17T00:00:00` | same format |
 | Envelope structure | `data.quarters` + `data.years` | Same |
 
-**The CASH_FLOW envelope is identical to BALANCE_SHEET and INCOME_STATEMENT.** The same parser
+**CASH_FLOW envelope is identical to BALANCE_SHEET and INCOME_STATEMENT.** The same parser
 handles all three sections without modification.
-
-### CASH_FLOW Metric Code Prefix Sample
-
-First 5 codes observed (VCI): `cfa1`, `cfa2`, `cfa3`, `cfa4`, `cfa5`
-
-Prefix groups (unverified inferences, same methodology as prior sections):
-
-| Prefix | Probable category (unverified) |
-|---|---|
-| `cfa*` | General cash flow items |
-| `cfs*` | Securities-firm-specific cash flow items |
-| `cfb*` | Bank-specific cash flow items (hypothetical) |
-| `cfi*` | Insurance-specific cash flow items (hypothetical) |
-
-These are structural inferences from code patterns only. Individual code names come from the
-mapping (65.8% coverage); the remaining 34.2% of codes have no name available.
-
-### `publicDate` Observations
-
-`publicDate` is non-null for all 33 quarterly and 8 annual rows in both VCI and FPT CASH_FLOW.
-This is consistent with BALANCE_SHEET and INCOME_STATEMENT behaviour. **The PIT semantics of
-`publicDate` remain unconfirmed** — it is a candidate availability field only. See the readiness
-doc §16.
 
 ---
 
 ## 4. Mapping Dry-Run Parser
 
-### Script
+**Script:** `scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py`
 
-`scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py`
-
-No network. No DB writes. Pure offline parser.
-
-### Behaviour
-
-- Reads the saved mapping `payload.json` from the probe run directory.
-- Parses all sections into a flat CSV (`_MAPPING_COLUMNS`): `section`, `line_item_code`,
-  `line_item_name_en`, `line_item_name_vi`, `level`, `parent`, `name`, `is_header`.
-- Null-field entries are included with `is_header=true` so callers can filter them.
-- Optionally scans `--probe-dir` for saved FA probe payloads and outputs a per-(symbol, section)
-  coverage CSV (`_COVERAGE_COLUMNS`).
-- Output is deterministic and sorted: `section` → `is_header` → `line_item_code`.
-- Does not invent names. Codes not in the mapping produce no output entry.
-
-### Example Usage
-
-```bash
-# Parse mapping only
-python scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py \
-  --output-mapping data/processed/vietcap_iq/fa_metric_mapping.csv
-
-# Parse mapping + compute coverage against saved probes
-python scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py \
-  --output-mapping data/processed/vietcap_iq/fa_metric_mapping.csv \
-  --probe-dir data/raw/httpx_diagnostic/source=vietcap_iq \
-  --output-coverage data/processed/vietcap_iq/fa_metric_mapping_coverage.csv
-```
-
-### Tests
-
-50 new tests in `tests/test_parse_vietcap_iq_fa_metric_mapping_dry_run.py`. All pass.
+Pure offline parser (no network, no DB writes). Reads saved mapping `payload.json`; outputs
+a flat CSV (`_MAPPING_COLUMNS`): `section`, `line_item_code`, `line_item_name_en`,
+`line_item_name_vi`, `level`, `parent`, `is_header`. Null-field entries included with
+`is_header=true`. Optionally computes per-(symbol, section) coverage against saved probe
+payloads. Output is deterministic and sorted. **50 tests pass.**
 
 ---
 
-## 5. Confirmed Facts (This Probe Package)
+## 5. Confirmed Facts
 
 | Fact | Evidence |
 |---|---|
-| `/financial-statement/metrics` returns HTTP 200 with a full mapping payload | `run_id=20260610T025420Z`, `access_status=verified` |
-| Mapping is structured as a section-keyed dict of entry objects | Payload `data` keys: `BALANCE_SHEET`, `INCOME_STATEMENT`, `CASH_FLOW`, `NOTE` |
-| 1078 non-null metric codes are present across four sections | Parsed from mapping payload |
-| 9 null-field entries are section-level display headers, not metric codes | Confirmed by inspection; headers have no `field` value |
-| Mapping coverage is partial: 62.8% BS / 43.6% IS / 65.8% CF (vs 95% gate threshold) | Coverage computed by dry-run parser against saved probe payloads |
-| CASH_FLOW uses identical envelope: `data.quarters` + `data.years` | VCI and FPT CASH_FLOW probes, HTTP 200 |
-| CASH_FLOW has 33 quarterly and 8 annual rows (same depth as BS/IS) | Shape confirmed for both VCI and FPT |
-| `publicDate` is non-null for all CASH_FLOW rows in both VCI and FPT probes | Confirmed from payload inspection |
-| CASH_FLOW metric codes start with `cfa*` prefix (general) | First 5 codes: `cfa1`–`cfa5` |
+| `/financial-statement/metrics` returns HTTP 200 with full mapping | `run_id=20260610T025420Z`, `verified` |
+| Mapping structured as section-keyed dict of entry objects | Keys: `BALANCE_SHEET`, `INCOME_STATEMENT`, `CASH_FLOW`, `NOTE` |
+| 1078 non-null metric codes across four sections | Parsed from mapping payload |
+| 9 null-field entries are section-level UI headers — not metric codes | Confirmed by inspection |
+| VCI-only coverage: 62.8% BS / 43.6% IS / 65.8% CF (below 95% gate) | Dry-run parser against saved payloads |
+| CASH_FLOW envelope: `data.quarters` + `data.years` | VCI and FPT HTTP 200 |
+| CASH_FLOW: 33 quarterly and 8 annual rows; 225 codes per row | Shape confirmed for both symbols |
+| `publicDate` non-null for all CASH_FLOW rows in VCI and FPT | Payload inspection |
 
 ---
 
 ## 6. Outstanding Unknowns
 
-| Unknown | Impact |
+| Unknown | Status |
 |---|---|
-| Why IS coverage is only 43.6% (lower than BS/CF) | May indicate the mapping is not universal; may require querying a different symbol type |
-| Whether mapping covers NOTE section codes in practice | No saved NOTE FA payload to test against |
-| Whether querying the mapping endpoint with a different symbol returns more codes | VCI is a securities firm; a general/bank/insurance firm may have a different mapping response |
-| `publicDate` PIT semantics | Unconfirmed; see readiness doc §16 |
-| Coverage of `nos*` codes in mapping | VCI has non-null `nos*` values; FPT does not. `nos*` codes may exist in NOTE section. |
+| Why IS coverage is only 43.6% | Partially resolved — bank/insurance probes raised union IS to 92.3%; residual 7.7% is unaccounted for across all 4 firm types |
+| Whether querying a different symbol type returns more codes | Resolved — SSI=VCI; VCB (bank) and BVH (insurance) confirmed distinct codes; union coverage still below 95% |
+| `publicDate` PIT semantics | **Unconfirmed** — candidate field only; not cross-checked vs exchange filing records |
+| NOTE section coverage in practice | No saved NOTE FA payload to test against |
+| `nos*` codes in mapping | VCI has non-null `nos*` values; FPT does not; NOTE section codes not tested |
 
 ---
 
-## 7. Gate Status Update
+## 7. Gate Status
 
-| Gate | Previous Status | Updated Status |
-|---|---|---|
-| Metric mapping verified and coverage ≥ 95% threshold | Not met — no mapping available | **Not met** — mapping retrieved (1078 codes); coverage 43–66% across sections; below 95% threshold |
-| CASH_FLOW section confirmed | Not met — unprobed | **Met** — HTTP 200, identical envelope, 225 codes per row, publicDate non-null |
-| `publicDate` PIT semantics confirmed | Not met | **Not met** — unchanged |
-
-The mapping gate remains blocked — partial coverage is a real advance but not sufficient for DB
-write approval.
-
----
-
-## 8. Next Recommended Steps
-
-1. **Probe mapping endpoint with additional symbol types** (bank, insurance) to check if
-   a broader symbol returns higher IS coverage.
-2. **Probe additional FA sections** (NOTE, and any section not yet confirmed) for 1–2 symbols.
-3. **Probe 3–5 additional symbols** (HOSE/HNX/UPCOM) to confirm shape consistency at scale.
-4. **Investigate NOTE section coverage** — retrieve a NOTE-section FA payload to test the
-   642 NOTE mapping codes against real data.
-5. **Do not** integrate mapping into the parser or write DB until coverage meets the gate threshold.
-6. **Do not** confirm `publicDate` as PIT without cross-checking against filing records.
+| Gate | Status after this probe |
+|---|---|
+| Mapping coverage ≥ 95% | **Not met** — VCI-only: 43–66%; union (after later bank/insurance probe): 87–92% |
+| CASH_FLOW section confirmed | **Met** — HTTP 200; identical envelope; 225 codes; `publicDate` non-null |
+| `publicDate` PIT semantics confirmed | **Not met** — unchanged |
+| DB write | **Blocked** — mapping and PIT gates unmet |
 
 ---
 
 ## Related Documents
 
-- `docs/data_sources/vietcap_iq_fa_metric_mapping_discovery.md` — updated with this probe result
-- `docs/data_sources/vietcap_iq_fa_ingestion_v2_readiness.md` — gate status updates in §1 and §17
-- `scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py` — mapping parser implementation
-- `tests/test_parse_vietcap_iq_fa_metric_mapping_dry_run.py` — 50 tests
+- `vietcap_iq_fa_mapping_coverage_bank_probe.md` — bank/insurance union coverage analysis
+- `vietcap_iq_fa_mapping_integration_strategy.md` — Option C design record
+- `vietcap_iq_fa_metric_mapping_discovery.md` — mapping discovery history
+- `vietcap_iq_fa_ingestion_v2_readiness.md` — full gate table
+- `scripts/parse_vietcap_iq_fa_metric_mapping_dry_run.py` — mapping parser (50 tests)
