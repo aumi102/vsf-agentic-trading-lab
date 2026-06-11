@@ -6,9 +6,9 @@ toc_max_heading_level: 3
 
 # Vietcap IQ FA Metric Mapping Integration Strategy
 
-**Status:** Design only — not implemented.  
+**Status:** Design complete. Parser integration implemented (2026-06-10) — see `docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md`.  
 **Date:** 2026-06-10  
-**Branch:** `phase/fa-mapping-integration-strategy`
+**Branch:** `phase/fa-mapping-integration-strategy` (design); `phase/fa-parser-mapping-integration` (implementation)
 
 ---
 
@@ -18,8 +18,9 @@ This document defines the strategy for integrating FA metric mapping into the Vi
 parser. It records the options considered, the evidence driving the decision, and the
 implementation contract that must be satisfied before any parser code changes are made.
 
-**No parser code is changed by this document.** `line_item_name` remains empty in all current
-parser output. This is a pre-implementation design record.
+**Parser integration implemented (2026-06-10)** — see
+`docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md` for dry-run validation.
+This document is the design record.
 
 ---
 
@@ -30,7 +31,7 @@ parser output. This is a pre-implementation design record.
 - Script: `scripts/parse_vietcap_iq_fa_payloads_dry_run.py`
 - Output column: `line_item_name` — **always empty** (`""`)
 - Guard: `_check_no_invented_names` ensures no names are written without a verified mapping
-- 34,563 long-format fact rows parsed from 5 saved payloads; `line_item_name` empty in all
+- 53,013 long-format fact rows parsed from 5 saved payloads; `line_item_name` empty in all
 
 ### Mapping payloads retrieved
 
@@ -88,11 +89,11 @@ The following conditions make parser integration premature:
    contain a wrong or misleading name that depends on which firm type's mapping happened to be
    loaded. This is a data corruption risk for downstream consumers.
 
-3. **Firm-type determination logic not yet integrated into parser:** The determination logic
-   is now designed and documented (`docs/data_sources/vietcap_iq_fa_firm_type_determination.md`)
-   with a planner script (`scripts/plan_vietcap_iq_fa_firm_type_mapping.py`). However, the
-   parser code has not been changed. The planner output must be wired into the parser's primary
-   lookup step (§6.2) before integration can proceed.
+3. **Firm-type determination logic integrated into parser (2026-06-10):** The determination
+   logic (`scripts/plan_vietcap_iq_fa_firm_type_mapping.py`) is wired into the parser via
+   `--firm-type-plan-csv`. See `docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md`.
+   DB write remains blocked — firm-type integration alone does not satisfy the mapping coverage
+   or PIT gates.
 
 4. **`publicDate` PIT unconfirmed:** Even with correct names, DB write remains blocked on PIT
    validation. Rushing mapping integration does not unblock DB write by itself.
@@ -199,11 +200,10 @@ full-history fetch gate.
 
 ---
 
-## 6. Future Parser Integration Contract
+## 6. Parser Integration Contract (Implemented)
 
-This section defines the intended behavior when integration is eventually implemented. **No
-code changes are made here.** This contract must be reviewed and accepted before any
-`parse_vietcap_iq_fa_payloads_dry_run.py` changes are committed.
+This section documents the implemented behavior. See
+`docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md` for dry-run validation results.
 
 ### 6.1 Input files
 
@@ -305,14 +305,14 @@ Before any parser integration code is merged, the following test groups must exi
 | Conflict policy accepted (never populate for conflicting codes) | **Done** — defined in §6.3 |
 | Mapping coverage report generated from current saved payloads | **Done** — `data/processed/vietcap_iq/fa_metric_mapping_union_coverage.csv` |
 | Firm-type determination logic designed | **Done** — `docs/data_sources/vietcap_iq_fa_firm_type_determination.md`; planner script `scripts/plan_vietcap_iq_fa_firm_type_mapping.py`; 46 tests |
-| Tests for all lookup behaviors written (§6.6) | **Not done** |
-| Parser integration code reviewed and approved | **Not done** |
+| Tests for all lookup behaviors written (§6.6) | **Done** — 65 integration tests + 74 resolver tests |
+| Parser integration dry-run implemented | **Done** — `phase/fa-parser-mapping-integration`; pending PR review/merge |
 
 ### Gates before DB write (unchanged from readiness doc §17)
 
 | Gate | Current Status |
 |---|---|
-| Mapping integration dry-run passes on 5+ saved payloads | **Not done** |
+| Mapping integration dry-run passes on 5+ saved payloads | **Done** — 5 payloads, 53,013 rows, 0 errors |
 | Mapping coverage ≥ 95% per section | **Not met** — best union: 89.4% / 92.3% / 86.7% |
 | `publicDate` PIT semantics confirmed | **Not met** |
 | Canonical QuestDB schema designed and reviewed | **Not met** |

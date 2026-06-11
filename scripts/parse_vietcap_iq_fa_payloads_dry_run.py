@@ -8,6 +8,17 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Resolver import — same scripts/ directory; sys.path allows sibling import.
+try:
+    from resolve_vietcap_iq_fa_metric_mapping import (
+        MappingResolver,
+        load_primary_mapping,
+        load_union_mapping,
+    )
+    _RESOLVER_AVAILABLE = True
+except ImportError:
+    _RESOLVER_AVAILABLE = False
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INPUT_ROOT = ROOT / "data/raw/httpx_diagnostic/source=vietcap_iq"
 DEFAULT_OUTPUT_ROOT = ROOT / "data/processed/fa_dry_run"
@@ -37,7 +48,14 @@ _LONG_FORMAT_COLUMNS: list[str] = [
     "public_date",
     "public_date_semantics",
     "line_item_code",
-    "line_item_name",
+    "line_item_name",       # legacy — always empty; do not populate
+    "line_item_name_en",    # populated when resolver returns primary or consensus_fallback
+    "line_item_name_vi",    # populated when resolver returns primary (primary only has VI names)
+    "mapping_status",       # one of 6 resolver statuses, or "" when mapping not loaded
+    "mapping_source_symbol",
+    "mapping_source_run_id",
+    "mapping_conflict",
+    "mapping_group",
     "value",
     "value_status",
     "unit",
@@ -51,6 +69,17 @@ _LONG_FORMAT_COLUMNS: list[str] = [
     "availability_status",
     "parser_warning",
 ]
+
+# Mapping column defaults when no resolver is configured.
+_MAPPING_DEFAULTS: dict[str, str] = {
+    "line_item_name_en": "",
+    "line_item_name_vi": "",
+    "mapping_status": "",
+    "mapping_source_symbol": "",
+    "mapping_source_run_id": "",
+    "mapping_conflict": "",
+    "mapping_group": "",
+}
 
 PUBLIC_DATE_SEMANTICS: str = "candidate_availability_publication_date_unconfirmed"
 AVAILABILITY_STATUS: str = "unknown_until_publicDate_validated"
@@ -69,6 +98,202 @@ _FACT_KEY_FIELDS: tuple[str, ...] = (
     "source_period_label",
     "line_item_code",
 )
+
+
+# ---------------------------------------------------------------------------
+# Mapping integration helpers
+# ---------------------------------------------------------------------------
+
+
+def _load_firm_type_plan(path: Path) -> dict[str, dict]:
+    """Load firm-type plan CSV (from plan_vietcap_iq_fa_firm_type_mapping.py).
+
+    Returns a dict keyed by symbol. Expected columns: symbol, mapping_group,
+    mapping_source_symbol. Extra columns are silently kept.
+    """
+    plan: dict[str, dict] = {}
+    with open(path, encoding="utf-8", newline="") as fh:
+        for row in csv.DictReader(fh):
+            sym = row.get("symbol", "").strip()
+            if sym:
+                plan[sym] = row
+    return plan
+
+
+def _build_symbol_resolver(
+    symbol: str,
+    plan_by_symbol: dict[str, dict],
+    primary_rows: list[dict] | None,
+    primary_source_symbol: str,
+    primary_source_run_id: str,
+    union_rows: list[dict],
+) -> "MappingResolver | None":
+    """Build a MappingResolver for a single symbol.
+
+    If the resolver module is unavailable, returns None.
+    """
+    if not _RESOLVER_AVAILABLE:
+        return None
+
+    plan = plan_by_symbol.get(symbol, {})
+    mapping_group = plan.get("mapping_group", "general") if plan else "general"
+    sym_source_symbol = plan.get("mapping_source_symbol", "") if plan else ""
+
+    # General firms use union-only resolution
+    if not plan or mapping_group == "general":
+        return MappingResolver(
+            primary_rows=None,
+            union_rows=union_rows,
+            primary_source_symbol="",
+            primary_source_run_id="",
+            mapping_group="general",
+            has_primary=False,
+        )
+
+    # Non-general: check if the provided primary CSV matches this symbol's source
+    if primary_rows is not None and sym_source_symbol and sym_source_symbol == primary_source_symbol:
+        return MappingResolver(
+            primary_rows=primary_rows,
+            union_rows=union_rows,
+            primary_source_symbol=primary_source_symbol,
+            primary_source_run_id=primary_source_run_id,
+            mapping_group=mapping_group,
+            has_primary=True,
+        )
+
+    # Primary expected for this firm type but not provided for its source symbol
+    if sym_source_symbol:
+        return MappingResolver(
+            primary_rows=None,   # empty → no_mapping_available
+            union_rows=union_rows,
+            primary_source_symbol=sym_source_symbol,
+            primary_source_run_id="",
+            mapping_group=mapping_group,
+            has_primary=True,
+        )
+
+    # Unknown classification — treat as general
+    return MappingResolver(
+        primary_rows=None,
+        union_rows=union_rows,
+        primary_source_symbol="",
+        primary_source_run_id="",
+        mapping_group="general",
+        has_primary=False,
+    )
+
+
+def apply_mapping_to_facts(
+    all_facts: list[dict],
+    plan_by_symbol: dict[str, dict],
+    primary_rows: list[dict] | None,
+    primary_source_symbol: str,
+    primary_source_run_id: str,
+    union_rows: list[dict],
+) -> None:
+    """Apply Option C mapping resolver to every fact row (in-place).
+
+    Builds one resolver per unique symbol, then calls resolve() per row.
+    Does not touch line_item_name (legacy column).
+    """
+    if not _RESOLVER_AVAILABLE:
+        return
+
+    # Build one resolver per symbol to avoid rebuilding for each row
+    resolvers: dict[str, MappingResolver] = {}
+    unique_symbols = {f.get("symbol", "") for f in all_facts}
+    for sym in unique_symbols:
+        r = _build_symbol_resolver(
+            sym,
+            plan_by_symbol,
+            primary_rows,
+            primary_source_symbol,
+            primary_source_run_id,
+            union_rows,
+        )
+        if r is not None:
+            resolvers[sym] = r
+
+    for row in all_facts:
+        sym = row.get("symbol", "")
+        resolver = resolvers.get(sym)
+        if resolver is None:
+            continue
+        result = resolver.resolve(row.get("section", ""), row.get("line_item_code", ""))
+        row["line_item_name_en"] = result.line_item_name_en
+        row["line_item_name_vi"] = result.line_item_name_vi
+        row["mapping_status"] = result.mapping_status
+        row["mapping_source_symbol"] = result.mapping_source_symbol
+        row["mapping_source_run_id"] = result.mapping_source_run_id
+        row["mapping_conflict"] = result.mapping_conflict
+        row["mapping_group"] = result.mapping_group
+
+
+def build_mapping_summary(facts: list[dict]) -> list[dict]:
+    """Aggregate mapping status counts per (symbol, section, mapping_group).
+
+    Returns a deterministically sorted list of summary rows.
+    """
+    from collections import defaultdict
+
+    counts: dict[tuple, dict] = defaultdict(lambda: {
+        "total": 0, "primary": 0, "consensus_fallback": 0,
+        "conflict_skipped": 0, "not_covered": 0,
+        "no_mapping_available": 0, "section_mismatch": 0,
+        "no_status": 0,
+    })
+
+    primary_source: dict[tuple, str] = {}
+
+    for row in facts:
+        sym = row.get("symbol", "")
+        sec = row.get("section", "")
+        grp = row.get("mapping_group", "")
+        key = (sym, sec, grp)
+        status = row.get("mapping_status", "")
+        counts[key]["total"] += 1
+        if status in counts[key]:
+            counts[key][status] += 1
+        elif not status:
+            counts[key]["no_status"] += 1
+        msym = row.get("mapping_source_symbol", "")
+        if msym and msym != "union":
+            primary_source[key] = msym
+
+    summary: list[dict] = []
+    for (sym, sec, grp), c in sorted(counts.items()):
+        named = c["primary"] + c["consensus_fallback"]
+        unnamed = c["total"] - named
+        summary.append({
+            "symbol": sym,
+            "section": sec,
+            "mapping_group": grp,
+            "primary_source_symbol": primary_source.get((sym, sec, grp), ""),
+            "total_rows": c["total"],
+            "primary_count": c["primary"],
+            "consensus_fallback_count": c["consensus_fallback"],
+            "conflict_skipped_count": c["conflict_skipped"],
+            "not_covered_count": c["not_covered"],
+            "no_mapping_available_count": c["no_mapping_available"],
+            "section_mismatch_count": c["section_mismatch"],
+            "no_status_count": c["no_status"],
+            "named_count": named,
+            "unnamed_count": unnamed,
+        })
+    return summary
+
+
+_SUMMARY_COLUMNS: list[str] = [
+    "symbol", "section", "mapping_group", "primary_source_symbol",
+    "total_rows", "primary_count", "consensus_fallback_count",
+    "conflict_skipped_count", "not_covered_count", "no_mapping_available_count",
+    "section_mismatch_count", "no_status_count", "named_count", "unnamed_count",
+]
+
+
+# ---------------------------------------------------------------------------
+# Core utility helpers
+# ---------------------------------------------------------------------------
 
 
 def _section_from_metadata_or_url(meta: dict) -> str:
@@ -167,24 +392,35 @@ def _check_publicdate_format(facts: list[dict]) -> list[dict]:
 
 
 def _check_mapping_coverage(facts: list[dict]) -> list[dict]:
-    """Explicitly verify mapping coverage — expected 0% until mapping is loaded."""
+    """Report mapping coverage.
+
+    line_item_name (legacy) must always be 0% — empty by design.
+    line_item_name_en reflects resolver output when mapping is loaded.
+    """
     unique_codes = {f.get("line_item_code", "") for f in facts if f.get("line_item_code")}
-    rows_with_name = sum(1 for f in facts if f.get("line_item_name", ""))
     total = len(facts)
-    pct = rows_with_name / total * 100 if total else 0.0
+    rows_with_legacy = sum(1 for f in facts if f.get("line_item_name", ""))
+    rows_with_en = sum(1 for f in facts if f.get("line_item_name_en", ""))
+    pct_en = rows_with_en / total * 100 if total else 0.0
+    mapping_loaded = any(f.get("mapping_status", "") for f in facts)
+    mapping_note = (
+        f"line_item_name_en (resolver output): {rows_with_en:,}/{total:,} rows named ({pct_en:.1f}%)."
+        if mapping_loaded else
+        "mapping not loaded — line_item_name_en will be empty; see vietcap_iq_fa_metric_mapping_discovery.md."
+    )
     return [{
         "check": "mapping_coverage",
         "severity": "info",
         "detail": (
-            f"line_item_name populated for {rows_with_name}/{total} rows ({pct:.1f}%). "
+            f"line_item_name (legacy): {rows_with_legacy}/{total} rows (always 0% by design). "
             f"Unique line_item_codes: {len(unique_codes)}. "
-            "No mapping loaded — see vietcap_iq_fa_metric_mapping_discovery.md."
+            + mapping_note
         ),
     }]
 
 
 def _check_no_invented_names(facts: list[dict]) -> list[dict]:
-    """Guard: line_item_name must remain empty when no mapping is loaded."""
+    """Guard: legacy line_item_name must always remain empty."""
     non_empty = [f for f in facts if f.get("line_item_name", "")]
     if non_empty:
         return [{
@@ -192,13 +428,76 @@ def _check_no_invented_names(facts: list[dict]) -> list[dict]:
             "severity": "error",
             "detail": (
                 f"{len(non_empty)} fact row(s) have non-empty line_item_name. "
-                "Metric names must not be invented — load a verified mapping or leave empty."
+                "Legacy line_item_name must remain empty — it is reserved for future use."
             ),
         }]
     return [{
         "check": "no_invented_names",
         "severity": "info",
-        "detail": "line_item_name is empty for all rows — no invented names.",
+        "detail": "line_item_name is empty for all rows — legacy column unused.",
+    }]
+
+
+_NAME_BEARING_STATUSES: frozenset[str] = frozenset({"primary", "consensus_fallback"})
+_NON_NAME_BEARING_STATUSES: frozenset[str] = frozenset({
+    "conflict_skipped", "not_covered", "no_mapping_available", "section_mismatch",
+})
+
+
+def _check_no_invented_names_en(facts: list[dict]) -> list[dict]:
+    """Guard: line_item_name_en must be empty for all non-name-bearing mapping statuses.
+
+    Only primary and consensus_fallback may carry names. All other statuses and
+    the no-mapping case (mapping_status="") must have empty line_item_name_en.
+    """
+    violations = [
+        f for f in facts
+        if f.get("line_item_name_en", "") != ""
+        and f.get("mapping_status", "") not in _NAME_BEARING_STATUSES
+    ]
+    if violations:
+        bad_statuses = sorted({f.get("mapping_status", "") for f in violations})
+        return [{
+            "check": "no_invented_names_en",
+            "severity": "error",
+            "detail": (
+                f"{len(violations)} row(s) have non-empty line_item_name_en "
+                f"with non-name-bearing mapping_status: {bad_statuses}. "
+                "Names must only be populated for primary or consensus_fallback."
+            ),
+        }]
+    named = sum(1 for f in facts if f.get("line_item_name_en", ""))
+    return [{
+        "check": "no_invented_names_en",
+        "severity": "info",
+        "detail": (
+            f"line_item_name_en populated for {named:,}/{len(facts):,} rows; "
+            "all with primary or consensus_fallback status."
+        ),
+    }]
+
+
+def _check_mapping_status_consistency(facts: list[dict]) -> list[dict]:
+    """Verify mapping_status values are valid and names are absent for non-name-bearing statuses."""
+    from resolve_vietcap_iq_fa_metric_mapping import VALID_MAPPING_STATUSES  # type: ignore[import]
+    valid_plus_empty = VALID_MAPPING_STATUSES | frozenset({""})
+    invalid = [f for f in facts if f.get("mapping_status", "") not in valid_plus_empty]
+    if invalid:
+        bad = sorted({f.get("mapping_status", "") for f in invalid})
+        return [{
+            "check": "mapping_status_consistency",
+            "severity": "error",
+            "detail": f"{len(invalid)} row(s) have invalid mapping_status values: {bad}.",
+        }]
+    by_status: dict[str, int] = {}
+    for f in facts:
+        s = f.get("mapping_status", "")
+        by_status[s] = by_status.get(s, 0) + 1
+    detail_parts = [f"{s!r}:{c}" for s, c in sorted(by_status.items())]
+    return [{
+        "check": "mapping_status_consistency",
+        "severity": "info",
+        "detail": "mapping_status distribution: " + ", ".join(detail_parts),
     }]
 
 
@@ -320,8 +619,11 @@ def validate_parse_result(
     findings.extend(_check_publicdate_format(all_facts))
     findings.extend(_check_mapping_coverage(all_facts))
     findings.extend(_check_no_invented_names(all_facts))
+    findings.extend(_check_no_invented_names_en(all_facts))
     findings.extend(_check_value_status_validity(all_facts))
     findings.extend(_check_nos_pattern(all_facts))
+    if _RESOLVER_AVAILABLE:
+        findings.extend(_check_mapping_status_consistency(all_facts))
 
     return findings
 
@@ -436,7 +738,8 @@ def melt_period_rows(
                 "public_date": public_date,
                 "public_date_semantics": PUBLIC_DATE_SEMANTICS,
                 "line_item_code": col,
-                "line_item_name": "",
+                "line_item_name": "",          # legacy — always empty
+                **_MAPPING_DEFAULTS,           # mapping columns default to empty
                 "value": "" if value is None else value,
                 "value_status": vs,
                 "unit": "",
@@ -761,6 +1064,48 @@ def main(argv: list[str] | None = None) -> None:
         default=False,
         help="Exit non-zero if any validation findings have severity='error'.",
     )
+    # Mapping enrichment options (all optional; if omitted, mapping columns are empty)
+    parser.add_argument(
+        "--firm-type-plan-csv",
+        type=Path,
+        default=None,
+        help=(
+            "CSV from plan_vietcap_iq_fa_firm_type_mapping.py; "
+            "maps symbol→mapping_group, mapping_source_symbol."
+        ),
+    )
+    parser.add_argument(
+        "--primary-mapping-csv",
+        type=Path,
+        default=None,
+        help=(
+            "Primary mapping CSV in _MAPPING_COLUMNS format (section, line_item_code, "
+            "line_item_name_en, line_item_name_vi, level, parent). "
+            "Applied to symbols whose mapping_source_symbol matches --primary-source-symbol."
+        ),
+    )
+    parser.add_argument(
+        "--primary-source-symbol",
+        default="",
+        help="Symbol whose mapping payload was used to produce --primary-mapping-csv (e.g. 'VCI').",
+    )
+    parser.add_argument(
+        "--primary-source-run-id",
+        default="",
+        help="Run ID of the mapping probe that produced --primary-mapping-csv.",
+    )
+    parser.add_argument(
+        "--union-mapping-csv",
+        type=Path,
+        default=None,
+        help="Union mapping CSV (consensus fallback for all firm types).",
+    )
+    parser.add_argument(
+        "--mapping-summary-output",
+        type=Path,
+        default=None,
+        help="Optional path to write a per-(symbol, section, status) mapping summary CSV.",
+    )
     args = parser.parse_args(argv)
 
     run_ids: list[str] = []
@@ -802,6 +1147,58 @@ def main(argv: list[str] | None = None) -> None:
             f"-> {stats['output_fact_rows']:,} fact rows"
         )
 
+    # Apply mapping enrichment if mapping inputs are provided.
+    _mapping_enabled = False
+    if _RESOLVER_AVAILABLE and (
+        args.firm_type_plan_csv or args.primary_mapping_csv or args.union_mapping_csv
+    ):
+        plan_by_symbol: dict[str, dict] = {}
+        if args.firm_type_plan_csv:
+            if not args.firm_type_plan_csv.exists():
+                print(
+                    f"ERROR: --firm-type-plan-csv not found: {args.firm_type_plan_csv}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            plan_by_symbol = _load_firm_type_plan(args.firm_type_plan_csv)
+            print(f"  firm-type plan loaded: {len(plan_by_symbol)} symbols")
+
+        primary_rows: list[dict] | None = None
+        if args.primary_mapping_csv:
+            if not args.primary_mapping_csv.exists():
+                print(
+                    f"ERROR: --primary-mapping-csv not found: {args.primary_mapping_csv}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            primary_rows = load_primary_mapping(args.primary_mapping_csv)
+            print(
+                f"  primary mapping loaded: {len(primary_rows)} codes "
+                f"from source={args.primary_source_symbol!r}"
+            )
+
+        union_rows: list[dict] = []
+        if args.union_mapping_csv:
+            if not args.union_mapping_csv.exists():
+                print(
+                    f"ERROR: --union-mapping-csv not found: {args.union_mapping_csv}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            union_rows = load_union_mapping(args.union_mapping_csv)
+            print(f"  union mapping loaded: {len(union_rows)} codes")
+
+        apply_mapping_to_facts(
+            all_facts,
+            plan_by_symbol,
+            primary_rows,
+            args.primary_source_symbol,
+            args.primary_source_run_id,
+            union_rows,
+        )
+        _mapping_enabled = True
+        print(f"  mapping applied to {len(all_facts):,} fact rows")
+
     # Run validation before sorting/truncation so counts reflect full parse.
     validation_findings = validate_parse_result(all_facts, all_stats)
 
@@ -811,10 +1208,25 @@ def main(argv: list[str] | None = None) -> None:
     # Generate report after validation but before max_rows truncation.
     report = generate_report(all_stats, all_facts, all_errors, validation_findings)
 
+    # Build mapping summary from full (untruncated) facts before truncation.
+    summary_rows: list[dict] = []
+    if _mapping_enabled and args.mapping_summary_output:
+        summary_rows = build_mapping_summary(all_facts)
+
     if args.max_rows is not None:
         all_facts = all_facts[: args.max_rows]
 
     paths = write_outputs(all_facts, all_errors, report, args.output_root, args.format)
+
+    # Write mapping summary CSV (built from full untruncated facts above).
+    if _mapping_enabled and args.mapping_summary_output:
+        args.mapping_summary_output.parent.mkdir(parents=True, exist_ok=True)
+        with args.mapping_summary_output.open("w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=_SUMMARY_COLUMNS)
+            writer.writeheader()
+            writer.writerows(summary_rows)
+        paths["mapping_summary"] = str(args.mapping_summary_output)
+        print(f"  mapping summary: {args.mapping_summary_output} ({len(summary_rows)} rows)")
 
     print(f"\nOutput written to: {args.output_root}")
     for key, path in paths.items():
