@@ -20,7 +20,7 @@ Probe stage only — not promoted to canonical storage.
 | OHLCV gap-chart | HTTP 200 for FPT/VNM/VCB; parser dry-run: 14,079 rows; full-universe fetch not approved |
 | Controlled fetcher | Tiny execute passed for FPT/VNM/VCB; checkpoint/resume design in place |
 | FA endpoint | HTTP 200 (clean 8-header profile); BS/IS/CF confirmed for VCI and FPT |
-| FA parser | Dry-run complete; 7 validation checks; `--strict` mode; 577 tests pass |
+| FA parser | Dry-run complete; 7 validation checks; `--strict` mode; 583 tests pass |
 | FA mapping integration | Option C resolver wired; Mode B active; 7 output columns; 71 integration tests; 53,013 rows; 0 errors |
 | DB write | **Blocked** — all §17 gates not met |
 | Backtest | **Blocked** — DB write not implemented |

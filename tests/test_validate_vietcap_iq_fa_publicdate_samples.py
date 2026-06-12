@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from scripts.validate_vietcap_iq_fa_publicdate_samples import (
+    DEFAULT_INPUT,
     classify_delta,
     load_and_validate,
     normalize_row,
@@ -109,6 +110,51 @@ def test_ambiguous_basis_preserved() -> None:
 def test_malformed_date_handling() -> None:
     with pytest.raises(ValueError, match="Malformed vietcap_public_date"):
         normalize_row(row(vietcap_public_date="20-03-2026", match_status=""))
+
+
+def test_invalid_match_status_raises() -> None:
+    with pytest.raises(ValueError, match="Invalid match_status"):
+        normalize_row(row(match_status="after_official"))
+
+
+def test_invalid_confidence_raises() -> None:
+    with pytest.raises(ValueError, match="Invalid confidence"):
+        normalize_row(row(confidence="certain"))
+
+
+def test_mismatched_date_delta_raises() -> None:
+    with pytest.raises(ValueError, match="date_delta_days mismatch"):
+        normalize_row(row(
+            vietcap_public_date="2026-04-28",
+            official_disclosure_date="2026-04-24",
+            date_delta_days="3",
+        ))
+
+
+def test_explicit_wrong_status_vs_computed_status_raises() -> None:
+    with pytest.raises(ValueError, match="match_status mismatch"):
+        normalize_row(row(
+            vietcap_public_date="2026-04-28",
+            official_disclosure_date="2026-04-24",
+            match_status="near_match_1_3_days",
+        ))
+
+
+def test_comparable_status_requires_official_date() -> None:
+    with pytest.raises(ValueError, match="official_disclosure_date missing"):
+        normalize_row(row(
+            official_disclosure_date="",
+            match_status="vietcap_after_official",
+        ))
+
+
+def test_committed_csv_returns_pit_inconclusive() -> None:
+    _, summary = load_and_validate(DEFAULT_INPUT)
+    assert summary["total_samples"] == 8
+    assert summary["pit_sample_status"] == "pit_inconclusive"
+    assert summary["match_status_counts"]["near_match_1_3_days"] == 2
+    assert summary["match_status_counts"]["vietcap_after_official"] == 2
+    assert summary["match_status_counts"]["official_not_found"] == 4
 
 
 def test_final_status_supported_small_sample(tmp_path: Path) -> None:

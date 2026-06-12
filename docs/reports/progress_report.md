@@ -23,7 +23,7 @@ No DB write, no backtest, no production agent tools yet.
 | FA mapping integration | Option C resolver wired; Mode B active for general symbols; 53,013 rows validated; 0 errors |
 | FA mapping coverage gap probe | 3 general/fund symbols probed; union: 7 payloads, all known groups sampled; BS 89.7% / IS 94.5% / CF 87.6%; gap appears structural |
 | FA `publicDate` PIT spot-check | 8-row CSV validator returns `pit_inconclusive`; FPT supportive; VCI unresolved |
-| Test suite | **577 tests pass** (71 integration + 74 resolver + 54 firm-type + 11 PIT validator + others) |
+| Test suite | **583 tests pass** (71 integration + 74 resolver + 54 firm-type + 17 PIT validator + others) |
 | DB write | **Blocked** |
 | Backtest | **Blocked** |
 
@@ -52,7 +52,7 @@ No DB write, no backtest, no production agent tools yet.
 | FA `publicDate` PIT sample | 8 rows; 2 near matches, 2 `vietcap_after_official`, 4 `official_not_found`; no red flag |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
-| Total tests passing | 577 |
+| Total tests passing | 583 |
 
 ---
 

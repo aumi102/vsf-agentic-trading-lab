@@ -21,6 +21,30 @@ MATCH_STATUSES = (
     "ambiguous_basis",
     "not_comparable",
 )
+REQUIRED_COLUMNS = (
+    "sample_id",
+    "symbol",
+    "section",
+    "run_id",
+    "payload_path",
+    "fiscal_year",
+    "length_report",
+    "period_type",
+    "period_label",
+    "vietcap_public_date",
+    "vietcap_update_date",
+    "server_datetime",
+    "crawled_at",
+    "official_source_type",
+    "official_source_url",
+    "official_disclosure_date",
+    "official_document_title",
+    "official_date_basis",
+    "date_delta_days",
+    "match_status",
+    "confidence",
+    "reviewer_note",
+)
 PRESERVED_STATUSES = frozenset({"official_not_found", "ambiguous_basis", "not_comparable"})
 COMPARABLE_STATUSES = frozenset({
     "exact_match",
@@ -78,6 +102,11 @@ def normalize_row(row: dict[str, str]) -> dict[str, str]:
         field_name="official_disclosure_date",
     )
     if official_date is None:
+        if explicit_status and explicit_status in COMPARABLE_STATUSES:
+            raise ValueError(
+                f"official_disclosure_date missing for comparable status "
+                f"{normalized.get('sample_id', '')}: {explicit_status!r}"
+            )
         normalized["match_status"] = explicit_status or "official_not_found"
         return normalized
     if vietcap_date is None:
@@ -140,7 +169,15 @@ def summarize_rows(rows: list[dict[str, str]]) -> dict[str, Any]:
 
 def load_and_validate(path: Path) -> tuple[list[dict[str, str]], dict[str, Any]]:
     with path.open(encoding="utf-8", newline="") as fh:
-        rows = [normalize_row(row) for row in csv.DictReader(fh)]
+        reader = csv.DictReader(fh)
+        missing = [col for col in REQUIRED_COLUMNS if col not in (reader.fieldnames or [])]
+        if missing:
+            raise ValueError(f"Missing required column(s): {missing}")
+        rows = [normalize_row(row) for row in reader]
+    sample_ids = [row.get("sample_id", "") for row in rows]
+    duplicates = sorted({sid for sid in sample_ids if sample_ids.count(sid) > 1})
+    if duplicates:
+        raise ValueError(f"Duplicate sample_id value(s): {duplicates}")
     return rows, summarize_rows(rows)
 
 
