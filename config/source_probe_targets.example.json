@@ -144,7 +144,7 @@
         "Content-Type": "application/json",
         "Origin": "https://trading.vietcap.com.vn",
         "Referer": "https://trading.vietcap.com.vn/iq/company?ticker=FPT&tab=overview&isIndex=false",
-        "User-Agent": "browser-like user agent",
+        "User-Agent": "vsf-source-probe/0.1",
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-origin"
@@ -183,7 +183,7 @@
         "Content-Type": "application/json",
         "Origin": "https://trading.vietcap.com.vn",
         "Referer": "https://trading.vietcap.com.vn/iq/company?ticker=FPT&tab=overview&isIndex=false",
-        "User-Agent": "browser-like user agent",
+        "User-Agent": "vsf-source-probe/0.1",
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-origin"
@@ -222,7 +222,7 @@
         "Content-Type": "application/json",
         "Origin": "https://trading.vietcap.com.vn",
         "Referer": "https://trading.vietcap.com.vn/iq/company?ticker=FPT&tab=overview&isIndex=false",
-        "User-Agent": "browser-like user agent",
+        "User-Agent": "vsf-source-probe/0.1",
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-origin"
@@ -314,7 +314,7 @@
       "method": "GET",
       "verify_ssl": false,
       "headers": {
-        "User-Agent": "Mozilla/5.0",
+        "User-Agent": "vsf-source-probe/0.1",
         "Referer": "https://vbma.org.vn/vi/market-data/primary-market",
         "Accept": "text/csv,*/*"
       },

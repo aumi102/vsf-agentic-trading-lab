@@ -8,195 +8,98 @@ toc_max_heading_level: 3
 
 ## Purpose
 
-Establish a reusable, controlled foundation for fetching and normalizing
-official disclosure records from HOSE, HNX, and company IR pages. The
-foundation does not unblock DB writes, backtests, or full-history fetches.
-It is a prerequisite for resolving the VCI `pit_inconclusive` status.
-
----
+Provide a controlled foundation for fetching and normalizing official disclosure
+records from HOSE, HNX, and company IR pages. It supports the current
+`publicDate` small sample, but does not unblock DB writes, backtests, or
+full-history fetches.
 
 ## Artifacts
 
 | File | Role |
 |---|---|
-| `src/trading_agent/source_adapters/disclosure_adapter.py` | Contracts, enums, quality/PIT gate functions |
-| `scripts/probe_official_disclosures.py` | CLI: plan/execute/checkpoint + FPT HTML parser |
-| `config/official_disclosure_targets.example.json` | Real target config with evidence-backed access statuses |
-| `tests/test_probe_official_disclosures.py` | 67 unit tests |
-| `docs/data_sources/official_disclosure_source_discovery.md` | Source matrix with live probe results |
+| `src/trading_agent/source_adapters/disclosure_adapter.py` | Contracts, enums, quality/PIT helpers |
+| `scripts/probe_official_disclosures.py` | Plan/execute CLI, raw capture, checkpoint, parse summaries, parsers |
+| `config/official_disclosure_targets.example.json` | Official target configuration |
+| `tests/test_probe_official_disclosures.py` | 152 focused tests |
+| `docs/data_sources/official_disclosure_source_discovery.md` | Source matrix and live evidence |
 
----
+## Contracts And CLI
 
-## Architecture
+`DisclosureTarget` defines source family, exchange, official domain, adapter,
+dataset, symbol, URL, headers, request params, and terms notes. There is no
+`ssl_verify` field; TLS certificate verification is always enforced.
 
-### Contracts (`disclosure_adapter.py`)
+`DisclosureRecord` is the bronze schema for real disclosure rows. SPA shells,
+auth pages, blocked requests, network/TLS errors, and valid no-match pages do
+not create fake records.
 
-**`DisclosureTarget`** — configured probe target. `is_configured` is `True` only when `url` is non-empty. No `ssl_verify` field — TLS certificate verification is always enforced.
+The CLI defaults to plan-only mode. `--execute` is required for live requests.
+Requests are sequential, sleep between targets, capture raw payload/metadata
+before parsing, and do not write to DB.
 
-**`DisclosureRecord`** — normalized bronze output. Fields: `source_family`, `exchange`, `official_domain`, `adapter_name`, `disclosure_id`, `symbol`, `issuer_name`, `document_category`, `title`, `published_at`, `published_date`, `effective_at`, `page_url`, `document_url`, `attachment_name`, `attachment_type`, `language`, `crawled_at`, `raw_path`, `metadata_path`, `body_sha256`, `parser_version`, `schema_version`, `quality_status`, `pit_status`, `warning_codes`, `error_codes`.
+## Security And Config
 
-**`DisclosurePitStatus`** — enum:
-- `canonical_timestamp_available` — full ISO datetime known.
-- `date_only_available` — date but no time.
-- `official_timestamp_missing` — response received but no date found.
-- `non_canonical` — source is a secondary aggregator.
-- `not_applicable` — disclosure type not relevant for PIT.
-- `blocked` — access blocked, auth required, JS shell, or target not configured.
+Request headers use the honest project User-Agent:
+`vsf-agentic-trading-lab/0.1 official-source-probe`.
 
-**`DisclosureQualityStatus`** — enum: `pass`, `warn`, `fail`.
+Config validation rejects forbidden keys recursively: `ssl_verify`, `verify`,
+`insecure`, auth headers, cookies, and secret-like keys such as token,
+`api_key`, password, `client_secret`, or session. Allowed headers are `Accept`,
+`Accept-Language`, `Connection`, and `User-Agent` only when it exactly equals
+the project UA. Browser impersonation User-Agent values are rejected.
 
-### CLI (`probe_official_disclosures.py`)
+Target URLs must be HTTPS and match the configured official domain.
 
-```
-python scripts/probe_official_disclosures.py [options]
+## Parsers
 
---symbols FPT,VCI        Symbols to include in target set (default: FPT,VCI)
---max-requests 5         Maximum configured targets to probe per run
---max-records 20         Max disclosure records to parse per HTML target
---sleep-min-seconds 2    Minimum seconds between requests in execute mode
---sleep-max-seconds 5    Maximum seconds between requests in execute mode
---targets-config FILE    JSON file with URL overrides per dataset
---execute                Opt in to live network calls (plan-only by default)
---force                  Re-fetch targets already completed in checkpoint
-```
+FPT parser:
 
-Request headers use an honest project User-Agent (`vsf-agentic-trading-lab/0.1 official-source-probe`).
-TLS certificates are always verified; there is no `ssl_verify` bypass.
+- Parses server-rendered Sitecore disclosure blocks from `fpt.com`.
+- Extracts title, updated date, document URL, category, and attachment metadata.
+- Accepts HTTPS same-domain or root-relative document URLs.
+- Rejects unsafe schemes, protocol-relative URLs, non-HTTPS URLs, malformed
+  URLs, deceptive suffix domains, userinfo host tricks, and third-party domains
+  with specific warnings.
+- Returns no pseudo rows when no disclosure blocks match.
 
-### FPT IR HTML Parser
+Vietcap parser:
 
-`parse_fpt_ir_html_records(body, target, payload_path, metadata_path, crawled_at, max_records=20)`
+- Parses `www.vietcap.com.vn` IR detail pages.
+- Binds title/date extraction to the disclosure detail container, not global
+  page chrome.
+- Extracts document URL from the disclosure article.
+- Validates target semantics: FY2025 target must match FY2025 financial
+  statements; Q1 2026 target must match Q1 2026 financial statements.
+- Returns zero rows and a parse-summary warning on semantic mismatch.
 
-Parses FPT Corporation's official IR page (Sitecore CMS, server-rendered HTML).
-Dispatched from `extract_disclosure_records` when `official_domain == "fpt.com"` and content type is HTML.
+## Parse Summaries
 
-- Regex matches `<div class="media-download-section-key-information-content">` blocks.
-- Extracts title, `Updated: M/D/YYYY` date (calendar-validated via `strptime`), and PDF href per block.
-- Domain-validates absolute hrefs: off-domain URLs are rejected (empty string).
-- Normalizes relative hrefs against `https://fpt.com`.
-- Infers document category from title keywords (annual_report, quarterly_financial_statement, financial_statement, board_resolution).
-- Generates deterministic `disclosure_id` from `sha256(doc_url)[:12]`.
-- Decodes HTML entities in title (&#39; → ', &amp; → &, etc.).
-- Returns up to `max_records` records; returns `[]` if no items match (no pseudo rows).
+Each execute target writes `parse_summary.json` and the aggregate summary is
+stored in the run plan and checkpoint. The summary includes dataset, source
+family, official domain, access status, HTTP status, parser name, parse status,
+bronze record count, warning/error codes, raw path, metadata path, and body
+SHA-256.
 
-### Vietcap IR Detail-Page Parser
+## Live Evidence
 
-`parse_vci_ir_detail_records(body, target, payload_path, metadata_path, crawled_at)`
+| Source | Run ID | HTTP | Rows | Dates | Quality/PIT |
+|---|---|---:|---:|---|---|
+| FPT IR | `20260612T091529Z` | 200 | 20 | Q1 2026 FS `2026-04-24`; Annual Report 2025 separately categorized | all pass / `date_only_available` |
+| VCI FY2025 FS | `20260612T102412Z` | 200 | 1 | `2026-02-13` | pass / `date_only_available` |
+| VCI Q1 2026 FS | `20260612T102412Z` | 200 | 1 | `2026-04-20` | pass / `date_only_available` |
+| HOSE parent page | `20260612T052922Z` | 200 | 0 | React SPA shell | parse summary warning |
+| HNX parent page | `20260612T081136Z` | timeout | 0 | structured endpoint unresolved | parse summary error |
 
-Parses a Vietcap Securities IR detail page. One record per detail page.
-Dispatched from `extract_disclosure_records` when `official_domain == "www.vietcap.com.vn"` and content type is HTML.
-
-- Extracts title from `<h1>`, `<h2>`, or `<title>` tag (strips site-name suffix).
-- Extracts first date in `D Mon YYYY` format (calendar-validated via `strptime`).
-- Extracts first on-domain PDF URL; off-domain PDFs are rejected.
-- Infers category from URL slug (annual_financial_statement, quarterly_financial_statement).
-- Returns `[]` if no title and no date found (no pseudo rows).
-
-**Live verification (run_id=20260612T090059Z):**
-- FY2025 FS → `published_date=2026-02-13`, `quality=pass`, `pit=date_only_available`
-- Q1 2026 FS → `published_date=2026-04-20`, `quality=pass`, `pit=date_only_available`
-
-### Raw Evidence Layout
-
-```
-data/raw/official_disclosures/
-  <run_id>/
-    <dataset>/
-      payload.<ext>       # response body (json/html/bin)
-      metadata.json       # access_status, http_status, body_sha256, ...
-      request.json        # method, url, header_names, request_params
-```
-
-### Bronze Output Layout
-
-```
-data/bronze/official_disclosures/
-  <run_id>/
-    <dataset>/
-      disclosure_record.json        # single-record targets (JSON/non-HTML)
-      disclosure_record_000.json    # multi-record targets (FPT HTML)
-      disclosure_record_001.json
-      ...
-```
-
-Both `data/raw/` and `data/bronze/` are gitignored.
-
----
-
-## Live Activation Results
-
-| Source | Run ID | HTTP | Access Status | Bronze Rows | PIT Level | Quality |
-|---|---|---|---|---|---|---|
-| FPT IR (`fpt.com`) | 20260612T081136Z | 200 | verified | 20 | date_only_available (all) | pass (all) |
-| VCI IR FY2025 FS (`www.vietcap.com.vn`) | 20260612T090059Z | 200 | verified | 1 | date_only_available | pass |
-| VCI IR Q1 2026 FS (`www.vietcap.com.vn`) | 20260612T090059Z | 200 | verified | 1 | date_only_available | pass |
-| HOSE (`www.hsx.vn`) | 20260612T052922Z | 200 | js_app_shell | 0 | blocked | — |
-| HNX (`www.hnx.vn`) | 20260612T052922Z | timeout | error | 0 | — | — |
-
-FPT Q1 2026 `published_date=2026-04-24`, VCI FY2025 `published_date=2026-02-13`, VCI Q1 2026 `published_date=2026-04-20` — all match PIT validation CSV entries.
-
----
-
-## Target Set
-
-| Dataset | Source | Symbol | Status after config |
-|---|---|---|---|
-| `company_ir_fpt_disclosures` | fpt.com | FPT | configured — verified, 20 bronze records |
-| `company_ir_vci_fy2025_fs` | www.vietcap.com.vn | VCI | configured — verified, published_date=2026-02-13 |
-| `company_ir_vci_q1_2026_fs` | www.vietcap.com.vn | VCI | configured — verified, published_date=2026-04-20 |
-| `hose_disclosures_fpt` | www.hsx.vn | FPT | configured — js_app_shell, no disclosure records |
-| `hose_disclosures_vci` | www.hsx.vn | VCI | configured — js_app_shell, no disclosure records |
-| `hnx_disclosures_fpt` | www.hnx.vn | FPT | configured — timeout in production run |
-| `hnx_disclosures_vci` | www.hnx.vn | VCI | configured — timeout in production run |
-
----
-
-## Test Coverage
-
-`tests/test_probe_official_disclosures.py` — 107 tests:
-
-- PIT status assignment (7)
-- Quality gate (5)
-- Target configuration (3)
-- Default target building / parse_symbols (5)
-- Plan mode (6)
-- Execute mode (4)
-- Checkpoint (3)
-- Bronze parsing: JSON (3)
-- HTTP classification (4)
-- Config overlay (2)
-- Input validation (3)
-- FPT HTML parser (11): title, date, URL, ID, limit, no-items (empty), entities, attachment, PIT, quality, execute
-- Dispatch / extract_disclosure_records (4): FPT HTML, JSON fallback, js_app_shell, auth, error
-- js_app_shell classification (3)
-- Config / activation (4)
-- FPT execute integration / js_app_shell checkpoint (2)
-- Security: honest UA (2), no ssl_verify field (2)
-- Probe-only status returns no records (4): js_app_shell, auth_required, error, js_app_shell execute
-- URL domain validation (7): FPT on/off-domain, VCI on/off-domain
-- Date validation (8): FPT strptime valid/invalid, VCI textual format Feb/Apr/invalid/wrong-format
-- VCI IR detail parser (11): title, FY2025 date, Q1 2026 date, PIT, PDF URL, off-domain PDF, no content, quality, dispatch
-- VCI config activation (2)
-- Document category semantics (6): FPT annual/quarterly/plain FS, FPT annual≠FS, VCI FY/Q1
-
----
-
-## Guardrails
-
-- No network requests unless `--execute` is supplied.
-- Targets without a URL are skipped; `status=not_configured`.
-- Sequential processing only; concurrency=1.
-- Random sleep ≥2 s applied between execute-mode requests.
-- Raw payload and metadata captured before any parsing.
-- No database write, migration, backtest, or full-universe fetch.
-- No secret values written to output files.
-
----
+Both `data/raw/` and `data/bronze/` are gitignored; live outputs are not
+committed.
 
 ## Gate Status
 
-- `publicDate` PIT semantics: `pit_supported_small_sample` (8/8 credible, 0 red flags). FPT IR 20 records (`date_only_available`). VCI FY2025 (`2026-02-13`) and Q1 2026 (`2026-04-20`) exact-matched or near-matched Vietcap `publicDate`. Do not claim full PIT confirmation; small sample only.
-- DB write: still blocked.
-- Backtest: still blocked.
-- Mapping coverage gate: unchanged (BS 89.7% / IS 94.5% / CF 87.6%).
-- Security: fake browser UA removed; honest project UA in use. TLS bypass removed; certificates always verified. No pseudo disclosure rows for shells or parse failures.
+- PIT sample: 8/8 statement rows credible, 4/4 unique official disclosure
+  events credible, 2 issuers, zero red flags, `pit_supported_small_sample`.
+- This is not full PIT confirmation; evidence is date-level, not timestamp-level.
+- Broader issuer/exchange validation is still required.
+- Mapping coverage remains below 95%.
+- QuestDB schema not implemented.
+- Full-history fetch not implemented.
+- DB write and backtest remain blocked.

@@ -10,6 +10,7 @@ skipped during execute. Supply real URLs via --targets-config JSON.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import re
@@ -56,6 +57,19 @@ DEFAULT_BRONZE_BASE = ROOT / "data/bronze/official_disclosures"
 
 _FPT_OFFICIAL_DOMAIN = "fpt.com"
 _VCI_OFFICIAL_DOMAIN = "www.vietcap.com.vn"
+_PROJECT_USER_AGENT = _DEFAULT_REQUEST_HEADERS["User-Agent"]
+_SAFE_CONFIG_HEADERS = frozenset({"Accept", "Accept-Language", "Connection", "User-Agent"})
+_FORBIDDEN_CONFIG_KEYS = frozenset({
+    "ssl_verify",
+    "verify",
+    "insecure",
+    "cookie",
+    "authorization",
+    "proxy-authorization",
+})
+_SECRET_KEY_FRAGMENTS = ("token", "api_key", "password", "client_secret", "session")
+_BROWSER_UA_MARKERS = ("Mozilla", "Chrome", "Chromium", "Safari", "Firefox", "Edge", "Edg/")
+_DOCUMENT_URL_MISSING = "document_url_missing"
 
 # Matches a single FPT IR disclosure block: link+title+date.
 # FPT IR uses Sitecore CMS. Structure confirmed from fpt.com/en/ir/information-disclosures.
@@ -94,6 +108,12 @@ _PROBE_ONLY_STATUSES: frozenset[str] = frozenset({
     "blocked", "auth_required", "rejected_response",
     "not_configured", "error", "js_app_shell",
 })
+
+
+@dataclass(frozen=True)
+class DocumentUrlValidation:
+    url: str
+    warning_code: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +261,7 @@ def apply_targets_config(
     config: dict[str, Any],
 ) -> list[DisclosureTarget]:
     """Overlay URL / headers / official_domain from external config onto matching targets by dataset."""
+    validate_targets_config(config)
     overrides: dict[str, dict[str, Any]] = {}
     for entry in config.get("targets", []):
         dataset = entry.get("dataset", "")
@@ -250,12 +271,16 @@ def apply_targets_config(
     for t in targets:
         ov = overrides.get(t.dataset, {})
         if ov:
-            import dataclasses
             updates = {
                 k: ov[k]
                 for k in ("url", "method", "headers", "request_params", "terms_notes", "official_domain")
                 if k in ov
             }
+            official_domain = str(updates.get("official_domain", t.official_domain)).strip()
+            url = str(updates.get("url", t.url)).strip()
+            _validate_target_url(url, official_domain, dataset=t.dataset)
+            if "headers" in updates:
+                updates["headers"] = _validate_safe_headers(updates["headers"], dataset=t.dataset)
             t = dataclasses.replace(t, **updates)
         result.append(t)
     return result
@@ -266,6 +291,73 @@ def load_targets_config(path: Path) -> dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid targets config JSON at {path}: {exc}") from exc
+
+
+def validate_targets_config(config: dict[str, Any]) -> None:
+    _validate_config_tree(config)
+    targets = config.get("targets", [])
+    if targets is None:
+        return
+    if not isinstance(targets, list):
+        raise ValueError("targets config field must be a list")
+    for idx, entry in enumerate(targets):
+        if not isinstance(entry, dict):
+            raise ValueError(f"targets[{idx}] must be an object")
+        dataset = str(entry.get("dataset", f"index_{idx}"))
+        if "headers" in entry:
+            _validate_safe_headers(entry["headers"], dataset=dataset)
+        official_domain = str(entry.get("official_domain", "")).strip()
+        url = str(entry.get("url", "")).strip()
+        if url and official_domain:
+            _validate_target_url(url, official_domain, dataset=dataset)
+
+
+def _validate_config_tree(value: Any, path: str = "config") -> None:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            key_str = str(key)
+            key_lc = key_str.strip().lower()
+            if key_lc in _FORBIDDEN_CONFIG_KEYS:
+                raise ValueError(f"Forbidden config key at {path}.{key_str}: {key_str}")
+            if any(fragment in key_lc for fragment in _SECRET_KEY_FRAGMENTS):
+                raise ValueError(f"Secret-like config key at {path}.{key_str}: {key_str}")
+            _validate_config_tree(nested, f"{path}.{key_str}")
+    elif isinstance(value, list):
+        for idx, item in enumerate(value):
+            _validate_config_tree(item, f"{path}[{idx}]")
+
+
+def _validate_safe_headers(headers: Any, *, dataset: str) -> dict[str, str]:
+    if not isinstance(headers, dict):
+        raise ValueError(f"headers for {dataset} must be an object")
+    safe: dict[str, str] = {}
+    for key, value in headers.items():
+        name = str(key).strip()
+        if name not in _SAFE_CONFIG_HEADERS:
+            raise ValueError(f"Forbidden header for {dataset}: {name}")
+        value_str = str(value).strip()
+        if name == "User-Agent":
+            value_lc = value_str.lower()
+            if any(marker.lower() in value_lc for marker in _BROWSER_UA_MARKERS):
+                raise ValueError(f"Browser impersonation User-Agent rejected for {dataset}")
+            if value_str != _PROJECT_USER_AGENT:
+                raise ValueError(f"User-Agent for {dataset} must equal the project User-Agent")
+        safe[name] = value_str
+    return safe
+
+
+def _validate_target_url(url: str, official_domain: str, *, dataset: str) -> None:
+    if not url:
+        return
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        raise ValueError(f"Target URL for {dataset} must use https")
+    if not parsed.hostname:
+        raise ValueError(f"Target URL for {dataset} is malformed")
+    if parsed.hostname.lower() != official_domain.lower():
+        raise ValueError(
+            f"Target URL host for {dataset} must match official_domain={official_domain}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -377,6 +469,22 @@ def build_plan_report(plan: dict[str, Any]) -> str:
     lines.extend(["", "## Guardrails", ""])
     for g in summary["guardrails"]:
         lines.append(f"- {g}")
+    if plan.get("parse_summaries"):
+        lines.extend([
+            "",
+            "## Parse Summaries",
+            "",
+            "| Dataset | Access | HTTP | Parser | Parse status | Bronze records | Warnings | Errors |",
+            "|---|---|---:|---|---|---:|---|---|",
+        ])
+        for item in plan["parse_summaries"]:
+            warnings = ",".join(item.get("warning_codes", []))
+            errors = ",".join(item.get("error_codes", []))
+            lines.append(
+                f"| `{item['dataset']}` | `{item['access_status']}` | {item['http_status']} "
+                f"| `{item['parser_name']}` | `{item['parse_status']}` "
+                f"| {item['bronze_record_count']} | `{warnings}` | `{errors}` |"
+            )
     if summary["mode"] == "plan_only":
         lines.extend(["", "No network requests were made."])
     return "\n".join(lines) + "\n"
@@ -394,6 +502,7 @@ def build_checkpoint(
     failed_datasets: list[str],
     pending_datasets: list[str],
     plan_path: str,
+    parse_summaries: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
         "run_id": run_id,
@@ -403,6 +512,7 @@ def build_checkpoint(
         "failed_datasets": failed_datasets,
         "pending_datasets": pending_datasets,
         "plan_path": plan_path,
+        "parse_summaries": parse_summaries or [],
     }
 
 
@@ -483,16 +593,44 @@ def capture_raw_evidence(
 # FPT IR HTML parser
 # ---------------------------------------------------------------------------
 
+def _normalize_document_url(
+    href: str,
+    *,
+    official_domain: str,
+    allowed_hosts: set[str] | None = None,
+) -> DocumentUrlValidation:
+    raw = (href or "").strip()
+    if not raw:
+        return DocumentUrlValidation("", _DOCUMENT_URL_MISSING)
+    if raw.startswith("//"):
+        return DocumentUrlValidation("", "invalid_document_url")
+    if raw.startswith("/"):
+        return DocumentUrlValidation(f"https://{official_domain}{raw}")
+
+    parsed = urlparse(raw)
+    if parsed.scheme.lower() in {"javascript", "data", "file"}:
+        return DocumentUrlValidation("", "unsafe_document_url_scheme")
+    if not parsed.scheme or not parsed.netloc:
+        return DocumentUrlValidation("", "invalid_document_url")
+    if parsed.scheme.lower() != "https":
+        return DocumentUrlValidation("", "unsafe_document_url_scheme")
+    if parsed.username or parsed.password:
+        return DocumentUrlValidation("", "off_domain_document_url")
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return DocumentUrlValidation("", "invalid_document_url")
+    approved = {official_domain.lower(), *(allowed_hosts or set())}
+    if host not in approved:
+        return DocumentUrlValidation("", "off_domain_document_url")
+    return DocumentUrlValidation(raw)
+
+
+def _normalize_fpt_url_with_warning(href: str) -> DocumentUrlValidation:
+    return _normalize_document_url(href, official_domain=_FPT_OFFICIAL_DOMAIN)
+
+
 def _normalize_fpt_url(href: str) -> str:
-    if href.startswith("http"):
-        parsed = urlparse(href)
-        host = parsed.netloc.lower()
-        if not (host == _FPT_OFFICIAL_DOMAIN or host.endswith("." + _FPT_OFFICIAL_DOMAIN)):
-            return ""
-        return href
-    if href.startswith("/"):
-        return f"https://{_FPT_OFFICIAL_DOMAIN}{href}"
-    return href
+    return _normalize_fpt_url_with_warning(href).url
 
 
 def _parse_fpt_date(date_str: str) -> str:
@@ -559,11 +697,12 @@ def parse_fpt_ir_html_records(
         seen_hrefs.add(href)
 
         title = _decode_html_entities(title_raw.strip())
-        doc_url = _normalize_fpt_url(href)
+        doc_validation = _normalize_fpt_url_with_warning(href)
+        doc_url = doc_validation.url
         published_date = _parse_fpt_date(date_raw)
         doc_category = _infer_fpt_doc_category(title, href)
-        attachment_name = href.split("/")[-1]
-        attachment_type = "pdf" if href.lower().endswith(".pdf") else ""
+        attachment_name = doc_url.split("/")[-1].split("?")[0] if doc_url else ""
+        attachment_type = "pdf" if doc_url.lower().split("?")[0].endswith(".pdf") else ""
 
         disclosure_id = f"fpt_ir_{hashlib.sha256(doc_url.encode()).hexdigest()[:12]}"
 
@@ -575,6 +714,8 @@ def parse_fpt_ir_html_records(
             warning_codes.append("publication_date_unknown")
         if not title:
             warning_codes.append("title_missing")
+        if doc_validation.warning_code:
+            warning_codes.append(doc_validation.warning_code)
 
         record_dict: dict[str, Any] = {
             "source_family": target.source_family,
@@ -620,16 +761,12 @@ def parse_fpt_ir_html_records(
 # Vietcap IR detail-page parser
 # ---------------------------------------------------------------------------
 
+def _normalize_vci_url_with_warning(href: str) -> DocumentUrlValidation:
+    return _normalize_document_url(href, official_domain=_VCI_OFFICIAL_DOMAIN)
+
+
 def _normalize_vci_url(href: str) -> str:
-    if href.startswith("http"):
-        parsed = urlparse(href)
-        host = parsed.netloc.lower()
-        if not (host == _VCI_OFFICIAL_DOMAIN or host.endswith("." + _VCI_OFFICIAL_DOMAIN)):
-            return ""
-        return href
-    if href.startswith("/"):
-        return f"https://{_VCI_OFFICIAL_DOMAIN}{href}"
-    return href
+    return _normalize_vci_url_with_warning(href).url
 
 
 def _parse_vci_date(date_str: str) -> str:
@@ -655,6 +792,93 @@ def _infer_vci_doc_category(title: str, url: str) -> str:
     return "disclosure"
 
 
+def _strip_tags(value: str) -> str:
+    return re.sub(r"<[^>]+>", " ", value)
+
+
+def _compact_text(value: str) -> str:
+    return re.sub(r"\s+", " ", _decode_html_entities(_strip_tags(value))).strip()
+
+
+def _extract_vci_detail_scope(html: str) -> str:
+    start = html.find('<div class="detail-page-container"')
+    if start < 0:
+        return html
+    end_candidates = [
+        idx for idx in (
+            html.find('<span class="d-none" id="parentUri"', start),
+            html.find('<div class="footer', start),
+            html.find('<div class="modal fade" id="login-form-modal"', start),
+        )
+        if idx > start
+    ]
+    end = min(end_candidates) if end_candidates else len(html)
+    return html[start:end]
+
+
+def _extract_vci_article_scope(detail_scope: str) -> str:
+    article_match = re.search(
+        r'<article[^>]*class="[^"]*\bbinding\b[^"]*\bfr-view\b[^"]*"[^>]*>(.*?)</article>',
+        detail_scope,
+        re.IGNORECASE | re.DOTALL,
+    )
+    return article_match.group(1) if article_match else detail_scope
+
+
+def _extract_vci_title(detail_scope: str, html: str) -> str:
+    for regex in (_VCI_H1_RE, _VCI_H2_RE):
+        match = regex.search(detail_scope)
+        if match:
+            return _compact_text(match.group(1))
+    title_match = _VCI_TITLE_TAG_RE.search(html)
+    if title_match:
+        raw = _decode_html_entities(title_match.group(1).strip())
+        for sep in (" | ", " - ", " â€“ "):
+            if sep in raw:
+                raw = raw.split(sep)[0].strip()
+        return _compact_text(raw)
+    return ""
+
+
+def _extract_vci_date(detail_scope: str) -> str:
+    date_span = re.search(
+        r'<span[^>]*class="[^"]*\bdate\b[^"]*"[^>]*>\s*([^<]+?)\s*</span>',
+        detail_scope,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if date_span:
+        return _parse_vci_date(_compact_text(date_span.group(1)))
+    date_match = _VCI_DATE_RE.search(detail_scope)
+    return _parse_vci_date(date_match.group(1)) if date_match else ""
+
+
+def _expected_vci_semantics(target: DisclosureTarget) -> str:
+    marker = f"{target.dataset} {target.url}".lower()
+    if "q1_2026" in marker or "q1-2026" in marker:
+        return "q1_2026"
+    if "fy2025" in marker or "financial-year-of-2025" in marker:
+        return "fy2025"
+    return ""
+
+
+def _vci_semantics_match(expected: str, title: str, document_url: str, article_text: str) -> bool:
+    if not expected:
+        return True
+    text = f"{title} {document_url} {article_text}".lower()
+    has_financial = "financial statement" in text or "financial statements" in text
+    if expected == "fy2025":
+        has_fy = (
+            "financial year of 2025" in text
+            or "financial statements 2025" in text
+            or "fy2025" in text
+        )
+        has_quarter = any(q in text for q in ("q1", "q2", "q3", "q4", "quarter 1"))
+        return has_financial and has_fy and not has_quarter
+    if expected == "q1_2026":
+        return has_financial and "2026" in text and ("q1" in text or "quarter 1" in text)
+    return True
+
+
 def parse_vci_ir_detail_records(
     body: bytes,
     target: DisclosureTarget,
@@ -668,6 +892,8 @@ def parse_vci_ir_detail_records(
     """
     html = body.decode("utf-8", errors="replace")
     body_sha256 = hashlib.sha256(body).hexdigest()
+    detail_scope = _extract_vci_detail_scope(html)
+    article_scope = _extract_vci_article_scope(detail_scope)
 
     # Extract page title from h1, h2, or <title>
     title = ""
@@ -690,6 +916,8 @@ def parse_vci_ir_detail_records(
     # Extract first date in "D Mon YYYY" format
     date_match = _VCI_DATE_RE.search(html)
     published_date = _parse_vci_date(date_match.group(1)) if date_match else ""
+    title = _extract_vci_title(detail_scope, html)
+    published_date = _extract_vci_date(detail_scope)
 
     # No meaningful content — return empty (no pseudo row)
     if not title and not published_date:
@@ -702,6 +930,19 @@ def parse_vci_ir_detail_records(
         if normalized:
             document_url = normalized
             break
+    document_url = ""
+    document_warning_codes: list[str] = []
+    for pdf_href in _VCI_PDF_RE.findall(article_scope):
+        normalized = _normalize_vci_url_with_warning(pdf_href)
+        if normalized.url:
+            document_url = normalized.url
+            break
+        if normalized.warning_code:
+            document_warning_codes.append(normalized.warning_code)
+
+    expected_semantics = _expected_vci_semantics(target)
+    if not _vci_semantics_match(expected_semantics, title, document_url, _compact_text(article_scope)):
+        return []
 
     doc_category = _infer_vci_doc_category(title, target.url)
     attachment_name = document_url.split("/")[-1].split("?")[0] if document_url else ""
@@ -718,7 +959,7 @@ def parse_vci_ir_detail_records(
     if not title:
         warning_codes.append("title_missing")
     if not document_url:
-        warning_codes.append("document_url_missing")
+        warning_codes.append(document_warning_codes[0] if document_warning_codes else _DOCUMENT_URL_MISSING)
 
     record_dict: dict[str, Any] = {
         "source_family": target.source_family,
@@ -771,19 +1012,66 @@ def extract_disclosure_records(
     crawled_at: str,
     max_records: int = DEFAULT_MAX_RECORDS_PER_TARGET,
 ) -> list[DisclosureRecord]:
+    records, _summary = extract_disclosure_records_with_summary(
+        response=response,
+        target=target,
+        payload_path=payload_path,
+        metadata_path=metadata_path,
+        crawled_at=crawled_at,
+        max_records=max_records,
+    )
+    return records
+
+
+def extract_disclosure_records_with_summary(
+    *,
+    response: HttpResponse,
+    target: DisclosureTarget,
+    payload_path: Path,
+    metadata_path: Path,
+    crawled_at: str,
+    max_records: int = DEFAULT_MAX_RECORDS_PER_TARGET,
+) -> tuple[list[DisclosureRecord], dict[str, Any]]:
     """Route to the appropriate parser; return a list of DisclosureRecord.
 
     Returns [] for probe-only statuses (shell, auth, blocked, error).
     Only actual disclosure items become DisclosureRecord entries.
     """
     access_status = classify_access_status(response)
+    body_sha256 = hashlib.sha256(response.body).hexdigest()
+    parser_name = _parser_name_for(target=target, response=response, access_status=access_status)
     if access_status in _PROBE_ONLY_STATUSES:
-        return []
+        warning_codes: list[str] = []
+        error_codes: list[str] = []
+        parse_status = "skipped"
+        if access_status == "js_app_shell":
+            warning_codes.append("js_app_shell_no_structured_data")
+            parse_status = "no_structured_data"
+        elif access_status == "auth_required":
+            error_codes.append("auth_required_cannot_parse")
+        elif access_status == "rejected_response":
+            error_codes.append("rejected_response_cannot_parse")
+        else:
+            error_codes.append(f"fetch_status_{access_status}")
+        return [], _build_parse_summary(
+            target=target,
+            access_status=access_status,
+            http_status=response.status_code,
+            parser_name=parser_name,
+            parse_status=parse_status,
+            records=[],
+            warning_codes=warning_codes,
+            error_codes=error_codes,
+            raw_path=str(payload_path),
+            metadata_path=str(metadata_path),
+            body_sha256=body_sha256,
+        )
 
     ct = response.content_type.lower()
+    records: list[DisclosureRecord]
     if "html" in ct:
         if target.official_domain == _FPT_OFFICIAL_DOMAIN:
-            return parse_fpt_ir_html_records(
+            records = parse_fpt_ir_html_records(
                 body=response.body,
                 target=target,
                 payload_path=payload_path,
@@ -791,23 +1079,146 @@ def extract_disclosure_records(
                 crawled_at=crawled_at,
                 max_records=max_records,
             )
-        if target.official_domain == _VCI_OFFICIAL_DOMAIN:
-            return parse_vci_ir_detail_records(
+        elif target.official_domain == _VCI_OFFICIAL_DOMAIN:
+            records = parse_vci_ir_detail_records(
                 body=response.body,
                 target=target,
                 payload_path=payload_path,
                 metadata_path=metadata_path,
                 crawled_at=crawled_at,
             )
-        return []
+        else:
+            records = []
+    else:
+        records = [parse_to_bronze_record(
+            response=response,
+            target=target,
+            payload_path=payload_path,
+            metadata_path=metadata_path,
+            crawled_at=crawled_at,
+        )]
 
-    return [parse_to_bronze_record(
-        response=response,
+    warning_codes = sorted({code for record in records for code in record.warning_codes})
+    error_codes = sorted({code for record in records for code in record.error_codes})
+    parse_status = "parsed" if records else "no_matching_disclosures"
+    if records and warning_codes:
+        parse_status = "parsed_with_warnings"
+    if not records:
+        warning_codes.extend(_diagnose_no_record_parse_warnings(target, response.body))
+        warning_codes = sorted(set(warning_codes))
+
+    summary = _build_parse_summary(
         target=target,
-        payload_path=payload_path,
-        metadata_path=metadata_path,
-        crawled_at=crawled_at,
-    )]
+        access_status=access_status,
+        http_status=response.status_code,
+        parser_name=parser_name,
+        parse_status=parse_status,
+        records=records,
+        warning_codes=warning_codes,
+        error_codes=error_codes,
+        raw_path=str(payload_path),
+        metadata_path=str(metadata_path),
+        body_sha256=body_sha256,
+    )
+    return records, summary
+
+
+def _parser_name_for(
+    *,
+    target: DisclosureTarget,
+    response: HttpResponse | None = None,
+    access_status: str = "",
+) -> str:
+    if access_status in _PROBE_ONLY_STATUSES:
+        return "none"
+    content_type = (response.content_type if response else "").lower()
+    if "html" in content_type:
+        if target.official_domain == _FPT_OFFICIAL_DOMAIN:
+            return "parse_fpt_ir_html_records"
+        if target.official_domain == _VCI_OFFICIAL_DOMAIN:
+            return "parse_vci_ir_detail_records"
+        return "none"
+    return "parse_to_bronze_record"
+
+
+def _diagnose_no_record_parse_warnings(target: DisclosureTarget, body: bytes) -> list[str]:
+    if target.official_domain == _VCI_OFFICIAL_DOMAIN:
+        html = body.decode("utf-8", errors="replace")
+        detail_scope = _extract_vci_detail_scope(html)
+        article_scope = _extract_vci_article_scope(detail_scope)
+        title = _extract_vci_title(detail_scope, html)
+        published_date = _extract_vci_date(detail_scope)
+        document_url = ""
+        for pdf_href in _VCI_PDF_RE.findall(article_scope):
+            normalized = _normalize_vci_url_with_warning(pdf_href)
+            if normalized.url:
+                document_url = normalized.url
+                break
+        expected_semantics = _expected_vci_semantics(target)
+        if title or published_date or document_url:
+            if not _vci_semantics_match(
+                expected_semantics,
+                title,
+                document_url,
+                _compact_text(article_scope),
+            ):
+                return ["target_semantics_mismatch"]
+        return ["no_matching_disclosures"]
+    if target.official_domain == _FPT_OFFICIAL_DOMAIN:
+        return ["no_matching_disclosures"]
+    return ["no_structured_parser"]
+
+
+def _build_parse_summary(
+    *,
+    target: DisclosureTarget,
+    access_status: str,
+    http_status: int,
+    parser_name: str,
+    parse_status: str,
+    records: list[DisclosureRecord],
+    warning_codes: list[str],
+    error_codes: list[str],
+    raw_path: str,
+    metadata_path: str,
+    body_sha256: str,
+) -> dict[str, Any]:
+    return {
+        "dataset": target.dataset,
+        "source_family": target.source_family,
+        "official_domain": target.official_domain,
+        "access_status": access_status,
+        "http_status": http_status,
+        "parser_name": parser_name,
+        "parse_status": parse_status,
+        "bronze_record_count": len(records),
+        "warning_codes": sorted(set(warning_codes)),
+        "error_codes": sorted(set(error_codes)),
+        "raw_path": raw_path,
+        "metadata_path": metadata_path,
+        "body_sha256": body_sha256,
+    }
+
+
+def _build_error_parse_summary(
+    *,
+    target: DisclosureTarget,
+    error: str,
+    output_dir: Path,
+) -> dict[str, Any]:
+    return _build_parse_summary(
+        target=target,
+        access_status="error",
+        http_status=0,
+        parser_name="none",
+        parse_status="fetch_error",
+        records=[],
+        warning_codes=[],
+        error_codes=[error],
+        raw_path="",
+        metadata_path="",
+        body_sha256="",
+    )
 
 
 def parse_to_bronze_record(
@@ -983,6 +1394,8 @@ def run_disclosure_probe(
 
     random_source = rng or random.Random()
 
+    parse_summaries: list[dict[str, Any]] = []
+
     checkpoint_doc = build_checkpoint(
         run_id=run_id,
         started_at=plan["summary"]["started_at"],
@@ -990,6 +1403,7 @@ def run_disclosure_probe(
         failed_datasets=sorted(failed),
         pending_datasets=[r["dataset"] for r in plan["requests"] if r["dataset"] not in completed],
         plan_path=str(plan_path),
+        parse_summaries=parse_summaries,
     )
     _write_json(checkpoint_path, checkpoint_doc)
 
@@ -1019,7 +1433,7 @@ def run_disclosure_probe(
                 run_id=run_id,
             )
             bronze_dir = Path(request_item["bronze_dir"])
-            records = extract_disclosure_records(
+            records, parse_summary = extract_disclosure_records_with_summary(
                 response=response,
                 target=target,
                 payload_path=payload_path,
@@ -1027,6 +1441,8 @@ def run_disclosure_probe(
                 crawled_at=crawled_at,
                 max_records=max_records,
             )
+            parse_summaries.append(parse_summary)
+            _write_json(evidence_dir / "parse_summary.json", parse_summary)
             multi = len(records) > 1
             for rec_idx, record in enumerate(records):
                 bronze_path = write_bronze_record(record, bronze_dir, index=rec_idx if multi else None)
@@ -1047,6 +1463,13 @@ def run_disclosure_probe(
             err_path = Path(request_item["output_dir"]) / "error.json"
             err_path.parent.mkdir(parents=True, exist_ok=True)
             _write_json(err_path, {"dataset": dataset, "error": str(exc), "run_id": run_id})
+            parse_summary = _build_error_parse_summary(
+                target=target,
+                error=str(exc),
+                output_dir=Path(request_item["output_dir"]),
+            )
+            parse_summaries.append(parse_summary)
+            _write_json(Path(request_item["output_dir"]) / "parse_summary.json", parse_summary)
 
         pending = [
             r["dataset"] for r in plan["requests"]
@@ -1059,6 +1482,7 @@ def run_disclosure_probe(
             failed_datasets=sorted(failed),
             pending_datasets=pending,
             plan_path=str(plan_path),
+            parse_summaries=parse_summaries,
         )
         _write_json(checkpoint_path, checkpoint_doc)
 
@@ -1075,6 +1499,7 @@ def run_disclosure_probe(
         if r["dataset"] not in completed and r["dataset"] not in failed
     ]
     plan["summary"] = summary
+    plan["parse_summaries"] = parse_summaries
     _write_json(plan_path, plan)
     report_path.write_text(build_plan_report(plan), encoding="utf-8")
 
@@ -1085,6 +1510,7 @@ def run_disclosure_probe(
         "report_path": report_path,
         "checkpoint_path": checkpoint_path,
         "bronze_records": bronze_records,
+        "parse_summaries": parse_summaries,
     }
 
 

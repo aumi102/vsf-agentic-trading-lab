@@ -16,7 +16,7 @@ target configuration for `probe_official_disclosures.py`.
 
 ## Source Activation Matrix
 
-Live probe runs: `20260612T052922Z` (manual), `20260612T081136Z` (FPT production), `20260612T090059Z` (VCI production).
+Live probe runs: `20260612T052922Z` (manual), `20260612T091529Z` (FPT honest-UA production), `20260612T102412Z` (VCI production revalidation).
 
 | Source | Domain | HTTP | Access Status | Data Available | Parser | Blocker |
 |---|---|---|---|---|---|---|
@@ -34,7 +34,7 @@ Live probe runs: `20260612T052922Z` (manual), `20260612T081136Z` (FPT production
 **URL:** `fpt.com/en/ir/information-disclosures`
 **CMS:** Sitecore (server-rendered HTML)
 
-**Live probe evidence (run_id=20260612T081136Z):**
+**Live probe evidence (run_id=20260612T091529Z):**
 - HTTP 200, 1,402,681 bytes, `text/html; charset=utf-8`
 - 689+ distinct PDF disclosure links in static HTML
 
@@ -63,7 +63,7 @@ Live probe runs: `20260612T052922Z` (manual), `20260612T081136Z` (FPT production
 - Actual disclosure endpoint paths not extractable from minified bundle statically
 
 **Access status:** `js_app_shell`
-**Bronze record:** `pit_status=blocked`, `quality_status=warn`, warning `js_app_shell_no_structured_data`
+**Parse summary:** zero bronze records, warning `js_app_shell_no_structured_data`.
 
 **Blocker:** Requires browser/JS runtime to execute disclosure API calls against `api.hsx.vn`. Not addressable without headless browser or API contract discovery.
 
@@ -91,7 +91,7 @@ Live probe runs: `20260612T052922Z` (manual), `20260612T081136Z` (FPT production
 **VCI** = Viet Capital Securities Corporation (ticker `VCI`, listed HOSE).
 
 **Domain `www.vietcap.com.vn`:** Official VCI Securities IR portal. Live-verified 2026-06-12
-(run_id=`20260612T090059Z`). Honest project UA accepted; TLS certificate verified.
+(run_id=`20260612T102412Z`). Honest project UA accepted; TLS certificate verified.
 
 **FY2025 FS detail page:**
 - URL: `/en/investor-relations/financial-statements-for-financial-year-of-2025`
