@@ -15,10 +15,10 @@ Master gate table for production Vietcap IQ FA ingestion. No DB write until all 
 | Item | Status |
 |---|---|
 | FA endpoint access | **Confirmed** — HTTP 200 (clean 8-header, no Cookie/Auth) for BS/IS/CF on VCI and FPT |
-| Parser dry-run | **Done** — 53,013 fact rows from saved payloads; 7 validation checks; 566 tests pass |
+| Parser dry-run | **Done** — 53,013 fact rows from saved payloads; 7 validation checks; 583 tests pass |
 | Option C mapping integration | **Done** — Mode B active; 7 output columns; 71 parser integration tests; dry-run: 0 errors |
 | Metric mapping coverage | **Below gate** — union (7 payloads, all known groups sampled): BS 89.7% / IS 94.5% / CF 87.6%; 99 conflicts; gap appears structural for `/metrics` endpoint |
-| `publicDate` PIT semantics | **Unconfirmed** — candidate field only; not cross-checked vs filing records |
+| `publicDate` PIT semantics | **Unconfirmed** — sample status `pit_inconclusive`; FPT supportive, VCI unresolved |
 | Full-history FA fetch | **Not implemented** |
 | DB write | **Blocked** — DB write gates not met |
 | Backtest | **Blocked** — DB write not implemented |
@@ -32,6 +32,7 @@ Master gate table for production Vietcap IQ FA ingestion. No DB write until all 
 | FA endpoint HTTP 200 (clean 8-header profile, no Cookie/Auth) | Runs `20260609T035318Z`, `20260609T075846Z`, `20260609T075857Z` |
 | Payload shape: `data.quarters` + `data.years`; opaque metric codes; `publicDate` present | Reviewed for VCI BS/IS, FPT BS, VCI CF, FPT CF |
 | `publicDate` values follow ISO date format and are non-empty in all 5 saved payloads | `_check_publicdate_format` passes |
+| PIT spot-check | 8 saved rows reviewed by CSV validator; status `pit_inconclusive`; no red flag found |
 | `null` and `0.0` are distinct in payload; must stay distinct in output | `value_status` logic; `test_validate_preserves_null_vs_zero_distinction` |
 | `nos*` columns null for non-securities firms (FPT) | `_check_nos_pattern` result |
 | Mapping is firm-type-specific: SSI = VCI; VCB/BVH return different codes | 4 mapping probes |
@@ -65,9 +66,11 @@ Master gate table for production Vietcap IQ FA ingestion. No DB write until all 
 
 ## PIT Availability Policy
 
-`publicDate` is present in all parsed rows. Its exact semantics — whether exchange filing date,
-audit date, or data-entry date — have **not** been confirmed. Do not use for PIT or look-ahead
-avoidance until cross-checked against HOSE/HNX filing records. `availability_status` remains
+`publicDate` is present in all parsed rows. The current sample validator returns
+`pit_inconclusive`: FPT rows were not earlier than official IR disclosure dates, but VCI
+official dates were not recovered. Its exact semantics remain **unconfirmed**. Do not use
+for PIT or look-ahead avoidance until broader HOSE/HNX or company filing records are checked.
+`availability_status` remains
 `unknown_until_publicDate_validated` for all rows.
 
 ---
@@ -115,7 +118,7 @@ All DB write gates must be met first. Additionally:
 |---|---|
 | ~~Probe additional firm types~~ — gap is structural; all known groups sampled | Done |
 | Consider supplementary mapping source or revised gate threshold | Coverage gap analysis |
-| Validate `publicDate` PIT vs HOSE/HNX filing records | External records |
+| Broaden `publicDate` PIT check beyond FPT spot sample | External records |
 | Design canonical QuestDB schema + dedup/upsert policy | Coverage + PIT |
 | Build full-history FA fetcher | Mapping + PIT + schema gates |
 | Small-batch end-to-end dry run (5–10 symbols) | All above |
@@ -128,6 +131,7 @@ All DB write gates must be met first. Additionally:
 
 - `vietcap_iq_fa_mapping_integration_strategy.md` — Option C design record
 - `vietcap_iq_fa_parser_mapping_integration.md` — parser integration block note
+- `vietcap_iq_fa_publicdate_pit_validation.md` — small PIT sample validator
 - `vietcap_iq_fa_firm_type_determination.md` — firm-type determination (Approach D)
 - `vietcap_iq_fa_mapping_coverage_bank_probe.md` — bank/insurance union coverage
 - `vietcap_iq_fa_mapping_coverage_gap_probe.md` — general/fund gap probe; all known groups sampled
