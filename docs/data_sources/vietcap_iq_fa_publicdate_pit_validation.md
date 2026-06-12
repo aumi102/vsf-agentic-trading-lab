@@ -26,6 +26,21 @@ emits one of: `pit_red_flags_found`, `pit_inconclusive`, or
 Optional flag `--check-payload-paths` verifies that each `payload_path` in the
 CSV resolves to an existing file under the repo root.
 
+## Evidence Priority Policy
+
+Canonical PIT evidence must come from one of:
+
+1. HOSE official disclosure record.
+2. HNX official disclosure record.
+3. Company official IR/disclosure page (directly accessible, not aggregated).
+4. Official report or PDF metadata only if clearly tied to publication date.
+
+Secondary sources such as Vietstock.vn or other news/data aggregators are
+**non-canonical**. They may be recorded as investigation leads in `reviewer_note`
+but must not populate `official_disclosure_date`, must not produce a comparable
+`match_status`, and must not contribute to the credible-comparable ratio. They
+do not unblock the PIT gate.
+
 ## Sample Selection
 
 The 8-row sample uses saved local FA payloads only. It covers FPT and VCI,
@@ -45,28 +60,17 @@ A third HOSE issuer (HPG) was considered but blocked: the saved HPG payload
 
 ## Validation Method
 
-For each sample row, compare Vietcap `publicDate` to the best official or
-authoritative disclosure evidence found in a targeted manual lookup.
+For each sample row, compare Vietcap `publicDate` to official disclosure evidence.
 
 FPT official IR disclosures were accessible at
-`https://fpt.com/en/ir/information-disclosures` (company IR — confidence
-`medium`).
+`https://fpt.com/en/ir/information-disclosures`. This is a company official IR
+page — confidence `medium`.
 
-For VCI, the official Vietcap IR page returned a login portal (inaccessible) and
-the HOSE disclosure page returned no VCI records. Two Vietstock.vn secondary
-source articles were found and verified:
-
-- 2025 annual: https://vietstock.vn/2026/02/vci-bao-cao-tai-chinh-rieng-le-nam-2025-737-1403936.htm
-  Published 2026-02-13 14:42 with standalone BCTC 2025 PDF attached.
-- Q1 2026: https://vietstock.vn/2026/04/vci-bctc-quy-1-nam-2026-737-1430835.htm
-  Published 2026-04-20 with Q1 2026 BCTC PDF attached.
-
-Vietstock is a reputable Vietnamese financial news aggregator but is not the
-official HOSE disclosure channel. VCI rows are therefore marked confidence `low`.
-
-Normalized `match_status` values: `exact_match`, `near_match_1_3_days`,
-`vietcap_after_official`, `vietcap_before_official`, `official_not_found`,
-`ambiguous_basis`, and `not_comparable`.
+For VCI, the Vietcap official IR page returned a login portal (inaccessible in
+this run) and the HOSE disclosure page returned no usable VCI records. Vietstock
+secondary leads were found and recorded in `reviewer_note` for investigation, but
+are non-canonical per the policy above. VCI `official_disclosure_date` fields
+remain empty; all VCI rows retain `official_not_found` / `none`.
 
 ## Sample Results
 
@@ -76,39 +80,31 @@ Normalized `match_status` values: `exact_match`, `near_match_1_3_days`,
 | FPT | CASH_FLOW | 2025 annual | 2026-03-20 | 2026-03-19 | +1 | `near_match_1_3_days` | medium |
 | FPT | BALANCE_SHEET | 2026 Q1 | 2026-04-28 | 2026-04-24 | +4 | `vietcap_after_official` | medium |
 | FPT | CASH_FLOW | 2026 Q1 | 2026-04-28 | 2026-04-24 | +4 | `vietcap_after_official` | medium |
-| VCI | BALANCE_SHEET | 2025 annual | 2026-02-13 | 2026-02-13 | 0 | `exact_match` | low |
-| VCI | INCOME_STATEMENT | 2025 annual | 2026-02-13 | 2026-02-13 | 0 | `exact_match` | low |
-| VCI | BALANCE_SHEET | 2026 Q1 | 2026-04-21 | 2026-04-20 | +1 | `near_match_1_3_days` | low |
-| VCI | CASH_FLOW | 2026 Q1 | 2026-04-21 | 2026-04-20 | +1 | `near_match_1_3_days` | low |
+| VCI | BALANCE_SHEET | 2025 annual | 2026-02-13 | — | — | `official_not_found` | none |
+| VCI | INCOME_STATEMENT | 2025 annual | 2026-02-13 | — | — | `official_not_found` | none |
+| VCI | BALANCE_SHEET | 2026 Q1 | 2026-04-21 | — | — | `official_not_found` | none |
+| VCI | CASH_FLOW | 2026 Q1 | 2026-04-21 | — | — | `official_not_found` | none |
 
 Validator counts:
 
-- `exact_match`: 2
-- `near_match_1_3_days`: 4
+- `near_match_1_3_days`: 2
 - `vietcap_after_official`: 2
-- `vietcap_before_official`: 0 — no red flags
-- `official_not_found`: 0 (down from 4 in PR #12)
-- `ambiguous_basis`, `not_comparable`: 0
-- Confidence: medium=4, low=4, high=0, none=0
+- `official_not_found`: 4
+- `exact_match`, `vietcap_before_official`, `ambiguous_basis`, `not_comparable`: 0
+- Confidence: medium=4, none=4
 
 ## Findings
 
 Final PIT sample status: `pit_inconclusive`.
 
-All 8 rows now have comparison evidence. No `vietcap_before_official` red flag
-was found in either issuer. Vietcap `publicDate` values are at or after the
-disclosure date for every row.
+FPT rows are supportive: Vietcap `publicDate` is at or after official company IR
+disclosure dates in all four FPT rows. No credible `vietcap_before_official` red
+flag was observed in any row with canonical evidence.
 
-The status remains `pit_inconclusive` because the validator threshold for
-`pit_supported_small_sample` requires credible-comparable ratio ≥ 0.70, and
-credible-comparable is defined as match_status in a comparable set AND confidence
-`high` or `medium`. The 4 VCI rows are confidence `low` (secondary source) and
-are therefore excluded from the credible count, giving a ratio of 4/8 = 0.50.
-
-To upgrade to `pit_supported_small_sample`, official HOSE disclosure records or
-accessible company IR dates for VCI (or a different second issuer) are needed.
-
-`publicDate` remains unconfirmed and must not be used for PIT backtests.
+The sample is still inconclusive because 4/8 rows lack canonical official evidence
+and only one issuer has comparable canonical evidence. Vietstock secondary leads
+were found for VCI rows but are non-canonical and do not count toward the gate.
+`publicDate` remains unconfirmed and must not be used for PIT backtests yet.
 
 ## Gate Status
 
@@ -121,7 +117,8 @@ accessible company IR dates for VCI (or a different second issuer) are needed.
 
 ## Next Action
 
-Obtain official HOSE exchange disclosure dates for VCI (or another HOSE issuer
-with a saved FA financial statement payload) at confidence `high` or `medium`.
-Four more credible-comparable rows would move the ratio above 0.70 and upgrade
-the status to `pit_supported_small_sample`.
+Build an official disclosure source discovery/crawler POC for HOSE/HNX/company
+IR pages. Do not rely on Vietstock or other secondary aggregators as canonical
+evidence. Official HOSE or Vietcap IR access for VCI would provide 4 more
+canonical rows, moving the credible-comparable ratio from 0.50 toward the 0.70
+threshold for `pit_supported_small_sample`.
