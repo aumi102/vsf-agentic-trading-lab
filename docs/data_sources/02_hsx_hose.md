@@ -118,15 +118,25 @@ toc_max_heading_level: 3
 ### Disclosure Probe Status
 
 HOSE is the primary official disclosure source for VCI and other HOSE-listed issuers.
-A disclosure probe foundation has been built but VCI-specific URLs are not yet
-configured. See:
+A disclosure probe has been executed. See:
 
-- `docs/data_sources/official_disclosure_source_discovery.md` — surface matrix
+- `docs/data_sources/official_disclosure_source_discovery.md` — surface matrix + live results
 - `docs/data_sources/official_disclosure_ingestion_foundation.md` — adapter/CLI design
 - `scripts/probe_official_disclosures.py` — controlled CLI (plan/execute/checkpoint)
+- `config/official_disclosure_targets.example.json` — real URL configuration
 
-HOSE adapter status: `NOT_CONFIGURED`. Supply a real URL via `--targets-config` to
-enable execute-mode probing. Do not rely on Vietstock or other secondary aggregators
-as canonical disclosure evidence.
+**Live probe result (run_id=20260612T052922Z):** `www.hsx.vn/Modules/CMS/Web/CategoryDetail?alias=CBTT`
+returns HTTP 200 but is a React SPA shell (1,900 bytes, `id="HOSE"`,
+`noscript>You need to enable JavaScript to run this app.`). Access status: `js_app_shell`.
+PIT status: `blocked`. No structured disclosure data available without JS execution.
+
+**Backend:** `api.hsx.vn` discovered from first-party JS bundle. Actual disclosure endpoint
+paths are embedded in minified JS (env-var substituted at build time) and not recoverable
+without a JS runtime.
+
+**Blocker:** Headless browser or separate API contract documentation required to access
+HOSE structured disclosure feed. HOSE official parent page is captured; structured API unresolved.
+
+Do not rely on Vietstock or other secondary aggregators as canonical disclosure evidence.
 
 ---

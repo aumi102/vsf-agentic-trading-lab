@@ -13,7 +13,9 @@ from scripts.probe_official_disclosures import (
     build_plan_report,
     capture_raw_evidence,
     classify_access_status,
+    extract_disclosure_records,
     load_checkpoint,
+    parse_fpt_ir_html_records,
     parse_symbols,
     parse_to_bronze_record,
     run_disclosure_probe,
@@ -726,3 +728,452 @@ def test_validate_inputs_raises_on_empty_targets(tmp_path: Path) -> None:
             output_base=tmp_path / "raw",
             bronze_base=tmp_path / "bronze",
         )
+
+
+# ---------------------------------------------------------------------------
+# FPT IR HTML fixtures and helpers
+# ---------------------------------------------------------------------------
+
+def _fpt_ir_html(items: list[tuple[str, str, str]]) -> bytes:
+    """Build a minimal FPT IR HTML page fixture.
+
+    Each item is (href, title, date_str) where date_str uses M/D/YYYY format.
+    Mirrors the actual Sitecore CMS structure from fpt.com/en/ir/information-disclosures.
+    """
+    blocks = ""
+    for href, title, date_str in items:
+        blocks += f"""
+        <div class="media-download-section-key-information-content">
+            <a class="media-download-section-key-information-content-subtitle" href="{href}" target="_blank">
+                {title}
+            </a>
+            <div class="media-download-section-key-information-description-icon">
+                <div class="media-download-section-key-information-description-date">
+                    Updated: {date_str}
+                </div>
+            </div>
+        </div>
+        """
+    return f"<html><body>{blocks}</body></html>".encode("utf-8")
+
+
+def _fpt_target() -> DisclosureTarget:
+    return DisclosureTarget(
+        source_family="company_ir",
+        exchange="HOSE",
+        official_domain="fpt.com",
+        adapter_name="company_ir_fpt_v1",
+        dataset="company_ir_fpt_disclosures",
+        symbol="FPT",
+        url="https://fpt.com/en/ir/information-disclosures",
+    )
+
+
+def _fpt_html_response(items: list[tuple[str, str, str]]) -> HttpResponse:
+    body = _fpt_ir_html(items)
+    return HttpResponse(
+        status_code=200,
+        content_type="text/html; charset=utf-8",
+        body=body,
+        response_headers={"content-type": "text/html; charset=utf-8"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# parse_fpt_ir_html_records
+# ---------------------------------------------------------------------------
+
+def test_parse_fpt_html_extracts_title(tmp_path: Path) -> None:
+    body = _fpt_ir_html([
+        ("/-/media/fpt/q1-2026-fs.pdf", "FPT Q1 2026 Financial Statements", "4/24/2026"),
+    ])
+    payload_path = tmp_path / "payload.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "metadata.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_fpt_ir_html_records(
+        body=body, target=_fpt_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00", max_records=5,
+    )
+
+    assert len(records) == 1
+    assert records[0].title == "FPT Q1 2026 Financial Statements"
+
+
+def test_parse_fpt_html_extracts_date_as_iso(tmp_path: Path) -> None:
+    body = _fpt_ir_html([("/-/media/fpt/test.pdf", "Test Doc", "4/24/2026")])
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_fpt_ir_html_records(
+        body=body, target=_fpt_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+
+    assert records[0].published_date == "2026-04-24"
+
+
+def test_parse_fpt_html_resolves_relative_url(tmp_path: Path) -> None:
+    href = "/-/media/project/fpt/q1-2026-consolidated-fs.pdf"
+    body = _fpt_ir_html([(href, "Title", "4/24/2026")])
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_fpt_ir_html_records(
+        body=body, target=_fpt_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+
+    assert records[0].document_url == f"https://fpt.com{href}"
+
+
+def test_parse_fpt_html_disclosure_id_deterministic(tmp_path: Path) -> None:
+    href = "/-/media/fpt/same-doc.pdf"
+    body = _fpt_ir_html([(href, "Title", "4/24/2026")])
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    r1 = parse_fpt_ir_html_records(
+        body=body, target=_fpt_target(), payload_path=payload_path,
+        metadata_path=metadata_path, crawled_at="2026-06-12T10:00:00+00:00",
+    )
+    r2 = parse_fpt_ir_html_records(
+        body=body, target=_fpt_target(), payload_path=payload_path,
+        metadata_path=metadata_path, crawled_at="2026-06-12T11:00:00+00:00",
+    )
+
+    assert r1[0].disclosure_id == r2[0].disclosure_id
+
+
+def test_parse_fpt_html_max_records_limit(tmp_path: Path) -> None:
+    items = [(f"/-/media/fpt/doc{i}.pdf", f"Doc {i}", "4/24/2026") for i in range(10)]
+    body = _fpt_ir_html(items)
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_fpt_ir_html_records(
+        body=body, target=_fpt_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00", max_records=3,
+    )
+
+    assert len(records) == 3
+
+
+def test_parse_fpt_html_missing_date_warns(tmp_path: Path) -> None:
+    # Build HTML with missing date block
+    body = (
+        b'<html><body>'
+        b'<div class="media-download-section-key-information-content">'
+        b'<a class="media-download-section-key-information-content-subtitle" href="/-/media/fpt/nodoc.pdf" target="_blank">'
+        b'Title with no date</a>'
+        b'</div></body></html>'
+    )
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_fpt_ir_html_records(
+        body=body, target=_fpt_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+
+    # No date → no match from regex (requires date); expect warn record
+    assert len(records) == 1
+    assert "html_no_disclosure_items_found" in records[0].warning_codes
+
+
+def test_parse_fpt_html_no_items_returns_single_warn_record(tmp_path: Path) -> None:
+    body = b"<html><body><p>No disclosure content</p></body></html>"
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_fpt_ir_html_records(
+        body=body, target=_fpt_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+
+    assert len(records) == 1
+    assert "html_no_disclosure_items_found" in records[0].warning_codes
+
+
+def test_parse_fpt_html_entity_decoded_in_title(tmp_path: Path) -> None:
+    body = _fpt_ir_html([
+        ("/-/media/fpt/t.pdf", "BOD&#39;s Resolution &amp; Notes", "4/24/2026"),
+    ])
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_fpt_ir_html_records(
+        body=body, target=_fpt_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+
+    assert records[0].title == "BOD's Resolution & Notes"
+
+
+def test_parse_fpt_html_pdf_attachment_type(tmp_path: Path) -> None:
+    body = _fpt_ir_html([("/-/media/fpt/doc.pdf", "PDF Doc", "4/24/2026")])
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_fpt_ir_html_records(
+        body=body, target=_fpt_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+
+    assert records[0].attachment_type == "pdf"
+    assert records[0].attachment_name == "doc.pdf"
+
+
+def test_parse_fpt_html_pit_status_date_only_available(tmp_path: Path) -> None:
+    body = _fpt_ir_html([("/-/media/fpt/doc.pdf", "Title", "4/24/2026")])
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_fpt_ir_html_records(
+        body=body, target=_fpt_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+
+    assert records[0].pit_status == DisclosurePitStatus.DATE_ONLY_AVAILABLE.value
+
+
+def test_parse_fpt_html_quality_pass_for_complete_record(tmp_path: Path) -> None:
+    body = _fpt_ir_html([("/-/media/fpt/q1.pdf", "FPT Q1 2026 Financial Statements", "4/24/2026")])
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_fpt_ir_html_records(
+        body=body, target=_fpt_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+
+    assert records[0].quality_status == DisclosureQualityStatus.PASS.value
+    assert records[0].error_codes == []
+
+
+# ---------------------------------------------------------------------------
+# extract_disclosure_records dispatch
+# ---------------------------------------------------------------------------
+
+def test_extract_disclosure_records_routes_fpt_html_domain(tmp_path: Path) -> None:
+    body = _fpt_ir_html([("/-/media/fpt/q1.pdf", "Q1 FS", "4/24/2026")])
+    response = HttpResponse(status_code=200, content_type="text/html; charset=utf-8", body=body, response_headers={})
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = extract_disclosure_records(
+        response=response, target=_fpt_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00", max_records=5,
+    )
+
+    assert len(records) == 1
+    assert records[0].document_url.startswith("https://fpt.com/")
+
+
+def test_extract_disclosure_records_falls_back_for_json_on_fpt_domain(tmp_path: Path) -> None:
+    body = b'{"title": "FPT JSON", "date": "2026-04-24"}'
+    response = HttpResponse(status_code=200, content_type="application/json", body=body, response_headers={})
+    payload_path = tmp_path / "p.json"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = extract_disclosure_records(
+        response=response, target=_fpt_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+
+    assert len(records) == 1
+    assert records[0].title == "FPT JSON"
+
+
+# ---------------------------------------------------------------------------
+# classify_access_status: js_app_shell detection
+# ---------------------------------------------------------------------------
+
+def test_classify_access_status_js_shell_hose_body() -> None:
+    hose_shell = (
+        b'<!doctype html><html><head></head><body>'
+        b'<noscript>You need to enable JavaScript to run this app.</noscript>'
+        b'<div id="HOSE"><div class="hose-loading"><h4>HOSE</h4></div></div>'
+        b'</body></html>'
+    )
+    assert len(hose_shell) < 8000
+    result = classify_access_status(
+        HttpResponse(200, "text/html", hose_shell, {})
+    )
+    assert result == "js_app_shell"
+
+
+def test_classify_access_status_verified_for_large_html() -> None:
+    large_html = b"<html><body>" + b"x" * 9000 + b"</body></html>"
+    result = classify_access_status(
+        HttpResponse(200, "text/html", large_html, {})
+    )
+    assert result == "verified"
+
+
+def test_classify_access_status_js_shell_pit_blocked() -> None:
+    from trading_agent.source_adapters.disclosure_adapter import assign_pit_status
+    result = assign_pit_status(published_at="", published_date="", access_status="js_app_shell")
+    assert result == DisclosurePitStatus.BLOCKED.value
+
+
+# ---------------------------------------------------------------------------
+# Config / activation tests
+# ---------------------------------------------------------------------------
+
+def test_fpt_target_configured_after_apply_config() -> None:
+    targets = build_default_targets(["FPT"])
+    config = {
+        "targets": [
+            {"dataset": "company_ir_fpt_disclosures", "url": "https://fpt.com/en/ir/information-disclosures"}
+        ]
+    }
+    updated = apply_targets_config(targets, config)
+    fpt_ir = next((t for t in updated if t.dataset == "company_ir_fpt_disclosures"), None)
+    assert fpt_ir is not None
+    assert fpt_ir.is_configured is True
+    assert fpt_ir.url == "https://fpt.com/en/ir/information-disclosures"
+
+
+def test_vci_target_not_configured_by_default() -> None:
+    targets = build_default_targets(["VCI"])
+    vci_ir = next((t for t in targets if t.dataset == "company_ir_vci_disclosures"), None)
+    assert vci_ir is not None
+    assert vci_ir.is_configured is False
+
+
+def test_vci_official_domain_not_wrong_entity_by_default() -> None:
+    targets = build_default_targets(["VCI"])
+    vci_ir = next((t for t in targets if t.dataset == "company_ir_vci_disclosures"), None)
+    assert vci_ir is not None
+    assert vci_ir.official_domain != "vietcapital.com.vn"
+
+
+def test_plan_request_count_positive_with_fpt_configured(tmp_path: Path) -> None:
+    targets = build_default_targets(["FPT"])
+    config = {
+        "targets": [
+            {"dataset": "company_ir_fpt_disclosures", "url": "https://fpt.com/en/ir/information-disclosures"}
+        ]
+    }
+    targets = apply_targets_config(targets, config)
+    result = run_disclosure_probe(
+        targets=targets,
+        max_requests=5,
+        sleep_min_seconds=2.0,
+        sleep_max_seconds=5.0,
+        execute=False,
+        force=False,
+        run_id="test_pos_plan",
+        output_base=tmp_path / "raw",
+        bronze_base=tmp_path / "bronze",
+    )
+    assert result["summary"]["planned_request_count"] > 0
+    assert result["summary"]["configured_targets"] > 0
+
+
+# ---------------------------------------------------------------------------
+# FPT HTML execute integration
+# ---------------------------------------------------------------------------
+
+def test_execute_fpt_html_produces_numbered_bronze_files(tmp_path: Path) -> None:
+    items = [(f"/-/media/fpt/doc{i}.pdf", f"FPT Doc {i}", "4/24/2026") for i in range(3)]
+    body = _fpt_ir_html(items)
+
+    def fake_get(url: str, headers: dict) -> HttpResponse:
+        return HttpResponse(200, "text/html; charset=utf-8", body, {})
+
+    targets = [_fpt_target()]
+    result = run_disclosure_probe(
+        targets=targets,
+        max_requests=5,
+        sleep_min_seconds=2.0,
+        sleep_max_seconds=5.0,
+        execute=True,
+        force=False,
+        run_id="test_fpt_exec",
+        output_base=tmp_path / "raw",
+        bronze_base=tmp_path / "bronze",
+        http_get=fake_get,
+        sleeper=lambda _: None,
+    )
+
+    bronze_dir = Path(result["plan"]["requests"][0]["bronze_dir"])
+    assert (bronze_dir / "disclosure_record_000.json").exists()
+    assert (bronze_dir / "disclosure_record_001.json").exists()
+    assert (bronze_dir / "disclosure_record_002.json").exists()
+    assert not (bronze_dir / "disclosure_record.json").exists()
+
+
+def test_js_app_shell_target_marked_completed_not_failed(tmp_path: Path) -> None:
+    hose_shell = (
+        b'<!doctype html><html><body>'
+        b'<noscript>You need to enable JavaScript to run this app.</noscript>'
+        b'<div id="HOSE"></div></body></html>'
+    )
+
+    def fake_get(url: str, headers: dict) -> HttpResponse:
+        return HttpResponse(200, "text/html", hose_shell, {})
+
+    target = DisclosureTarget(
+        source_family="hose",
+        exchange="HOSE",
+        official_domain="www.hsx.vn",
+        adapter_name="hose_disclosure_adapter_v1",
+        dataset="hose_disclosures_fpt",
+        symbol="FPT",
+        url="https://www.hsx.vn/Modules/CMS/Web/CategoryDetail?alias=CBTT",
+    )
+    result = run_disclosure_probe(
+        targets=[target],
+        max_requests=5,
+        sleep_min_seconds=2.0,
+        sleep_max_seconds=5.0,
+        execute=True,
+        force=False,
+        run_id="test_hose_shell",
+        output_base=tmp_path / "raw",
+        bronze_base=tmp_path / "bronze",
+        http_get=fake_get,
+        sleeper=lambda _: None,
+    )
+
+    assert "hose_disclosures_fpt" in result["summary"]["completed_datasets"]
+    assert "hose_disclosures_fpt" not in result["summary"]["failed_datasets"]

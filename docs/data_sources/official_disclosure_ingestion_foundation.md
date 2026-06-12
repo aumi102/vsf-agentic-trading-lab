@@ -20,9 +20,10 @@ It is a prerequisite for resolving the VCI `pit_inconclusive` status.
 | File | Role |
 |---|---|
 | `src/trading_agent/source_adapters/disclosure_adapter.py` | Contracts, enums, quality/PIT gate functions |
-| `scripts/probe_official_disclosures.py` | CLI: plan/execute/checkpoint |
-| `tests/test_probe_official_disclosures.py` | 45 unit tests |
-| `docs/data_sources/official_disclosure_source_discovery.md` | Source matrix |
+| `scripts/probe_official_disclosures.py` | CLI: plan/execute/checkpoint + FPT HTML parser |
+| `config/official_disclosure_targets.example.json` | Real target config with evidence-backed access statuses |
+| `tests/test_probe_official_disclosures.py` | 67 unit tests |
+| `docs/data_sources/official_disclosure_source_discovery.md` | Source matrix with live probe results |
 
 ---
 
@@ -30,16 +31,9 @@ It is a prerequisite for resolving the VCI `pit_inconclusive` status.
 
 ### Contracts (`disclosure_adapter.py`)
 
-**`DisclosureTarget`** — a single configured probe target. Key field:
-`is_configured` is `True` only when `url` is non-empty.
+**`DisclosureTarget`** — configured probe target. `is_configured` is `True` only when `url` is non-empty. Fields include `ssl_verify` (default `True`) for targets requiring SSL bypass.
 
-**`DisclosureRecord`** — normalized bronze output. Fields mirror the bronze
-schema: `source_family`, `exchange`, `official_domain`, `adapter_name`,
-`disclosure_id`, `symbol`, `issuer_name`, `document_category`, `title`,
-`published_at`, `published_date`, `effective_at`, `page_url`, `document_url`,
-`attachment_name`, `attachment_type`, `language`, `crawled_at`, `raw_path`,
-`metadata_path`, `body_sha256`, `parser_version`, `schema_version`,
-`quality_status`, `pit_status`, `warning_codes`, `error_codes`.
+**`DisclosureRecord`** — normalized bronze output. Fields: `source_family`, `exchange`, `official_domain`, `adapter_name`, `disclosure_id`, `symbol`, `issuer_name`, `document_category`, `title`, `published_at`, `published_date`, `effective_at`, `page_url`, `document_url`, `attachment_name`, `attachment_type`, `language`, `crawled_at`, `raw_path`, `metadata_path`, `body_sha256`, `parser_version`, `schema_version`, `quality_status`, `pit_status`, `warning_codes`, `error_codes`.
 
 **`DisclosurePitStatus`** — enum:
 - `canonical_timestamp_available` — full ISO datetime known.
@@ -47,50 +41,49 @@ schema: `source_family`, `exchange`, `official_domain`, `adapter_name`,
 - `official_timestamp_missing` — response received but no date found.
 - `non_canonical` — source is a secondary aggregator.
 - `not_applicable` — disclosure type not relevant for PIT.
-- `blocked` — access blocked, auth required, or target not configured.
+- `blocked` — access blocked, auth required, JS shell, or target not configured.
 
 **`DisclosureQualityStatus`** — enum: `pass`, `warn`, `fail`.
-
-**`assign_pit_status(published_at, published_date, access_status)`** — pure
-function that returns the appropriate `DisclosurePitStatus` value.
-
-**`check_disclosure_quality(record_dict)`** — pure function that checks
-required structural fields and returns `(quality_status, warnings, errors)`.
-If `error_codes` are already set (e.g. from a blocked fetch), quality is `fail`.
 
 ### CLI (`probe_official_disclosures.py`)
 
 ```
 python scripts/probe_official_disclosures.py [options]
 
---symbols FPT,VCI       Symbols to include in target set (default: FPT,VCI)
---max-requests 5        Maximum configured targets to probe per run
---sleep-min-seconds 2   Minimum seconds between requests in execute mode
---sleep-max-seconds 5   Maximum seconds between requests in execute mode
---targets-config FILE   JSON file with URL overrides per dataset
---execute               Opt in to live network calls (plan-only by default)
---force                 Re-fetch targets already completed in checkpoint
+--symbols FPT,VCI        Symbols to include in target set (default: FPT,VCI)
+--max-requests 5         Maximum configured targets to probe per run
+--max-records 20         Max disclosure records to parse per HTML target
+--sleep-min-seconds 2    Minimum seconds between requests in execute mode
+--sleep-max-seconds 5    Maximum seconds between requests in execute mode
+--targets-config FILE    JSON file with URL overrides per dataset
+--execute                Opt in to live network calls (plan-only by default)
+--force                  Re-fetch targets already completed in checkpoint
 ```
 
-**Plan mode** (default): builds and writes `plan.json` and `plan_report.md`
-without making any network calls. All not-configured targets are listed in
-`skipped` with `reason=not_configured`.
+Default request headers include a browser User-Agent to pass CDN bot filters.
+Per-target `ssl_verify: false` available for sites with non-standard CAs (e.g. HNX).
 
-**Execute mode** (`--execute`): processes configured targets sequentially
-(concurrency=1). Random sleep is applied between requests. Raw evidence
-is captured before any parsing. Bronze record is written after parsing.
+### FPT IR HTML Parser
 
-**Checkpoint/resume**: after every request the checkpoint JSON is updated.
-On the next `--execute` run, completed datasets are skipped unless `--force`
-is supplied.
+`parse_fpt_ir_html_records(body, target, payload_path, metadata_path, crawled_at, max_records=20)`
+
+Parses FPT Corporation's official IR page (Sitecore CMS, server-rendered HTML).
+Dispatched from `extract_disclosure_records` when `official_domain == "fpt.com"` and content type is HTML.
+
+- Regex matches `<div class="media-download-section-key-information-content">` blocks.
+- Extracts title, `Updated: M/D/YYYY` date, and PDF href per block.
+- Normalizes relative hrefs against `https://fpt.com`.
+- Parses date `M/D/YYYY` → `YYYY-MM-DD`; empty on parse failure.
+- Infers document category from title keywords (annual_report, quarterly_financial_statement, disclosure, board_resolution).
+- Generates deterministic `disclosure_id` from `sha256(doc_url)[:12]`.
+- Decodes HTML entities in title (&#39; → ', &amp; → &, etc.).
+- Returns up to `max_records` records; returns a single WARN record if no items match.
 
 ### Raw Evidence Layout
 
-Each executed target writes to:
-
 ```
 data/raw/official_disclosures/
-  run_id=<id>/
+  <run_id>/
     <dataset>/
       payload.<ext>       # response body (json/html/bin)
       metadata.json       # access_status, http_status, body_sha256, ...
@@ -101,62 +94,64 @@ data/raw/official_disclosures/
 
 ```
 data/bronze/official_disclosures/
-  run_id=<id>/
+  <run_id>/
     <dataset>/
-      disclosure_record.json   # DisclosureRecord.as_dict()
+      disclosure_record.json        # single-record targets (JSON/non-HTML)
+      disclosure_record_000.json    # multi-record targets (FPT HTML)
+      disclosure_record_001.json
+      ...
 ```
 
-Both `data/raw/` and `data/bronze/` are gitignored. Only reviewed fixture
-records may be committed.
-
-### Bronze Parser
-
-`parse_to_bronze_record(response, target, payload_path, metadata_path, crawled_at)`
-is a pure function that:
-
-1. Classifies `access_status` from the HTTP response.
-2. Attempts JSON parse; falls back to raw text with `warning_codes`.
-3. Extracts known disclosure fields (`publishedAt`, `date`, `title`, etc.)
-   from JSON objects; lists remain flagged for manual review.
-4. Calls `assign_pit_status` to set `pit_status`.
-5. Calls `check_disclosure_quality` and merges error/warning codes.
-6. Returns a fully populated `DisclosureRecord`.
+Both `data/raw/` and `data/bronze/` are gitignored.
 
 ---
 
-## Default Target Set
+## Live Activation Results (run_id=20260612T081136Z)
 
-Running without `--targets-config` builds four NOT_CONFIGURED targets:
+| Source | HTTP | Access Status | Bronze Rows | PIT Level | Quality |
+|---|---|---|---|---|---|
+| FPT IR (`fpt.com`) | 200 | verified | 20 | date_only_available (all) | pass (all) |
+| HOSE (`www.hsx.vn`) | 200 | js_app_shell | 1 | blocked | warn |
+| HNX (`www.hnx.vn`) | timeout | error | 0 | — | — |
+| VCI IR | N/A | NOT_CONFIGURED | 0 | — | — |
 
-| Dataset | Exchange | Symbol | Note |
+FPT Q1 2026 Consolidated FS `published_date=2026-04-24` — matches PIT validation CSV entry.
+
+---
+
+## Target Set
+
+| Dataset | Source | Symbol | Status after config |
 |---|---|---|---|
-| `hose_disclosures_fpt` | HOSE | FPT | Needs probe URL |
-| `hose_disclosures_vci` | HOSE | VCI | Primary unresolved PIT target |
-| `hnx_disclosures_fpt` | HNX | FPT | Needs probe URL |
-| `hnx_disclosures_vci` | HNX | VCI | Needs probe URL |
-| `company_ir_fpt_disclosures` | HOSE | FPT | Positive control; URL known manually |
-| `company_ir_vci_disclosures` | HOSE | VCI | Auth required in prior probe |
-
-All are `NOT_CONFIGURED` until a `targets-config` JSON supplies real URLs.
-In plan mode, all targets appear in `skipped` with `reason=not_configured`.
+| `company_ir_fpt_disclosures` | fpt.com | FPT | configured — verified, 20 bronze records |
+| `hose_disclosures_fpt` | www.hsx.vn | FPT | configured — js_app_shell, no structured data |
+| `hose_disclosures_vci` | www.hsx.vn | VCI | configured — js_app_shell, no structured data |
+| `hnx_disclosures_fpt` | www.hnx.vn | FPT | configured — timeout in production run |
+| `hnx_disclosures_vci` | www.hnx.vn | VCI | configured — timeout in production run |
+| `company_ir_vci_disclosures` | unresolved | VCI | NOT_CONFIGURED — domain unknown |
 
 ---
 
 ## Test Coverage
 
-`tests/test_probe_official_disclosures.py` — 45 tests:
+`tests/test_probe_official_disclosures.py` — 67 tests:
 
-- PIT status assignment (7): verified/date-only/missing/blocked/auth/error
-- Quality gate (5): pass/warn/fail conditions
-- Target configuration (3): `is_configured` cases
-- Default target building (5): families, symbols, not-configured default
-- Plan mode (6): no network calls, plan JSON, report, guardrails, skip, max
-- Execute mode (4): HTTP called, raw evidence, SHA256, bronze output
-- Checkpoint (3): write, resume skip, force re-run
-- Bronze parsing (3): blocked → pit_blocked, JSON → date_only, timestamp → canonical
-- HTTP classification (4): 200/401/403/500
-- Config overlay (2): URL applied, unmatched unchanged
-- Input validation (3): empty targets, zero max, sleep below minimum
+- PIT status assignment (7)
+- Quality gate (5)
+- Target configuration (3)
+- Default target building / parse_symbols (5)
+- Plan mode (6)
+- Execute mode (4)
+- Checkpoint (3)
+- Bronze parsing: JSON (3)
+- HTTP classification (4)
+- Config overlay (2)
+- Input validation (3)
+- FPT HTML parser (12): title, date, URL, ID, limit, missing-date, no-items, entities, attachment, PIT, quality, execute
+- Dispatch / extract_disclosure_records (2)
+- js_app_shell classification (3)
+- Config / activation (4)
+- FPT execute integration / js_app_shell checkpoint (2)
 
 ---
 
@@ -174,15 +169,9 @@ In plan mode, all targets appear in `skipped` with `reason=not_configured`.
 
 ## Gate Status
 
-This foundation does not change any gate status:
-
-- `publicDate` PIT semantics: still `pit_inconclusive`. VCI official evidence
-  is still unresolved. FPT canonical evidence remains supportive.
+- `publicDate` PIT semantics: still `pit_inconclusive`. FPT IR verified live (`date_only_available`, 20 records). VCI official evidence still unresolved.
 - DB write: still blocked.
 - Backtest: still blocked.
 - Mapping coverage gate: unchanged (BS 89.7% / IS 94.5% / CF 87.6%).
 
-To advance the PIT gate, configure a HOSE disclosure URL for VCI and run
-`--execute`. If the probe returns a bronze record with
-`pit_status=date_only_available` or `canonical_timestamp_available`, record
-those dates in the PIT validation CSV and re-run the validator.
+To advance the PIT gate for VCI: resolve the VCI official IR domain, configure it, and run `--execute`. If the probe returns bronze records with `pit_status=date_only_available`, record dates in the PIT validation CSV and re-run the validator.

@@ -9,123 +9,104 @@ toc_max_heading_level: 3
 ## Purpose
 
 Map known official disclosure surfaces for Vietnamese listed companies.
-This doc records what is known about each source before probing. It informs
-which targets appear in `probe_official_disclosures.py` and which remain
-`NOT_CONFIGURED` pending access verification.
+Records what is known from actual HTTP probes and live execution. Informs
+target configuration for `probe_official_disclosures.py`.
 
 ---
 
-## Source Matrix
+## Source Activation Matrix
 
-| Source | Domain | Exchange | Access Status | Surface Type | Response Shape | Priority |
+Live probe run: `20260612T052922Z` (manual capture) and `20260612T081136Z` (production CLI).
+
+| Source | Domain | HTTP | Access Status | Data Available | Parser | Blocker |
 |---|---|---|---|---|---|---|
-| HOSE official | www.hsx.vn | HOSE | Needs probe | Web + API | HTML + partial JSON | 1 |
-| HNX official | www.hnx.vn | HNX | Needs probe | Web | HTML | 2 |
-| SSC regulator | ssc.gov.vn | Both | Needs probe | Web archive | HTML | 3 |
-| FPT company IR | fpt.com/en/ir | HOSE | Manual confirmed | HTML listing | HTML | 4 |
-| VCI company IR | vietcapital.com.vn | HOSE | Auth required | Login portal | — | 4 |
-| Vietstock | vietstock.vn | N/A | Non-canonical | Aggregator | — | N/A |
-
----
-
-## HOSE (HSX)
-
-**Domain:** `www.hsx.vn`
-
-**Official name:** Ho Chi Minh Stock Exchange.
-
-**Known surfaces:**
-- Main website with corporate information disclosure section.
-- Downloadable tables and PDF attachments in Vietnamese.
-- Disclosure listing pages that filter by company ticker.
-
-**Access notes:**
-- Public pages return HTML. Some API endpoints return JSON.
-- No credentials required for public disclosure listings in prior manual probes.
-- Specific API path needs a controlled GET probe to confirm field shape.
-
-**Evidence use case:** Primary canonical source for HOSE-listed issuers
-including VCI. A successful probe would provide `official_disclosure_date`
-for VCI rows, potentially moving the credible-comparable ratio from 0.50
-toward the 0.70 `pit_supported_small_sample` threshold.
-
-**Current adapter status:** `NOT_CONFIGURED` — URL must be supplied via
-`targets-config` JSON before any execute-mode probe.
-
----
-
-## HNX
-
-**Domain:** `www.hnx.vn`
-
-**Official name:** Hanoi Stock Exchange.
-
-**Known surfaces:**
-- Corporate disclosure listing pages for HNX-listed companies.
-- Public HTML pages; some machine-readable endpoints may exist.
-
-**Access notes:**
-- Manual browse shows disclosure pages with date, title, and document links.
-- API shape unknown until probed.
-
-**Current adapter status:** `NOT_CONFIGURED`.
-
----
-
-## SSC (State Securities Commission)
-
-**Domain:** `ssc.gov.vn`
-
-**Role:** National securities regulator. Receives mandatory disclosures from
-all listed companies on both exchanges.
-
-**Access notes:**
-- Public archive, but document retrieval may require form submission.
-- Useful as a cross-reference for hard-to-find issuer disclosures.
-
-**Current adapter status:** Not yet added to default target list.
+| FPT IR | fpt.com | 200 | verified | YES — 689 PDF links, server-rendered | `parse_fpt_ir_html_records` | None |
+| HOSE CBTT | www.hsx.vn | 200 | js_app_shell | NO — React SPA, 1.9 KB shell | none | React SPA; api.hsx.vn paths unresolved |
+| HNX CBTT | www.hnx.vn | timeout | error | NO — timed out in probe | none | Network timeout from probe env |
+| VCI IR | vietcapital.com.vn | 200 (wrong entity) | wrong_entity | NO — VCAM, not VCI | none | Wrong company; real domain unresolved |
+| VCI IR | vcsc.com.vn | timeout | error | NO — timed out | none | Not accessible from probe env |
 
 ---
 
 ## FPT Company IR (Positive Control)
 
 **Domain:** `fpt.com`
-**IR page manually confirmed:** `fpt.com/en/ir/information-disclosures`
+**URL:** `fpt.com/en/ir/information-disclosures`
+**CMS:** Sitecore (server-rendered HTML)
 
-**Access notes:** Accessible without authentication. English-language IR page
-lists disclosure date, title, and document link for each report.
+**Live probe evidence (run_id=20260612T081136Z):**
+- HTTP 200, 1,402,681 bytes, `text/html; charset=utf-8`
+- Cloudflare CDN requires browser User-Agent (Python default UA returns 403)
+- 689+ distinct PDF disclosure links in static HTML
 
-**Prior evidence:** Manual probe confirmed disclosure dates for:
-- 2025 annual report: 2026-03-19
-- 2026 Q1 report: 2026-04-24
+**Bronze parser output (max_records=20):**
+- 20 records produced, all `quality_status=pass`
+- All `pit_status=date_only_available` (FPT provides M/D/YYYY, no time)
+- Q1 2026 Consolidated FS: `published_date=2026-04-24` ✓
+- 2025 Annual Report: `published_date=2026-04-08` ✓
+- Issuer: FPT Corporation
 
-These dates produced `near_match_1_3_days` and `vietcap_after_official`
-match statuses in the PIT validation sample (confidence=medium).
-
-**Current adapter status:** `NOT_CONFIGURED` in default target list.
-Supply the known URL via `targets-config` to enable execute-mode probe.
-
----
-
-## VCI Company IR (Unresolved Target)
-
-**Domain:** `vietcapital.com.vn`
-
-**Access notes:** In a prior probe attempt, the Vietcap IR portal returned a
-login page, making automated access infeasible without credentials. This
-remains the primary unresolved PIT target.
-
-**Vietstock secondary leads (non-canonical):** Vietstock.vn pages for VCI
-were found during manual investigation but are non-canonical. They appear only
-in `reviewer_note` in the PIT validation CSV and do not count toward the
-credible-comparable ratio. They are not listed as targets here.
-
-**Current adapter status:** `NOT_CONFIGURED`. Official HOSE disclosure
-page for VCI is the preferred alternative route.
+**Parser:** `parse_fpt_ir_html_records` in `scripts/probe_official_disclosures.py`
 
 ---
 
-## Evidence Priority Policy (Reiteration)
+## HOSE (HSX)
+
+**Domain:** `www.hsx.vn`
+**URL probed:** `www.hsx.vn/Modules/CMS/Web/CategoryDetail?alias=CBTT`
+
+**Live probe evidence (run_id=20260612T052922Z):**
+- HTTP 200, 1,900 bytes, React SPA shell
+- HTML contains `<div id="HOSE">` and `<noscript>You need to enable JavaScript to run this app.</noscript>`
+- All routes return identical SPA shell regardless of path
+- Backend at `api.hsx.vn` discovered from JS bundle (`main.d430e296.js`, 2.4 MB)
+- API base URL uses `REACT_APP_API_URL_*` env vars replaced at build time
+- Actual disclosure endpoint paths not extractable from minified bundle statically
+
+**Access status:** `js_app_shell`
+**Bronze record:** `pit_status=blocked`, `quality_status=warn`, warning `js_app_shell_no_structured_data`
+
+**Blocker:** Requires browser/JS runtime to execute disclosure API calls against `api.hsx.vn`. Not addressable without headless browser or API contract discovery.
+
+---
+
+## HNX
+
+**Domain:** `www.hnx.vn`
+**URL probed:** `www.hnx.vn/en-gb/cong-bo-thong-tin.html`
+
+**Manual capture evidence (run_id=20260612T052922Z):**
+- HTTP 200, 41,114 bytes, navigation hub HTML
+- 3 jQuery AJAX calls in source; disclosure items loaded dynamically
+- No disclosure records in static HTML
+
+**Production execute (run_id=20260612T081136Z):** Timed out (20s limit).
+
+**Access status:** `error` (timeout in production run) / `html_ajax_shell` (manual capture)
+**Blocker:** Network timeout from probe environment; even if reachable, AJAX-loaded data requires follow-up endpoint discovery.
+
+---
+
+## VCI Company IR
+
+**VCI** = Viet Capital Securities Corporation (ticker `VCI`, listed HOSE).
+Not to be confused with VCAM (Viet Capital Asset Management, ticker `VCAMBF`).
+
+**Domain `vietcapital.com.vn`:** HTTP 200, 4,721 bytes, page title "VCAM | VietCapital".
+This is the asset management subsidiary, not the securities broker.
+`rails_session` cookie and `x-runtime` header confirm a Ruby on Rails app (VCAM portal).
+**Status: wrong entity** — removed from config and docs.
+
+**Domain `vcsc.com.vn`:** Connection timed out (20s) from probe environment.
+Cannot verify whether this is the correct VCI Securities domain.
+**Status: unresolved (timeout)**
+
+**VCI IR target:** `NOT_CONFIGURED`. Official domain must be verified manually before
+any execute-mode probe. See `company_ir_vci_disclosures` target in default set.
+
+---
+
+## Evidence Priority Policy
 
 From `vietcap_iq_fa_publicdate_pit_validation.md`:
 
@@ -141,29 +122,21 @@ populate `official_disclosure_date` and do not affect PIT gate computation.
 
 ## Configuration
 
-To probe configured targets, supply a JSON file:
+Real targets are configured via `config/official_disclosure_targets.example.json`.
+Copy and adjust; do not add secrets. Pass via `--targets-config`:
 
-```json
-{
-  "targets": [
-    {
-      "dataset": "hose_disclosures_vci",
-      "url": "https://www.hsx.vn/path/to/disclosures?ticker=VCI"
-    }
-  ]
-}
 ```
-
-Pass via `--targets-config path/to/file.json` when running
-`scripts/probe_official_disclosures.py`. Do not commit files containing real
-probe URLs to the repo.
+python scripts/probe_official_disclosures.py \
+  --symbols FPT \
+  --targets-config config/official_disclosure_targets.example.json \
+  --max-records 20 \
+  --execute
+```
 
 ---
 
-## Next Probe Actions
+## Open Blockers
 
-1. Manually locate HOSE disclosure listing URL for VCI.
-2. Configure via `targets-config` and run in `--plan` mode first.
-3. If plan shows valid target, run `--execute` with a single-symbol tiny batch.
-4. Inspect raw evidence (`data/raw/official_disclosures/`).
-5. If bronze record has `pit_status=date_only_available`, record in PIT CSV.
+1. **VCI IR domain:** Unresolved. `vietcapital.com.vn` is wrong entity (VCAM). `vcsc.com.vn` timed out. Verify via HOSE official issuer profile page (requires JS execution).
+2. **HOSE structured API:** React SPA. api.hsx.vn endpoint paths require JS runtime or separate API contract documentation.
+3. **HNX structured feed:** Navigation hub. Disclosure items load via jQuery AJAX; feed URL not in static HTML.

@@ -12,7 +12,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import random
+import ssl
 import sys
 import time
 from dataclasses import dataclass
@@ -40,9 +42,34 @@ from trading_agent.source_adapters.disclosure_adapter import (
 
 MIN_SLEEP_SECONDS = 2.0
 MAX_REQUESTS_DEFAULT = 5
+DEFAULT_MAX_RECORDS_PER_TARGET = 20
+
+# Default headers mimic a standard browser request.
+# Many official disclosure pages block non-browser user-agent strings.
+_DEFAULT_REQUEST_HEADERS: dict[str, str] = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8",
+    "Connection": "close",
+}
 DEFAULT_SYMBOLS = "FPT,VCI"
 DEFAULT_OUTPUT_BASE = ROOT / "data/raw/official_disclosures"
 DEFAULT_BRONZE_BASE = ROOT / "data/bronze/official_disclosures"
+
+_FPT_OFFICIAL_DOMAIN = "fpt.com"
+
+# Matches a single FPT IR disclosure block: link+title+date.
+# FPT IR uses Sitecore CMS. Structure confirmed from fpt.com/en/ir/information-disclosures.
+_DISCLOSURE_BLOCK_RE = re.compile(
+    r'<div class="media-download-section-key-information-content">\s*'
+    r'<a class="media-download-section-key-information-content-subtitle"\s+'
+    r'href="([^"]+)"[^>]*>\s*([^<]+?)\s*</a>'
+    r'.*?Updated:\s*(\d{1,2}/\d{1,2}/\d{4})',
+    re.DOTALL,
+)
 
 GUARDRAILS = [
     "No network requests unless --execute is supplied.",
@@ -69,10 +96,23 @@ class HttpResponse:
     response_headers: dict[str, str]
 
 
-def get_url(url: str, headers: dict[str, str], *, timeout: int = 20) -> HttpResponse:
-    request = Request(url, headers=headers, method="GET")
+def get_url(
+    url: str,
+    headers: dict[str, str],
+    *,
+    timeout: int = 20,
+    ssl_verify: bool = True,
+) -> HttpResponse:
+    merged = {**_DEFAULT_REQUEST_HEADERS, **headers}
+    request = Request(url, headers=merged, method="GET")
+    if ssl_verify:
+        ctx: ssl.SSLContext | None = None
+    else:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
     try:
-        with urlopen(request, timeout=timeout) as resp:
+        with urlopen(request, timeout=timeout, context=ctx) as resp:
             return HttpResponse(
                 status_code=int(getattr(resp, "status", 0) or 0),
                 content_type=resp.headers.get("content-type", ""),
@@ -97,6 +137,20 @@ def classify_access_status(response: HttpResponse) -> str:
         return "error"
     if response.status_code < 200 or response.status_code >= 300:
         return "rejected_response"
+    # HTTP 200-range: check for JS-only SPA shell (cannot serve structured data without JS).
+    ct = response.content_type.lower()
+    if "html" in ct and len(response.body) < 8000:
+        body_text = response.body.decode("utf-8", errors="replace")
+        body_lc = body_text.lower()
+        if (
+            "you need to enable javascript" in body_lc
+            or "enable javascript to run this app" in body_lc
+            or (
+                len(response.body) < 5000
+                and any(marker in body_text for marker in ('id="root"', 'id="app"', 'id="HOSE"', 'id="HNX"'))
+            )
+        ):
+            return "js_app_shell"
     return "verified"
 
 
@@ -116,7 +170,10 @@ def build_default_targets(symbols: list[str]) -> list[DisclosureTarget]:
             dataset=f"hose_disclosures_{sym.lower()}",
             symbol=sym,
             url="",
-            terms_notes="HOSE official disclosure page. Requires targets-config URL.",
+            terms_notes=(
+                "HOSE official disclosure page. React SPA — structured disclosure API not "
+                "resolvable from static JS. Official parent page captured as html_ajax_shell."
+            ),
         ))
         targets.append(DisclosureTarget(
             source_family="hnx",
@@ -126,33 +183,37 @@ def build_default_targets(symbols: list[str]) -> list[DisclosureTarget]:
             dataset=f"hnx_disclosures_{sym.lower()}",
             symbol=sym,
             url="",
-            terms_notes="HNX official disclosure page. Requires targets-config URL.",
+            terms_notes=(
+                "HNX official disclosure page. jQuery AJAX — disclosures loaded dynamically. "
+                "Official parent page captured; disclosure feed endpoint unresolved."
+            ),
         ))
     targets.append(DisclosureTarget(
         source_family="company_ir",
         exchange="HOSE",
-        official_domain="fpt.com",
+        official_domain=_FPT_OFFICIAL_DOMAIN,
         adapter_name="company_ir_fpt_v1",
         dataset="company_ir_fpt_disclosures",
         symbol="FPT",
         url="",
         terms_notes=(
-            "FPT company IR page (positive control). "
-            "Supply URL via targets-config to enable. "
-            "Manual confirm: fpt.com/en/ir/information-disclosures."
+            "FPT Corporation official IR page (positive control). "
+            "Server-rendered Sitecore CMS. Supply URL via targets-config to enable. "
+            "Confirmed URL: fpt.com/en/ir/information-disclosures."
         ),
     ))
     targets.append(DisclosureTarget(
         source_family="company_ir",
         exchange="HOSE",
-        official_domain="vietcapital.com.vn",
+        official_domain="unresolved",
         adapter_name="company_ir_vci_v1",
         dataset="company_ir_vci_disclosures",
         symbol="VCI",
         url="",
         terms_notes=(
-            "VCI company IR (unresolved target). Vietcap IR page returned login portal "
-            "in prior probe. Supply URL via targets-config if accessible."
+            "VCI (Viet Capital Securities) IR — official domain unresolved. "
+            "vietcapital.com.vn is VCAM (asset management), not VCI (securities broker). "
+            "vcsc.com.vn timed out. VCI IR target requires manual domain verification."
         ),
     ))
     return targets
@@ -162,7 +223,7 @@ def apply_targets_config(
     targets: list[DisclosureTarget],
     config: dict[str, Any],
 ) -> list[DisclosureTarget]:
-    """Overlay URL / headers from external config onto matching targets by dataset."""
+    """Overlay URL / headers / official_domain from external config onto matching targets by dataset."""
     overrides: dict[str, dict[str, Any]] = {}
     for entry in config.get("targets", []):
         dataset = entry.get("dataset", "")
@@ -175,7 +236,7 @@ def apply_targets_config(
             import dataclasses
             updates = {
                 k: ov[k]
-                for k in ("url", "method", "headers", "request_params", "terms_notes")
+                for k in ("url", "method", "headers", "request_params", "terms_notes", "official_domain", "ssl_verify")
                 if k in ov
             }
             t = dataclasses.replace(t, **updates)
@@ -402,8 +463,215 @@ def capture_raw_evidence(
 
 
 # ---------------------------------------------------------------------------
+# FPT IR HTML parser
+# ---------------------------------------------------------------------------
+
+def _normalize_fpt_url(href: str) -> str:
+    if href.startswith("http"):
+        return href
+    if href.startswith("/"):
+        return f"https://{_FPT_OFFICIAL_DOMAIN}{href}"
+    return href
+
+
+def _parse_fpt_date(date_str: str) -> str:
+    """Parse M/D/YYYY from FPT IR page into YYYY-MM-DD. Returns '' on failure."""
+    try:
+        parts = date_str.strip().split("/")
+        if len(parts) != 3:
+            return ""
+        m, d, y = parts
+        return f"{int(y):04d}-{int(m):02d}-{int(d):02d}"
+    except Exception:
+        return ""
+
+
+def _infer_fpt_doc_category(title: str, href: str) -> str:
+    title_lc = title.lower()
+    href_lc = href.lower()
+    if "annual report" in title_lc or "annual-report" in href_lc:
+        return "annual_report"
+    if ("financial statement" in title_lc or "financial-statement" in href_lc) and any(
+        q in title_lc or q in href_lc for q in ("quarter", "q1", "q2", "q3", "q4")
+    ):
+        return "quarterly_financial_statement"
+    if "financial statement" in title_lc or "financial-statement" in href_lc:
+        return "financial_statement"
+    if "resolution" in title_lc:
+        return "board_resolution"
+    return "disclosure"
+
+
+_HTML_ENTITY_MAP = {
+    "&#39;": "'", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"',
+    "&nbsp;": " ", "&#x27;": "'", "&#x2F;": "/",
+}
+
+
+def _decode_html_entities(text: str) -> str:
+    for entity, char in _HTML_ENTITY_MAP.items():
+        text = text.replace(entity, char)
+    return text
+
+
+def parse_fpt_ir_html_records(
+    body: bytes,
+    target: DisclosureTarget,
+    payload_path: Path,
+    metadata_path: Path,
+    crawled_at: str,
+    max_records: int = DEFAULT_MAX_RECORDS_PER_TARGET,
+) -> list[DisclosureRecord]:
+    """Parse FPT official IR HTML into a list of DisclosureRecord (up to max_records).
+
+    Returns a single warn record if no items are found (HTML page with no matching items).
+    """
+    html = body.decode("utf-8", errors="replace")
+    body_sha256 = hashlib.sha256(body).hexdigest()
+    matches = _DISCLOSURE_BLOCK_RE.findall(html)
+
+    records: list[DisclosureRecord] = []
+    seen_hrefs: set[str] = set()
+
+    for href_raw, title_raw, date_raw in matches:
+        if len(records) >= max_records:
+            break
+        href = href_raw.strip()
+        if href in seen_hrefs:
+            continue
+        seen_hrefs.add(href)
+
+        title = _decode_html_entities(title_raw.strip())
+        doc_url = _normalize_fpt_url(href)
+        published_date = _parse_fpt_date(date_raw)
+        doc_category = _infer_fpt_doc_category(title, href)
+        attachment_name = href.split("/")[-1]
+        attachment_type = "pdf" if href.lower().endswith(".pdf") else ""
+
+        disclosure_id = f"fpt_ir_{hashlib.sha256(doc_url.encode()).hexdigest()[:12]}"
+
+        pit_status = (
+            assign_pit_status(published_at="", published_date=published_date, access_status="verified")
+        )
+
+        warning_codes: list[str] = []
+        error_codes: list[str] = []
+        if not published_date:
+            warning_codes.append("publication_date_unknown")
+        if not title:
+            warning_codes.append("title_missing")
+
+        record_dict: dict[str, Any] = {
+            "source_family": target.source_family,
+            "exchange": target.exchange,
+            "official_domain": target.official_domain,
+            "adapter_name": target.adapter_name,
+            "disclosure_id": disclosure_id,
+            "symbol": target.symbol,
+            "issuer_name": "FPT Corporation",
+            "document_category": doc_category,
+            "title": title,
+            "published_at": "",
+            "published_date": published_date,
+            "effective_at": "",
+            "page_url": target.url,
+            "document_url": doc_url,
+            "attachment_name": attachment_name,
+            "attachment_type": attachment_type,
+            "language": "en",
+            "crawled_at": crawled_at,
+            "raw_path": str(payload_path),
+            "metadata_path": str(metadata_path),
+            "body_sha256": body_sha256,
+            "parser_version": BRONZE_PARSER_VERSION,
+            "schema_version": BRONZE_SCHEMA_VERSION,
+            "quality_status": "",
+            "pit_status": pit_status,
+            "warning_codes": warning_codes,
+            "error_codes": error_codes,
+        }
+
+        quality_status, extra_warnings, extra_errors = check_disclosure_quality(record_dict)
+        record_dict["quality_status"] = quality_status
+        record_dict["warning_codes"] = sorted(set(warning_codes + extra_warnings))
+        record_dict["error_codes"] = sorted(set(error_codes + extra_errors))
+
+        records.append(DisclosureRecord(**record_dict))
+
+    if not records:
+        # No items matched — emit a single warn record (not a block; could be page change).
+        record_dict = {
+            "source_family": target.source_family,
+            "exchange": target.exchange,
+            "official_domain": target.official_domain,
+            "adapter_name": target.adapter_name,
+            "disclosure_id": f"fpt_ir_{body_sha256[:12]}",
+            "symbol": target.symbol,
+            "issuer_name": "",
+            "document_category": "",
+            "title": "",
+            "published_at": "",
+            "published_date": "",
+            "effective_at": "",
+            "page_url": target.url,
+            "document_url": "",
+            "attachment_name": "",
+            "attachment_type": "",
+            "language": "en",
+            "crawled_at": crawled_at,
+            "raw_path": str(payload_path),
+            "metadata_path": str(metadata_path),
+            "body_sha256": body_sha256,
+            "parser_version": BRONZE_PARSER_VERSION,
+            "schema_version": BRONZE_SCHEMA_VERSION,
+            "quality_status": "",
+            "pit_status": assign_pit_status(
+                published_at="", published_date="", access_status="verified"
+            ),
+            "warning_codes": ["html_no_disclosure_items_found"],
+            "error_codes": [],
+        }
+        quality_status, extra_warnings, extra_errors = check_disclosure_quality(record_dict)
+        record_dict["quality_status"] = quality_status
+        record_dict["warning_codes"] = sorted({"html_no_disclosure_items_found"} | set(extra_warnings))
+        record_dict["error_codes"] = sorted(set(extra_errors))
+        records.append(DisclosureRecord(**record_dict))
+
+    return records
+
+
+# ---------------------------------------------------------------------------
 # Bronze parsing
 # ---------------------------------------------------------------------------
+
+def extract_disclosure_records(
+    *,
+    response: HttpResponse,
+    target: DisclosureTarget,
+    payload_path: Path,
+    metadata_path: Path,
+    crawled_at: str,
+    max_records: int = DEFAULT_MAX_RECORDS_PER_TARGET,
+) -> list[DisclosureRecord]:
+    """Route to the appropriate parser; return a list of DisclosureRecord."""
+    ct = response.content_type.lower()
+    if "html" in ct and target.official_domain == _FPT_OFFICIAL_DOMAIN:
+        return parse_fpt_ir_html_records(
+            body=response.body,
+            target=target,
+            payload_path=payload_path,
+            metadata_path=metadata_path,
+            crawled_at=crawled_at,
+            max_records=max_records,
+        )
+    return [parse_to_bronze_record(
+        response=response,
+        target=target,
+        payload_path=payload_path,
+        metadata_path=metadata_path,
+        crawled_at=crawled_at,
+    )]
+
 
 def parse_to_bronze_record(
     *,
@@ -445,6 +713,8 @@ def parse_to_bronze_record(
                 warning_codes.append("multi_record_response_not_exploded")
         except (json.JSONDecodeError, UnicodeDecodeError):
             warning_codes.append("html_body_no_structured_parser")
+    elif access_status == "js_app_shell":
+        warning_codes.append("js_app_shell_no_structured_data")
     elif access_status == "auth_required":
         error_codes.append("auth_required_cannot_parse")
     elif access_status == "rejected_response":
@@ -500,9 +770,14 @@ def parse_to_bronze_record(
     return DisclosureRecord(**record_dict)
 
 
-def write_bronze_record(record: DisclosureRecord, bronze_dir: Path) -> Path:
+def write_bronze_record(
+    record: DisclosureRecord,
+    bronze_dir: Path,
+    index: int | None = None,
+) -> Path:
     bronze_dir.mkdir(parents=True, exist_ok=True)
-    out_path = bronze_dir / "disclosure_record.json"
+    fname = f"disclosure_record_{index:03d}.json" if index is not None else "disclosure_record.json"
+    out_path = bronze_dir / fname
     _write_json(out_path, record.as_dict())
     return out_path
 
@@ -522,6 +797,7 @@ def run_disclosure_probe(
     run_id: str,
     output_base: Path,
     bronze_base: Path,
+    max_records: int = DEFAULT_MAX_RECORDS_PER_TARGET,
     http_get: Callable[[str, dict[str, str]], HttpResponse] | None = None,
     sleeper: Callable[[float], None] = time.sleep,
     rng: random.Random | None = None,
@@ -595,7 +871,10 @@ def run_disclosure_probe(
 
         crawled_at = datetime.now(timezone.utc).isoformat()
         try:
-            response = get(target.url, target.headers)
+            if http_get is not None:
+                response = http_get(target.url, target.headers)
+            else:
+                response = get_url(target.url, target.headers, ssl_verify=target.ssl_verify)
             evidence_dir = Path(request_item["output_dir"])
             payload_path, metadata_path = capture_raw_evidence(
                 output_dir=evidence_dir,
@@ -604,17 +883,25 @@ def run_disclosure_probe(
                 run_id=run_id,
             )
             bronze_dir = Path(request_item["bronze_dir"])
-            record = parse_to_bronze_record(
+            records = extract_disclosure_records(
                 response=response,
                 target=target,
                 payload_path=payload_path,
                 metadata_path=metadata_path,
                 crawled_at=crawled_at,
+                max_records=max_records,
             )
-            bronze_path = write_bronze_record(record, bronze_dir)
-            bronze_records.append({"dataset": dataset, "bronze_path": str(bronze_path), "record": record.as_dict()})
+            multi = len(records) > 1
+            for rec_idx, record in enumerate(records):
+                bronze_path = write_bronze_record(record, bronze_dir, index=rec_idx if multi else None)
+                bronze_records.append({
+                    "dataset": dataset,
+                    "bronze_path": str(bronze_path),
+                    "record": record.as_dict(),
+                })
 
-            if classify_access_status(response) == "verified":
+            _access = classify_access_status(response)
+            if _access in ("verified", "js_app_shell"):
                 completed.add(dataset)
                 failed.discard(dataset)
             else:
@@ -639,7 +926,7 @@ def run_disclosure_probe(
         )
         _write_json(checkpoint_path, checkpoint_doc)
 
-        remaining = plan["requests"][idx + 1 :]
+        remaining = plan["requests"][idx + 1:]
         if remaining:
             sleeper(random_source.uniform(sleep_min_seconds, sleep_max_seconds))
 
@@ -723,6 +1010,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--symbols", default=DEFAULT_SYMBOLS, help="Comma-separated symbols.")
     parser.add_argument("--max-requests", type=int, default=MAX_REQUESTS_DEFAULT)
+    parser.add_argument("--max-records", type=int, default=DEFAULT_MAX_RECORDS_PER_TARGET,
+                        help="Max disclosure records to parse per HTML target.")
     parser.add_argument("--sleep-min-seconds", type=float, default=2.0)
     parser.add_argument("--sleep-max-seconds", type=float, default=5.0)
     parser.add_argument("--output-base-dir", default=str(DEFAULT_OUTPUT_BASE))
@@ -766,6 +1055,7 @@ def main() -> int:
             run_id=run_id,
             output_base=Path(args.output_base_dir),
             bronze_base=Path(args.bronze_base_dir),
+            max_records=args.max_records,
         )
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
@@ -785,6 +1075,9 @@ def main() -> int:
     print(f"failed_datasets={','.join(summary['failed_datasets'])}")
     print(f"plan={result['plan_path']}")
     print(f"report={result['report_path']}")
+    if "bronze_records" in result:
+        bronze_count = len(result["bronze_records"])
+        print(f"bronze_records_emitted={bronze_count}")
     return 0
 
 
