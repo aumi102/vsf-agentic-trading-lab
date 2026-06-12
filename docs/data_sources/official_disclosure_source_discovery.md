@@ -16,15 +16,15 @@ target configuration for `probe_official_disclosures.py`.
 
 ## Source Activation Matrix
 
-Live probe run: `20260612T052922Z` (manual capture) and `20260612T081136Z` (production CLI).
+Live probe runs: `20260612T052922Z` (manual), `20260612T081136Z` (FPT production), `20260612T090059Z` (VCI production).
 
 | Source | Domain | HTTP | Access Status | Data Available | Parser | Blocker |
 |---|---|---|---|---|---|---|
 | FPT IR | fpt.com | 200 | verified | YES — 689 PDF links, server-rendered | `parse_fpt_ir_html_records` | None |
+| VCI IR (FY2025 FS) | www.vietcap.com.vn | 200 | verified | YES — date 2026-02-13, PDF URL | `parse_vci_ir_detail_records` | None |
+| VCI IR (Q1 2026 FS) | www.vietcap.com.vn | 200 | verified | YES — date 2026-04-20, PDF URL | `parse_vci_ir_detail_records` | None |
 | HOSE CBTT | www.hsx.vn | 200 | js_app_shell | NO — React SPA, 1.9 KB shell | none | React SPA; api.hsx.vn paths unresolved |
 | HNX CBTT | www.hnx.vn | timeout | error | NO — timed out in probe | none | Network timeout from probe env |
-| VCI IR | vietcapital.com.vn | 200 (wrong entity) | wrong_entity | NO — VCAM, not VCI | none | Wrong company; real domain unresolved |
-| VCI IR | vcsc.com.vn | timeout | error | NO — timed out | none | Not accessible from probe env |
 
 ---
 
@@ -36,7 +36,6 @@ Live probe run: `20260612T052922Z` (manual capture) and `20260612T081136Z` (prod
 
 **Live probe evidence (run_id=20260612T081136Z):**
 - HTTP 200, 1,402,681 bytes, `text/html; charset=utf-8`
-- Cloudflare CDN requires browser User-Agent (Python default UA returns 403)
 - 689+ distinct PDF disclosure links in static HTML
 
 **Bronze parser output (max_records=20):**
@@ -90,19 +89,25 @@ Live probe run: `20260612T052922Z` (manual capture) and `20260612T081136Z` (prod
 ## VCI Company IR
 
 **VCI** = Viet Capital Securities Corporation (ticker `VCI`, listed HOSE).
-Not to be confused with VCAM (Viet Capital Asset Management, ticker `VCAMBF`).
 
-**Domain `vietcapital.com.vn`:** HTTP 200, 4,721 bytes, page title "VCAM | VietCapital".
-This is the asset management subsidiary, not the securities broker.
-`rails_session` cookie and `x-runtime` header confirm a Ruby on Rails app (VCAM portal).
-**Status: wrong entity** — removed from config and docs.
+**Domain `www.vietcap.com.vn`:** Official VCI Securities IR portal. Live-verified 2026-06-12
+(run_id=`20260612T090059Z`). Honest project UA accepted; TLS certificate verified.
 
-**Domain `vcsc.com.vn`:** Connection timed out (20s) from probe environment.
-Cannot verify whether this is the correct VCI Securities domain.
-**Status: unresolved (timeout)**
+**FY2025 FS detail page:**
+- URL: `/en/investor-relations/financial-statements-for-financial-year-of-2025`
+- HTTP 200; `parse_vci_ir_detail_records` extracted `published_date=2026-02-13`
+- `quality_status=pass`, `pit_status=date_only_available`
+- PDF: `api/cms-api/uploads/froala/files/20260213 - VCI - Fin...` (on-domain)
 
-**VCI IR target:** `NOT_CONFIGURED`. Official domain must be verified manually before
-any execute-mode probe. See `company_ir_vci_disclosures` target in default set.
+**Q1 2026 FS detail page:**
+- URL: `/en/investor-relations/financial-statements-q1-2026`
+- HTTP 200; `parse_vci_ir_detail_records` extracted `published_date=2026-04-20`
+- `quality_status=pass`, `pit_status=date_only_available`
+- PDF: `api/cms-api/uploads/froala/files/20260420 - VCI - Fin...` (on-domain)
+
+**Previous wrong-entity probes (for reference only):**
+`vietcapital.com.vn` — VCAM (asset management), not VCI. `vcsc.com.vn` — timed out.
+Both are superseded by the verified `www.vietcap.com.vn` domain.
 
 ---
 
@@ -137,6 +142,7 @@ python scripts/probe_official_disclosures.py \
 
 ## Open Blockers
 
-1. **VCI IR domain:** Unresolved. `vietcapital.com.vn` is wrong entity (VCAM). `vcsc.com.vn` timed out. Verify via HOSE official issuer profile page (requires JS execution).
-2. **HOSE structured API:** React SPA. api.hsx.vn endpoint paths require JS runtime or separate API contract documentation.
-3. **HNX structured feed:** Navigation hub. Disclosure items load via jQuery AJAX; feed URL not in static HTML.
+1. **HOSE structured API:** React SPA. `api.hsx.vn` endpoint paths require JS runtime or separate API contract documentation.
+2. **HNX structured feed:** Navigation hub. Disclosure items load via jQuery AJAX; feed URL not in static HTML. Also times out in probe environment.
+
+VCI IR is fully resolved — both FY2025 and Q1 2026 FS pages are live-verified.

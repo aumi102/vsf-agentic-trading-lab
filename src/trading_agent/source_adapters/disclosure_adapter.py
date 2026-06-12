@@ -56,7 +56,6 @@ class DisclosureTarget:
     headers: dict[str, str] = field(default_factory=dict)
     request_params: dict[str, Any] = field(default_factory=dict)
     terms_notes: str = ""
-    ssl_verify: bool = True
 
     @property
     def is_configured(self) -> bool:

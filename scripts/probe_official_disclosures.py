@@ -14,7 +14,6 @@ import hashlib
 import json
 import re
 import random
-import ssl
 import sys
 import time
 from dataclasses import dataclass
@@ -22,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 
@@ -44,13 +44,8 @@ MIN_SLEEP_SECONDS = 2.0
 MAX_REQUESTS_DEFAULT = 5
 DEFAULT_MAX_RECORDS_PER_TARGET = 20
 
-# Default headers mimic a standard browser request.
-# Many official disclosure pages block non-browser user-agent strings.
 _DEFAULT_REQUEST_HEADERS: dict[str, str] = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-    ),
+    "User-Agent": "vsf-agentic-trading-lab/0.1 official-source-probe",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8",
     "Connection": "close",
@@ -60,6 +55,7 @@ DEFAULT_OUTPUT_BASE = ROOT / "data/raw/official_disclosures"
 DEFAULT_BRONZE_BASE = ROOT / "data/bronze/official_disclosures"
 
 _FPT_OFFICIAL_DOMAIN = "fpt.com"
+_VCI_OFFICIAL_DOMAIN = "www.vietcap.com.vn"
 
 # Matches a single FPT IR disclosure block: link+title+date.
 # FPT IR uses Sitecore CMS. Structure confirmed from fpt.com/en/ir/information-disclosures.
@@ -70,6 +66,16 @@ _DISCLOSURE_BLOCK_RE = re.compile(
     r'.*?Updated:\s*(\d{1,2}/\d{1,2}/\d{4})',
     re.DOTALL,
 )
+
+# Vietcap IR detail-page patterns
+_VCI_DATE_RE = re.compile(
+    r'\b(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4})\b',
+    re.IGNORECASE,
+)
+_VCI_H1_RE = re.compile(r'<h1[^>]*>\s*([^<]+?)\s*</h1>', re.IGNORECASE | re.DOTALL)
+_VCI_H2_RE = re.compile(r'<h2[^>]*>\s*([^<]+?)\s*</h2>', re.IGNORECASE | re.DOTALL)
+_VCI_TITLE_TAG_RE = re.compile(r'<title[^>]*>\s*([^<]+?)\s*</title>', re.IGNORECASE)
+_VCI_PDF_RE = re.compile(r'href="([^"]*\.pdf[^"]*)"', re.IGNORECASE)
 
 GUARDRAILS = [
     "No network requests unless --execute is supplied.",
@@ -82,6 +88,12 @@ GUARDRAILS = [
 ]
 
 _TARGETS_SCHEMA_VERSION = "disclosure_targets_config_v1"
+
+# Access statuses that produce no disclosure records.
+_PROBE_ONLY_STATUSES: frozenset[str] = frozenset({
+    "blocked", "auth_required", "rejected_response",
+    "not_configured", "error", "js_app_shell",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -101,18 +113,11 @@ def get_url(
     headers: dict[str, str],
     *,
     timeout: int = 20,
-    ssl_verify: bool = True,
 ) -> HttpResponse:
     merged = {**_DEFAULT_REQUEST_HEADERS, **headers}
     request = Request(url, headers=merged, method="GET")
-    if ssl_verify:
-        ctx: ssl.SSLContext | None = None
-    else:
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
     try:
-        with urlopen(request, timeout=timeout, context=ctx) as resp:
+        with urlopen(request, timeout=timeout) as resp:
             return HttpResponse(
                 status_code=int(getattr(resp, "status", 0) or 0),
                 content_type=resp.headers.get("content-type", ""),
@@ -205,15 +210,27 @@ def build_default_targets(symbols: list[str]) -> list[DisclosureTarget]:
     targets.append(DisclosureTarget(
         source_family="company_ir",
         exchange="HOSE",
-        official_domain="unresolved",
-        adapter_name="company_ir_vci_v1",
-        dataset="company_ir_vci_disclosures",
+        official_domain=_VCI_OFFICIAL_DOMAIN,
+        adapter_name="company_ir_vietcap_v1",
+        dataset="company_ir_vci_fy2025_fs",
         symbol="VCI",
         url="",
         terms_notes=(
-            "VCI (Viet Capital Securities) IR — official domain unresolved. "
-            "vietcapital.com.vn is VCAM (asset management), not VCI (securities broker). "
-            "vcsc.com.vn timed out. VCI IR target requires manual domain verification."
+            "VCI (Viet Capital Securities) official IR — FY2025 Financial Statements detail page. "
+            "www.vietcap.com.vn verified as official VCI domain."
+        ),
+    ))
+    targets.append(DisclosureTarget(
+        source_family="company_ir",
+        exchange="HOSE",
+        official_domain=_VCI_OFFICIAL_DOMAIN,
+        adapter_name="company_ir_vietcap_v1",
+        dataset="company_ir_vci_q1_2026_fs",
+        symbol="VCI",
+        url="",
+        terms_notes=(
+            "VCI (Viet Capital Securities) official IR — Q1 2026 Financial Statements detail page. "
+            "www.vietcap.com.vn verified as official VCI domain."
         ),
     ))
     return targets
@@ -236,7 +253,7 @@ def apply_targets_config(
             import dataclasses
             updates = {
                 k: ov[k]
-                for k in ("url", "method", "headers", "request_params", "terms_notes", "official_domain", "ssl_verify")
+                for k in ("url", "method", "headers", "request_params", "terms_notes", "official_domain")
                 if k in ov
             }
             t = dataclasses.replace(t, **updates)
@@ -468,6 +485,10 @@ def capture_raw_evidence(
 
 def _normalize_fpt_url(href: str) -> str:
     if href.startswith("http"):
+        parsed = urlparse(href)
+        host = parsed.netloc.lower()
+        if not (host == _FPT_OFFICIAL_DOMAIN or host.endswith("." + _FPT_OFFICIAL_DOMAIN)):
+            return ""
         return href
     if href.startswith("/"):
         return f"https://{_FPT_OFFICIAL_DOMAIN}{href}"
@@ -477,12 +498,8 @@ def _normalize_fpt_url(href: str) -> str:
 def _parse_fpt_date(date_str: str) -> str:
     """Parse M/D/YYYY from FPT IR page into YYYY-MM-DD. Returns '' on failure."""
     try:
-        parts = date_str.strip().split("/")
-        if len(parts) != 3:
-            return ""
-        m, d, y = parts
-        return f"{int(y):04d}-{int(m):02d}-{int(d):02d}"
-    except Exception:
+        return datetime.strptime(date_str.strip(), "%m/%d/%Y").strftime("%Y-%m-%d")
+    except ValueError:
         return ""
 
 
@@ -524,7 +541,7 @@ def parse_fpt_ir_html_records(
 ) -> list[DisclosureRecord]:
     """Parse FPT official IR HTML into a list of DisclosureRecord (up to max_records).
 
-    Returns a single warn record if no items are found (HTML page with no matching items).
+    Returns [] if no items are found — no pseudo rows for non-matching pages.
     """
     html = body.decode("utf-8", errors="replace")
     body_sha256 = hashlib.sha256(body).hexdigest()
@@ -550,9 +567,7 @@ def parse_fpt_ir_html_records(
 
         disclosure_id = f"fpt_ir_{hashlib.sha256(doc_url.encode()).hexdigest()[:12]}"
 
-        pit_status = (
-            assign_pit_status(published_at="", published_date=published_date, access_status="verified")
-        )
+        pit_status = assign_pit_status(published_at="", published_date=published_date, access_status="verified")
 
         warning_codes: list[str] = []
         error_codes: list[str] = []
@@ -598,46 +613,149 @@ def parse_fpt_ir_html_records(
 
         records.append(DisclosureRecord(**record_dict))
 
-    if not records:
-        # No items matched — emit a single warn record (not a block; could be page change).
-        record_dict = {
-            "source_family": target.source_family,
-            "exchange": target.exchange,
-            "official_domain": target.official_domain,
-            "adapter_name": target.adapter_name,
-            "disclosure_id": f"fpt_ir_{body_sha256[:12]}",
-            "symbol": target.symbol,
-            "issuer_name": "",
-            "document_category": "",
-            "title": "",
-            "published_at": "",
-            "published_date": "",
-            "effective_at": "",
-            "page_url": target.url,
-            "document_url": "",
-            "attachment_name": "",
-            "attachment_type": "",
-            "language": "en",
-            "crawled_at": crawled_at,
-            "raw_path": str(payload_path),
-            "metadata_path": str(metadata_path),
-            "body_sha256": body_sha256,
-            "parser_version": BRONZE_PARSER_VERSION,
-            "schema_version": BRONZE_SCHEMA_VERSION,
-            "quality_status": "",
-            "pit_status": assign_pit_status(
-                published_at="", published_date="", access_status="verified"
-            ),
-            "warning_codes": ["html_no_disclosure_items_found"],
-            "error_codes": [],
-        }
-        quality_status, extra_warnings, extra_errors = check_disclosure_quality(record_dict)
-        record_dict["quality_status"] = quality_status
-        record_dict["warning_codes"] = sorted({"html_no_disclosure_items_found"} | set(extra_warnings))
-        record_dict["error_codes"] = sorted(set(extra_errors))
-        records.append(DisclosureRecord(**record_dict))
-
     return records
+
+
+# ---------------------------------------------------------------------------
+# Vietcap IR detail-page parser
+# ---------------------------------------------------------------------------
+
+def _normalize_vci_url(href: str) -> str:
+    if href.startswith("http"):
+        parsed = urlparse(href)
+        host = parsed.netloc.lower()
+        if not (host == _VCI_OFFICIAL_DOMAIN or host.endswith("." + _VCI_OFFICIAL_DOMAIN)):
+            return ""
+        return href
+    if href.startswith("/"):
+        return f"https://{_VCI_OFFICIAL_DOMAIN}{href}"
+    return href
+
+
+def _parse_vci_date(date_str: str) -> str:
+    """Parse 'D Mon YYYY' (e.g. '13 Feb 2026') from Vietcap IR page into YYYY-MM-DD."""
+    try:
+        return datetime.strptime(date_str.strip(), "%d %b %Y").strftime("%Y-%m-%d")
+    except ValueError:
+        return ""
+
+
+def _infer_vci_doc_category(title: str, url: str) -> str:
+    title_lc = title.lower()
+    url_lc = url.lower()
+    if "financial-year" in url_lc or ("annual" in title_lc and "financial" in title_lc):
+        return "annual_financial_statement"
+    for q in ("q1-", "q2-", "q3-", "q4-", "-q1", "-q2", "-q3", "-q4"):
+        if q in url_lc or q in title_lc:
+            return "quarterly_financial_statement"
+    if "quarter" in title_lc or "quarter" in url_lc:
+        return "quarterly_financial_statement"
+    if "financial-statement" in url_lc or "financial statement" in title_lc:
+        return "financial_statement"
+    return "disclosure"
+
+
+def parse_vci_ir_detail_records(
+    body: bytes,
+    target: DisclosureTarget,
+    payload_path: Path,
+    metadata_path: Path,
+    crawled_at: str,
+) -> list[DisclosureRecord]:
+    """Parse a Vietcap IR detail page. Returns at most 1 DisclosureRecord per page.
+
+    Returns [] if no title or date can be extracted from the page.
+    """
+    html = body.decode("utf-8", errors="replace")
+    body_sha256 = hashlib.sha256(body).hexdigest()
+
+    # Extract page title from h1, h2, or <title>
+    title = ""
+    h1_match = _VCI_H1_RE.search(html)
+    if h1_match:
+        title = _decode_html_entities(h1_match.group(1).strip())
+    if not title:
+        h2_match = _VCI_H2_RE.search(html)
+        if h2_match:
+            title = _decode_html_entities(h2_match.group(1).strip())
+    if not title:
+        title_match = _VCI_TITLE_TAG_RE.search(html)
+        if title_match:
+            raw = _decode_html_entities(title_match.group(1).strip())
+            for sep in (" | ", " - ", " – "):
+                if sep in raw:
+                    raw = raw.split(sep)[0].strip()
+            title = raw
+
+    # Extract first date in "D Mon YYYY" format
+    date_match = _VCI_DATE_RE.search(html)
+    published_date = _parse_vci_date(date_match.group(1)) if date_match else ""
+
+    # No meaningful content — return empty (no pseudo row)
+    if not title and not published_date:
+        return []
+
+    # Extract first on-domain PDF URL
+    document_url = ""
+    for pdf_href in _VCI_PDF_RE.findall(html):
+        normalized = _normalize_vci_url(pdf_href)
+        if normalized:
+            document_url = normalized
+            break
+
+    doc_category = _infer_vci_doc_category(title, target.url)
+    attachment_name = document_url.split("/")[-1].split("?")[0] if document_url else ""
+    attachment_type = "pdf" if document_url.lower().split("?")[0].endswith(".pdf") else ""
+
+    disclosure_id = f"vci_ir_{hashlib.sha256(target.url.encode()).hexdigest()[:12]}"
+
+    pit_status = assign_pit_status(published_at="", published_date=published_date, access_status="verified")
+
+    warning_codes: list[str] = []
+    error_codes: list[str] = []
+    if not published_date:
+        warning_codes.append("publication_date_unknown")
+    if not title:
+        warning_codes.append("title_missing")
+    if not document_url:
+        warning_codes.append("document_url_missing")
+
+    record_dict: dict[str, Any] = {
+        "source_family": target.source_family,
+        "exchange": target.exchange,
+        "official_domain": target.official_domain,
+        "adapter_name": target.adapter_name,
+        "disclosure_id": disclosure_id,
+        "symbol": target.symbol,
+        "issuer_name": "Viet Capital Securities",
+        "document_category": doc_category,
+        "title": title,
+        "published_at": "",
+        "published_date": published_date,
+        "effective_at": "",
+        "page_url": target.url,
+        "document_url": document_url,
+        "attachment_name": attachment_name,
+        "attachment_type": attachment_type,
+        "language": "en",
+        "crawled_at": crawled_at,
+        "raw_path": str(payload_path),
+        "metadata_path": str(metadata_path),
+        "body_sha256": body_sha256,
+        "parser_version": BRONZE_PARSER_VERSION,
+        "schema_version": BRONZE_SCHEMA_VERSION,
+        "quality_status": "",
+        "pit_status": pit_status,
+        "warning_codes": warning_codes,
+        "error_codes": error_codes,
+    }
+
+    quality_status, extra_warnings, extra_errors = check_disclosure_quality(record_dict)
+    record_dict["quality_status"] = quality_status
+    record_dict["warning_codes"] = sorted(set(warning_codes + extra_warnings))
+    record_dict["error_codes"] = sorted(set(error_codes + extra_errors))
+
+    return [DisclosureRecord(**record_dict)]
 
 
 # ---------------------------------------------------------------------------
@@ -653,17 +771,36 @@ def extract_disclosure_records(
     crawled_at: str,
     max_records: int = DEFAULT_MAX_RECORDS_PER_TARGET,
 ) -> list[DisclosureRecord]:
-    """Route to the appropriate parser; return a list of DisclosureRecord."""
+    """Route to the appropriate parser; return a list of DisclosureRecord.
+
+    Returns [] for probe-only statuses (shell, auth, blocked, error).
+    Only actual disclosure items become DisclosureRecord entries.
+    """
+    access_status = classify_access_status(response)
+    if access_status in _PROBE_ONLY_STATUSES:
+        return []
+
     ct = response.content_type.lower()
-    if "html" in ct and target.official_domain == _FPT_OFFICIAL_DOMAIN:
-        return parse_fpt_ir_html_records(
-            body=response.body,
-            target=target,
-            payload_path=payload_path,
-            metadata_path=metadata_path,
-            crawled_at=crawled_at,
-            max_records=max_records,
-        )
+    if "html" in ct:
+        if target.official_domain == _FPT_OFFICIAL_DOMAIN:
+            return parse_fpt_ir_html_records(
+                body=response.body,
+                target=target,
+                payload_path=payload_path,
+                metadata_path=metadata_path,
+                crawled_at=crawled_at,
+                max_records=max_records,
+            )
+        if target.official_domain == _VCI_OFFICIAL_DOMAIN:
+            return parse_vci_ir_detail_records(
+                body=response.body,
+                target=target,
+                payload_path=payload_path,
+                metadata_path=metadata_path,
+                crawled_at=crawled_at,
+            )
+        return []
+
     return [parse_to_bronze_record(
         response=response,
         target=target,
@@ -844,7 +981,6 @@ def run_disclosure_probe(
     completed = set(prior.get("completed_datasets", []) if prior and not force else [])
     failed: set[str] = set(prior.get("failed_datasets", []) if prior and not force else [])
 
-    get = http_get or get_url
     random_source = rng or random.Random()
 
     checkpoint_doc = build_checkpoint(
@@ -874,7 +1010,7 @@ def run_disclosure_probe(
             if http_get is not None:
                 response = http_get(target.url, target.headers)
             else:
-                response = get_url(target.url, target.headers, ssl_verify=target.ssl_verify)
+                response = get_url(target.url, target.headers)
             evidence_dir = Path(request_item["output_dir"])
             payload_path, metadata_path = capture_raw_evidence(
                 output_dir=evidence_dir,

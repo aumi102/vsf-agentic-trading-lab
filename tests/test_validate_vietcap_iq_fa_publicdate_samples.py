@@ -148,18 +148,18 @@ def test_comparable_status_requires_official_date() -> None:
         ))
 
 
-def test_committed_csv_returns_pit_inconclusive() -> None:
+def test_committed_csv_returns_pit_supported_small_sample() -> None:
     _, summary = load_and_validate(DEFAULT_INPUT)
     assert summary["total_samples"] == 8
-    assert summary["pit_sample_status"] == "pit_inconclusive"
-    assert summary["match_status_counts"]["near_match_1_3_days"] == 2
+    assert summary["pit_sample_status"] == "pit_supported_small_sample"
+    assert summary["match_status_counts"]["exact_match"] == 2
+    assert summary["match_status_counts"]["near_match_1_3_days"] == 4
     assert summary["match_status_counts"]["vietcap_after_official"] == 2
-    assert summary["match_status_counts"]["official_not_found"] == 4
-    assert summary["match_status_counts"]["exact_match"] == 0
+    assert summary["match_status_counts"]["official_not_found"] == 0
     assert summary["match_status_counts"]["vietcap_before_official"] == 0
+    assert summary["confidence_counts"]["high"] == 4
     assert summary["confidence_counts"]["medium"] == 4
-    assert summary["confidence_counts"]["none"] == 4
-    assert summary["confidence_counts"]["low"] == 0
+    assert summary["confidence_counts"]["none"] == 0
 
 
 def test_final_status_supported_small_sample(tmp_path: Path) -> None:

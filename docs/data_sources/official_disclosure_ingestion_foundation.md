@@ -31,7 +31,7 @@ It is a prerequisite for resolving the VCI `pit_inconclusive` status.
 
 ### Contracts (`disclosure_adapter.py`)
 
-**`DisclosureTarget`** — configured probe target. `is_configured` is `True` only when `url` is non-empty. Fields include `ssl_verify` (default `True`) for targets requiring SSL bypass.
+**`DisclosureTarget`** — configured probe target. `is_configured` is `True` only when `url` is non-empty. No `ssl_verify` field — TLS certificate verification is always enforced.
 
 **`DisclosureRecord`** — normalized bronze output. Fields: `source_family`, `exchange`, `official_domain`, `adapter_name`, `disclosure_id`, `symbol`, `issuer_name`, `document_category`, `title`, `published_at`, `published_date`, `effective_at`, `page_url`, `document_url`, `attachment_name`, `attachment_type`, `language`, `crawled_at`, `raw_path`, `metadata_path`, `body_sha256`, `parser_version`, `schema_version`, `quality_status`, `pit_status`, `warning_codes`, `error_codes`.
 
@@ -60,8 +60,8 @@ python scripts/probe_official_disclosures.py [options]
 --force                  Re-fetch targets already completed in checkpoint
 ```
 
-Default request headers include a browser User-Agent to pass CDN bot filters.
-Per-target `ssl_verify: false` available for sites with non-standard CAs (e.g. HNX).
+Request headers use an honest project User-Agent (`vsf-agentic-trading-lab/0.1 official-source-probe`).
+TLS certificates are always verified; there is no `ssl_verify` bypass.
 
 ### FPT IR HTML Parser
 
@@ -71,13 +71,30 @@ Parses FPT Corporation's official IR page (Sitecore CMS, server-rendered HTML).
 Dispatched from `extract_disclosure_records` when `official_domain == "fpt.com"` and content type is HTML.
 
 - Regex matches `<div class="media-download-section-key-information-content">` blocks.
-- Extracts title, `Updated: M/D/YYYY` date, and PDF href per block.
+- Extracts title, `Updated: M/D/YYYY` date (calendar-validated via `strptime`), and PDF href per block.
+- Domain-validates absolute hrefs: off-domain URLs are rejected (empty string).
 - Normalizes relative hrefs against `https://fpt.com`.
-- Parses date `M/D/YYYY` → `YYYY-MM-DD`; empty on parse failure.
-- Infers document category from title keywords (annual_report, quarterly_financial_statement, disclosure, board_resolution).
+- Infers document category from title keywords (annual_report, quarterly_financial_statement, financial_statement, board_resolution).
 - Generates deterministic `disclosure_id` from `sha256(doc_url)[:12]`.
 - Decodes HTML entities in title (&#39; → ', &amp; → &, etc.).
-- Returns up to `max_records` records; returns a single WARN record if no items match.
+- Returns up to `max_records` records; returns `[]` if no items match (no pseudo rows).
+
+### Vietcap IR Detail-Page Parser
+
+`parse_vci_ir_detail_records(body, target, payload_path, metadata_path, crawled_at)`
+
+Parses a Vietcap Securities IR detail page. One record per detail page.
+Dispatched from `extract_disclosure_records` when `official_domain == "www.vietcap.com.vn"` and content type is HTML.
+
+- Extracts title from `<h1>`, `<h2>`, or `<title>` tag (strips site-name suffix).
+- Extracts first date in `D Mon YYYY` format (calendar-validated via `strptime`).
+- Extracts first on-domain PDF URL; off-domain PDFs are rejected.
+- Infers category from URL slug (annual_financial_statement, quarterly_financial_statement).
+- Returns `[]` if no title and no date found (no pseudo rows).
+
+**Live verification (run_id=20260612T090059Z):**
+- FY2025 FS → `published_date=2026-02-13`, `quality=pass`, `pit=date_only_available`
+- Q1 2026 FS → `published_date=2026-04-20`, `quality=pass`, `pit=date_only_available`
 
 ### Raw Evidence Layout
 
@@ -106,16 +123,17 @@ Both `data/raw/` and `data/bronze/` are gitignored.
 
 ---
 
-## Live Activation Results (run_id=20260612T081136Z)
+## Live Activation Results
 
-| Source | HTTP | Access Status | Bronze Rows | PIT Level | Quality |
-|---|---|---|---|---|---|
-| FPT IR (`fpt.com`) | 200 | verified | 20 | date_only_available (all) | pass (all) |
-| HOSE (`www.hsx.vn`) | 200 | js_app_shell | 1 | blocked | warn |
-| HNX (`www.hnx.vn`) | timeout | error | 0 | — | — |
-| VCI IR | N/A | NOT_CONFIGURED | 0 | — | — |
+| Source | Run ID | HTTP | Access Status | Bronze Rows | PIT Level | Quality |
+|---|---|---|---|---|---|---|
+| FPT IR (`fpt.com`) | 20260612T081136Z | 200 | verified | 20 | date_only_available (all) | pass (all) |
+| VCI IR FY2025 FS (`www.vietcap.com.vn`) | 20260612T090059Z | 200 | verified | 1 | date_only_available | pass |
+| VCI IR Q1 2026 FS (`www.vietcap.com.vn`) | 20260612T090059Z | 200 | verified | 1 | date_only_available | pass |
+| HOSE (`www.hsx.vn`) | 20260612T052922Z | 200 | js_app_shell | 0 | blocked | — |
+| HNX (`www.hnx.vn`) | 20260612T052922Z | timeout | error | 0 | — | — |
 
-FPT Q1 2026 Consolidated FS `published_date=2026-04-24` — matches PIT validation CSV entry.
+FPT Q1 2026 `published_date=2026-04-24`, VCI FY2025 `published_date=2026-02-13`, VCI Q1 2026 `published_date=2026-04-20` — all match PIT validation CSV entries.
 
 ---
 
@@ -124,17 +142,18 @@ FPT Q1 2026 Consolidated FS `published_date=2026-04-24` — matches PIT validati
 | Dataset | Source | Symbol | Status after config |
 |---|---|---|---|
 | `company_ir_fpt_disclosures` | fpt.com | FPT | configured — verified, 20 bronze records |
-| `hose_disclosures_fpt` | www.hsx.vn | FPT | configured — js_app_shell, no structured data |
-| `hose_disclosures_vci` | www.hsx.vn | VCI | configured — js_app_shell, no structured data |
+| `company_ir_vci_fy2025_fs` | www.vietcap.com.vn | VCI | configured — verified, published_date=2026-02-13 |
+| `company_ir_vci_q1_2026_fs` | www.vietcap.com.vn | VCI | configured — verified, published_date=2026-04-20 |
+| `hose_disclosures_fpt` | www.hsx.vn | FPT | configured — js_app_shell, no disclosure records |
+| `hose_disclosures_vci` | www.hsx.vn | VCI | configured — js_app_shell, no disclosure records |
 | `hnx_disclosures_fpt` | www.hnx.vn | FPT | configured — timeout in production run |
 | `hnx_disclosures_vci` | www.hnx.vn | VCI | configured — timeout in production run |
-| `company_ir_vci_disclosures` | unresolved | VCI | NOT_CONFIGURED — domain unknown |
 
 ---
 
 ## Test Coverage
 
-`tests/test_probe_official_disclosures.py` — 67 tests:
+`tests/test_probe_official_disclosures.py` — 107 tests:
 
 - PIT status assignment (7)
 - Quality gate (5)
@@ -147,11 +166,18 @@ FPT Q1 2026 Consolidated FS `published_date=2026-04-24` — matches PIT validati
 - HTTP classification (4)
 - Config overlay (2)
 - Input validation (3)
-- FPT HTML parser (12): title, date, URL, ID, limit, missing-date, no-items, entities, attachment, PIT, quality, execute
-- Dispatch / extract_disclosure_records (2)
+- FPT HTML parser (11): title, date, URL, ID, limit, no-items (empty), entities, attachment, PIT, quality, execute
+- Dispatch / extract_disclosure_records (4): FPT HTML, JSON fallback, js_app_shell, auth, error
 - js_app_shell classification (3)
 - Config / activation (4)
 - FPT execute integration / js_app_shell checkpoint (2)
+- Security: honest UA (2), no ssl_verify field (2)
+- Probe-only status returns no records (4): js_app_shell, auth_required, error, js_app_shell execute
+- URL domain validation (7): FPT on/off-domain, VCI on/off-domain
+- Date validation (8): FPT strptime valid/invalid, VCI textual format Feb/Apr/invalid/wrong-format
+- VCI IR detail parser (11): title, FY2025 date, Q1 2026 date, PIT, PDF URL, off-domain PDF, no content, quality, dispatch
+- VCI config activation (2)
+- Document category semantics (6): FPT annual/quarterly/plain FS, FPT annual≠FS, VCI FY/Q1
 
 ---
 
@@ -169,9 +195,8 @@ FPT Q1 2026 Consolidated FS `published_date=2026-04-24` — matches PIT validati
 
 ## Gate Status
 
-- `publicDate` PIT semantics: still `pit_inconclusive`. FPT IR verified live (`date_only_available`, 20 records). VCI official evidence still unresolved.
+- `publicDate` PIT semantics: `pit_supported_small_sample` (8/8 credible, 0 red flags). FPT IR 20 records (`date_only_available`). VCI FY2025 (`2026-02-13`) and Q1 2026 (`2026-04-20`) exact-matched or near-matched Vietcap `publicDate`. Do not claim full PIT confirmation; small sample only.
 - DB write: still blocked.
 - Backtest: still blocked.
 - Mapping coverage gate: unchanged (BS 89.7% / IS 94.5% / CF 87.6%).
-
-To advance the PIT gate for VCI: resolve the VCI official IR domain, configure it, and run `--execute`. If the probe returns bronze records with `pit_status=date_only_available`, record dates in the PIT validation CSV and re-run the validator.
+- Security: fake browser UA removed; honest project UA in use. TLS bypass removed; certificates always verified. No pseudo disclosure rows for shells or parse failures.

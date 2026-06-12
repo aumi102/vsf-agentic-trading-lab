@@ -7,6 +7,13 @@ import pytest
 
 from scripts.probe_official_disclosures import (
     HttpResponse,
+    _DEFAULT_REQUEST_HEADERS,
+    _normalize_fpt_url,
+    _normalize_vci_url,
+    _parse_fpt_date,
+    _parse_vci_date,
+    _infer_fpt_doc_category,
+    _infer_vci_doc_category,
     apply_targets_config,
     build_default_targets,
     build_fetch_plan,
@@ -16,6 +23,7 @@ from scripts.probe_official_disclosures import (
     extract_disclosure_records,
     load_checkpoint,
     parse_fpt_ir_html_records,
+    parse_vci_ir_detail_records,
     parse_symbols,
     parse_to_bronze_record,
     run_disclosure_probe,
@@ -872,8 +880,8 @@ def test_parse_fpt_html_max_records_limit(tmp_path: Path) -> None:
     assert len(records) == 3
 
 
-def test_parse_fpt_html_missing_date_warns(tmp_path: Path) -> None:
-    # Build HTML with missing date block
+def test_parse_fpt_html_no_regex_match_returns_empty_list(tmp_path: Path) -> None:
+    # HTML with disclosure block structure but missing date — regex won't match
     body = (
         b'<html><body>'
         b'<div class="media-download-section-key-information-content">'
@@ -892,12 +900,10 @@ def test_parse_fpt_html_missing_date_warns(tmp_path: Path) -> None:
         crawled_at="2026-06-12T10:00:00+00:00",
     )
 
-    # No date → no match from regex (requires date); expect warn record
-    assert len(records) == 1
-    assert "html_no_disclosure_items_found" in records[0].warning_codes
+    assert records == []
 
 
-def test_parse_fpt_html_no_items_returns_single_warn_record(tmp_path: Path) -> None:
+def test_parse_fpt_html_no_items_returns_empty_list(tmp_path: Path) -> None:
     body = b"<html><body><p>No disclosure content</p></body></html>"
     payload_path = tmp_path / "p.html"
     payload_path.write_bytes(body)
@@ -910,8 +916,7 @@ def test_parse_fpt_html_no_items_returns_single_warn_record(tmp_path: Path) -> N
         crawled_at="2026-06-12T10:00:00+00:00",
     )
 
-    assert len(records) == 1
-    assert "html_no_disclosure_items_found" in records[0].warning_codes
+    assert records == []
 
 
 def test_parse_fpt_html_entity_decoded_in_title(tmp_path: Path) -> None:
@@ -1072,18 +1077,17 @@ def test_fpt_target_configured_after_apply_config() -> None:
     assert fpt_ir.url == "https://fpt.com/en/ir/information-disclosures"
 
 
-def test_vci_target_not_configured_by_default() -> None:
+def test_vci_targets_not_configured_by_default() -> None:
     targets = build_default_targets(["VCI"])
-    vci_ir = next((t for t in targets if t.dataset == "company_ir_vci_disclosures"), None)
-    assert vci_ir is not None
-    assert vci_ir.is_configured is False
+    vci_ir_targets = [t for t in targets if t.symbol == "VCI" and t.source_family == "company_ir"]
+    assert len(vci_ir_targets) >= 1
+    assert all(not t.is_configured for t in vci_ir_targets)
 
 
-def test_vci_official_domain_not_wrong_entity_by_default() -> None:
+def test_vci_official_domain_is_vietcap_by_default() -> None:
     targets = build_default_targets(["VCI"])
-    vci_ir = next((t for t in targets if t.dataset == "company_ir_vci_disclosures"), None)
-    assert vci_ir is not None
-    assert vci_ir.official_domain != "vietcapital.com.vn"
+    vci_ir_targets = [t for t in targets if t.symbol == "VCI" and t.source_family == "company_ir"]
+    assert any(t.official_domain == "www.vietcap.com.vn" for t in vci_ir_targets)
 
 
 def test_plan_request_count_positive_with_fpt_configured(tmp_path: Path) -> None:
@@ -1177,3 +1181,436 @@ def test_js_app_shell_target_marked_completed_not_failed(tmp_path: Path) -> None
 
     assert "hose_disclosures_fpt" in result["summary"]["completed_datasets"]
     assert "hose_disclosures_fpt" not in result["summary"]["failed_datasets"]
+
+
+# ---------------------------------------------------------------------------
+# Security: honest User-Agent (Part C)
+# ---------------------------------------------------------------------------
+
+def test_honest_ua_does_not_contain_chrome() -> None:
+    ua = _DEFAULT_REQUEST_HEADERS.get("User-Agent", "")
+    assert "Chrome" not in ua
+    assert "Mozilla" not in ua
+
+
+def test_honest_ua_identifies_project() -> None:
+    ua = _DEFAULT_REQUEST_HEADERS.get("User-Agent", "")
+    assert "vsf-agentic-trading-lab" in ua
+
+
+# ---------------------------------------------------------------------------
+# Security: no ssl_verify field on DisclosureTarget (Part B)
+# ---------------------------------------------------------------------------
+
+def test_disclosure_target_has_no_ssl_verify_field() -> None:
+    import dataclasses
+    field_names = {f.name for f in dataclasses.fields(DisclosureTarget)}
+    assert "ssl_verify" not in field_names
+
+
+def test_disclosure_target_creation_does_not_accept_ssl_verify() -> None:
+    import dataclasses
+    with pytest.raises(TypeError):
+        DisclosureTarget(
+            source_family="test", exchange="HOSE", official_domain="example.com",
+            adapter_name="a", dataset="d", url="https://example.com",
+            ssl_verify=False,  # type: ignore[call-arg]
+        )
+
+
+# ---------------------------------------------------------------------------
+# Part D: probe-only statuses produce no disclosure records
+# ---------------------------------------------------------------------------
+
+def test_extract_disclosure_records_returns_empty_for_js_app_shell(tmp_path: Path) -> None:
+    hose_shell = (
+        b'<!doctype html><html><body>'
+        b'<noscript>You need to enable JavaScript to run this app.</noscript>'
+        b'<div id="HOSE"></div></body></html>'
+    )
+    response = HttpResponse(200, "text/html", hose_shell, {})
+    target = DisclosureTarget(
+        source_family="hose", exchange="HOSE", official_domain="www.hsx.vn",
+        adapter_name="hose_disclosure_adapter_v1", dataset="hose_test", symbol="FPT",
+        url="https://www.hsx.vn/Modules/CMS/Web/CategoryDetail?alias=CBTT",
+    )
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(hose_shell)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = extract_disclosure_records(
+        response=response, target=target,
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+    assert records == []
+
+
+def test_extract_disclosure_records_returns_empty_for_auth_required(tmp_path: Path) -> None:
+    response = HttpResponse(403, "text/html", b"<html>Forbidden</html>", {})
+    target = _configured_target(dataset="auth_test")
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(b"<html>Forbidden</html>")
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = extract_disclosure_records(
+        response=response, target=target,
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+    assert records == []
+
+
+def test_extract_disclosure_records_returns_empty_for_error_status(tmp_path: Path) -> None:
+    response = HttpResponse(500, "text/html", b"Server Error", {})
+    target = _configured_target(dataset="error_test")
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(b"Server Error")
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = extract_disclosure_records(
+        response=response, target=target,
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+    assert records == []
+
+
+def test_js_app_shell_execute_writes_no_bronze_records(tmp_path: Path) -> None:
+    hose_shell = (
+        b'<!doctype html><html><body>'
+        b'<noscript>You need to enable JavaScript to run this app.</noscript>'
+        b'<div id="HOSE"></div></body></html>'
+    )
+
+    def fake_get(url: str, headers: dict) -> HttpResponse:
+        return HttpResponse(200, "text/html", hose_shell, {})
+
+    target = DisclosureTarget(
+        source_family="hose", exchange="HOSE", official_domain="www.hsx.vn",
+        adapter_name="hose_disclosure_adapter_v1", dataset="hose_disclosures_fpt",
+        symbol="FPT", url="https://www.hsx.vn/Modules/CMS/Web/CategoryDetail?alias=CBTT",
+    )
+    result = run_disclosure_probe(
+        targets=[target], max_requests=5, sleep_min_seconds=2.0, sleep_max_seconds=5.0,
+        execute=True, force=False, run_id="test_shell_no_bronze",
+        output_base=tmp_path / "raw", bronze_base=tmp_path / "bronze",
+        http_get=fake_get, sleeper=lambda _: None,
+    )
+    assert result["bronze_records"] == []
+
+
+# ---------------------------------------------------------------------------
+# Part E: URL domain validation
+# ---------------------------------------------------------------------------
+
+def test_normalize_fpt_url_accepts_relative_path() -> None:
+    assert _normalize_fpt_url("/-/media/fpt/doc.pdf") == "https://fpt.com/-/media/fpt/doc.pdf"
+
+
+def test_normalize_fpt_url_accepts_on_domain_absolute() -> None:
+    url = "https://fpt.com/-/media/fpt/q1.pdf"
+    assert _normalize_fpt_url(url) == url
+
+
+def test_normalize_fpt_url_rejects_off_domain() -> None:
+    assert _normalize_fpt_url("https://evil.com/steal.pdf") == ""
+
+
+def test_normalize_fpt_url_rejects_partial_domain_match() -> None:
+    assert _normalize_fpt_url("https://notfpt.com/doc.pdf") == ""
+
+
+def test_normalize_vci_url_accepts_relative_path() -> None:
+    assert _normalize_vci_url("/media/vci/annual.pdf") == "https://www.vietcap.com.vn/media/vci/annual.pdf"
+
+
+def test_normalize_vci_url_accepts_on_domain_absolute() -> None:
+    url = "https://www.vietcap.com.vn/media/vci/q1.pdf"
+    assert _normalize_vci_url(url) == url
+
+
+def test_normalize_vci_url_rejects_off_domain() -> None:
+    assert _normalize_vci_url("https://evil.com/fake.pdf") == ""
+
+
+# ---------------------------------------------------------------------------
+# Part F: calendar date validation
+# ---------------------------------------------------------------------------
+
+def test_parse_fpt_date_valid() -> None:
+    assert _parse_fpt_date("4/24/2026") == "2026-04-24"
+
+
+def test_parse_fpt_date_invalid_day_returns_empty() -> None:
+    assert _parse_fpt_date("13/40/2026") == ""
+
+
+def test_parse_fpt_date_invalid_month_returns_empty() -> None:
+    assert _parse_fpt_date("13/4/2026") == ""
+
+
+def test_parse_fpt_date_empty_string_returns_empty() -> None:
+    assert _parse_fpt_date("") == ""
+
+
+def test_parse_vci_date_feb_2026() -> None:
+    assert _parse_vci_date("13 Feb 2026") == "2026-02-13"
+
+
+def test_parse_vci_date_apr_2026() -> None:
+    assert _parse_vci_date("20 Apr 2026") == "2026-04-20"
+
+
+def test_parse_vci_date_invalid_returns_empty() -> None:
+    assert _parse_vci_date("40 Feb 2026") == ""
+
+
+def test_parse_vci_date_wrong_format_returns_empty() -> None:
+    assert _parse_vci_date("2026-02-13") == ""
+
+
+# ---------------------------------------------------------------------------
+# Part H: Vietcap IR detail-page parser
+# ---------------------------------------------------------------------------
+
+def _vci_target(dataset: str = "company_ir_vci_fy2025_fs") -> DisclosureTarget:
+    return DisclosureTarget(
+        source_family="company_ir",
+        exchange="HOSE",
+        official_domain="www.vietcap.com.vn",
+        adapter_name="company_ir_vietcap_v1",
+        dataset=dataset,
+        symbol="VCI",
+        url="https://www.vietcap.com.vn/en/investor-relations/financial-statements-for-financial-year-of-2025",
+    )
+
+
+def _vci_detail_html(title: str = "Financial Statements FY2025", date_str: str = "13 Feb 2026", pdf_href: str = "/media/vci/fy2025.pdf") -> bytes:
+    return f"""<html><head><title>{title} | VCI</title></head><body>
+    <h1>{title}</h1>
+    <p>Published: {date_str}</p>
+    <a href="{pdf_href}">Download PDF</a>
+    </body></html>""".encode("utf-8")
+
+
+def test_parse_vci_ir_detail_extracts_title(tmp_path: Path) -> None:
+    body = _vci_detail_html(title="VCI Annual Financial Statements 2025")
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_vci_ir_detail_records(
+        body=body, target=_vci_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+    assert len(records) == 1
+    assert "Annual Financial Statements 2025" in records[0].title
+
+
+def test_parse_vci_ir_detail_extracts_date_feb_2026(tmp_path: Path) -> None:
+    body = _vci_detail_html(date_str="13 Feb 2026")
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_vci_ir_detail_records(
+        body=body, target=_vci_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+    assert records[0].published_date == "2026-02-13"
+
+
+def test_parse_vci_ir_detail_extracts_date_apr_2026(tmp_path: Path) -> None:
+    target = DisclosureTarget(
+        source_family="company_ir", exchange="HOSE", official_domain="www.vietcap.com.vn",
+        adapter_name="company_ir_vietcap_v1", dataset="company_ir_vci_q1_2026_fs", symbol="VCI",
+        url="https://www.vietcap.com.vn/en/investor-relations/financial-statements-q1-2026",
+    )
+    body = _vci_detail_html(title="Q1 2026 Financial Statements", date_str="20 Apr 2026")
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_vci_ir_detail_records(
+        body=body, target=target,
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+    assert records[0].published_date == "2026-04-20"
+
+
+def test_parse_vci_ir_detail_pit_status_date_only_available(tmp_path: Path) -> None:
+    body = _vci_detail_html()
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_vci_ir_detail_records(
+        body=body, target=_vci_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+    assert records[0].pit_status == DisclosurePitStatus.DATE_ONLY_AVAILABLE.value
+
+
+def test_parse_vci_ir_detail_extracts_on_domain_pdf_url(tmp_path: Path) -> None:
+    body = _vci_detail_html(pdf_href="/media/vci/fy2025.pdf")
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_vci_ir_detail_records(
+        body=body, target=_vci_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+    assert records[0].document_url == "https://www.vietcap.com.vn/media/vci/fy2025.pdf"
+    assert records[0].attachment_type == "pdf"
+
+
+def test_parse_vci_ir_detail_rejects_off_domain_pdf(tmp_path: Path) -> None:
+    body = _vci_detail_html(pdf_href="https://evil.com/fake.pdf")
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_vci_ir_detail_records(
+        body=body, target=_vci_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+    assert records[0].document_url == ""
+    assert "document_url_missing" in records[0].warning_codes
+
+
+def test_parse_vci_ir_detail_returns_empty_for_no_content(tmp_path: Path) -> None:
+    body = b"<html><body><p>Page not found</p></body></html>"
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_vci_ir_detail_records(
+        body=body, target=_vci_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+    assert records == []
+
+
+def test_parse_vci_ir_detail_quality_pass(tmp_path: Path) -> None:
+    body = _vci_detail_html()
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = parse_vci_ir_detail_records(
+        body=body, target=_vci_target(),
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+    assert records[0].error_codes == []
+
+
+def test_extract_disclosure_records_routes_vci_html_domain(tmp_path: Path) -> None:
+    body = _vci_detail_html()
+    response = HttpResponse(200, "text/html; charset=utf-8", body, {})
+    target = _vci_target()
+    payload_path = tmp_path / "p.html"
+    payload_path.write_bytes(body)
+    metadata_path = tmp_path / "m.json"
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    records = extract_disclosure_records(
+        response=response, target=target,
+        payload_path=payload_path, metadata_path=metadata_path,
+        crawled_at="2026-06-12T10:00:00+00:00",
+    )
+    assert len(records) == 1
+    assert records[0].symbol == "VCI"
+
+
+# ---------------------------------------------------------------------------
+# Part G: VCI targets configured via config
+# ---------------------------------------------------------------------------
+
+def test_vci_fy2025_target_configured_after_apply_config() -> None:
+    targets = build_default_targets(["VCI"])
+    config = {
+        "targets": [
+            {
+                "dataset": "company_ir_vci_fy2025_fs",
+                "url": "https://www.vietcap.com.vn/en/investor-relations/financial-statements-for-financial-year-of-2025",
+            }
+        ]
+    }
+    updated = apply_targets_config(targets, config)
+    vci_fy = next((t for t in updated if t.dataset == "company_ir_vci_fy2025_fs"), None)
+    assert vci_fy is not None
+    assert vci_fy.is_configured is True
+
+
+def test_vci_q1_2026_target_configured_after_apply_config() -> None:
+    targets = build_default_targets(["VCI"])
+    config = {
+        "targets": [
+            {
+                "dataset": "company_ir_vci_q1_2026_fs",
+                "url": "https://www.vietcap.com.vn/en/investor-relations/financial-statements-q1-2026",
+            }
+        ]
+    }
+    updated = apply_targets_config(targets, config)
+    vci_q1 = next((t for t in updated if t.dataset == "company_ir_vci_q1_2026_fs"), None)
+    assert vci_q1 is not None
+    assert vci_q1.is_configured is True
+
+
+# ---------------------------------------------------------------------------
+# Part K: FPT document category semantics
+# ---------------------------------------------------------------------------
+
+def test_infer_fpt_doc_category_annual_report() -> None:
+    assert _infer_fpt_doc_category("Annual Report 2025", "/-/media/fpt/annual-report-2025.pdf") == "annual_report"
+
+
+def test_infer_fpt_doc_category_quarterly_fs() -> None:
+    assert _infer_fpt_doc_category("Financial Statements Q1 2026", "/-/media/fpt/q1-fs.pdf") == "quarterly_financial_statement"
+
+
+def test_infer_fpt_doc_category_financial_statement_no_quarter() -> None:
+    assert _infer_fpt_doc_category("Audited Financial Statements 2025", "/-/media/fpt/fs-2025.pdf") == "financial_statement"
+
+
+def test_infer_fpt_doc_category_annual_report_is_not_financial_statement() -> None:
+    # Annual reports and financial statements are distinct categories
+    cat = _infer_fpt_doc_category("Annual Report 2025", "/-/media/fpt/annual-report-2025.pdf")
+    assert cat == "annual_report"
+    assert cat != "financial_statement"
+
+
+def test_infer_vci_doc_category_financial_year() -> None:
+    assert _infer_vci_doc_category(
+        "Financial Statements FY2025",
+        "https://www.vietcap.com.vn/en/investor-relations/financial-statements-for-financial-year-of-2025",
+    ) == "annual_financial_statement"
+
+
+def test_infer_vci_doc_category_q1() -> None:
+    assert _infer_vci_doc_category(
+        "Q1 2026 Financial Statements",
+        "https://www.vietcap.com.vn/en/investor-relations/financial-statements-q1-2026",
+    ) == "quarterly_financial_statement"

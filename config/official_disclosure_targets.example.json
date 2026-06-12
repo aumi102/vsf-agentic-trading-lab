@@ -3,7 +3,7 @@
   "_note": "Example target configuration for the official disclosure probe. Copy to official_disclosure_targets.json and adjust as needed. Do not add secrets or session tokens.",
   "_run_evidence": {
     "manual_probe_run_id": "20260612T052922Z",
-    "sources_probed": ["fpt_ir", "vci_ir", "hsx_cbtt", "hnx_cbtt"],
+    "sources_probed": ["fpt_ir", "vci_ir_fy2025", "vci_ir_q1_2026", "hsx_cbtt", "hnx_cbtt"],
     "probe_date": "2026-06-12"
   },
   "targets": [
@@ -12,18 +12,36 @@
       "url": "https://fpt.com/en/ir/information-disclosures",
       "method": "GET",
       "official_domain": "fpt.com",
-      "ssl_verify": true,
-      "terms_notes": "FPT Corporation official IR page. Server-rendered Sitecore CMS HTML. HTTP 200 verified 2026-06-12. Contains 689+ PDF disclosure links parseable from static HTML. Cloudflare CDN requires browser User-Agent.",
+      "terms_notes": "FPT Corporation official IR page. Server-rendered Sitecore CMS HTML. HTTP 200 verified 2026-06-12. Contains 689+ PDF disclosure links parseable from static HTML.",
       "_access_status": "verified_html",
       "_parser": "parse_fpt_ir_html_records",
       "_max_records": 20
+    },
+    {
+      "dataset": "company_ir_vci_fy2025_fs",
+      "url": "https://www.vietcap.com.vn/en/investor-relations/financial-statements-for-financial-year-of-2025",
+      "method": "GET",
+      "official_domain": "www.vietcap.com.vn",
+      "terms_notes": "VCI official IR — FY2025 Financial Statements detail page. Official date: 13 Feb 2026 (2026-02-13). Adapter: company_ir_vietcap_v1.",
+      "_access_status": "pending_probe",
+      "_parser": "parse_vci_ir_detail_records",
+      "_expected_date": "2026-02-13"
+    },
+    {
+      "dataset": "company_ir_vci_q1_2026_fs",
+      "url": "https://www.vietcap.com.vn/en/investor-relations/financial-statements-q1-2026",
+      "method": "GET",
+      "official_domain": "www.vietcap.com.vn",
+      "terms_notes": "VCI official IR — Q1 2026 Financial Statements detail page. Official date: 20 Apr 2026 (2026-04-20). Adapter: company_ir_vietcap_v1.",
+      "_access_status": "pending_probe",
+      "_parser": "parse_vci_ir_detail_records",
+      "_expected_date": "2026-04-20"
     },
     {
       "dataset": "hose_disclosures_fpt",
       "url": "https://www.hsx.vn/Modules/CMS/Web/CategoryDetail?alias=CBTT",
       "method": "GET",
       "official_domain": "www.hsx.vn",
-      "ssl_verify": true,
       "terms_notes": "HOSE official disclosure hub. React SPA shell (1.9 KB, id=HOSE, noscript tag). HTTP 200 but no structured disclosure data in static HTML. Backend at api.hsx.vn; API endpoint paths not resolved from static JS bundle. Captures official parent page only.",
       "_access_status": "js_app_shell",
       "_parser": "none_html_shell_only",
@@ -34,8 +52,7 @@
       "url": "https://www.hsx.vn/Modules/CMS/Web/CategoryDetail?alias=CBTT",
       "method": "GET",
       "official_domain": "www.hsx.vn",
-      "ssl_verify": true,
-      "terms_notes": "HOSE official disclosure hub for VCI. Same SPA shell as FPT HOSE target. VCI company IR page separately unresolved (see company_ir_vci_disclosures).",
+      "terms_notes": "HOSE official disclosure hub for VCI. Same SPA shell as FPT HOSE target.",
       "_access_status": "js_app_shell",
       "_parser": "none_html_shell_only"
     },
@@ -44,27 +61,19 @@
       "url": "https://www.hnx.vn/en-gb/cong-bo-thong-tin.html",
       "method": "GET",
       "official_domain": "www.hnx.vn",
-      "ssl_verify": false,
-      "terms_notes": "HNX official disclosure navigation hub. HTTP 200, 41 KB HTML, jQuery AJAX (3 $.ajax calls). Disclosure items loaded dynamically — not present in static HTML response. SSL: HNX uses a locally-issued certificate not in standard CA bundle; ssl_verify=false required. Official parent page captured; structured disclosure feed endpoint unresolved.",
+      "terms_notes": "HNX official disclosure navigation hub. HTTP 200, 41 KB HTML, jQuery AJAX (3 $.ajax calls). Disclosure items loaded dynamically — not present in static HTML response. TLS certificate verification required; connection timed out in production probe environment. Official parent page captured; structured disclosure feed endpoint unresolved.",
       "_access_status": "html_ajax_shell",
       "_parser": "none_ajax_shell_only",
-      "_blocker": "jQuery AJAX loads disclosure data client-side. Feed endpoint URL not in static HTML source."
+      "_blocker": "jQuery AJAX loads disclosure data client-side. Feed endpoint URL not in static HTML source. Also timed out from probe environment."
     },
     {
       "dataset": "hnx_disclosures_vci",
       "url": "https://www.hnx.vn/en-gb/cong-bo-thong-tin.html",
       "method": "GET",
       "official_domain": "www.hnx.vn",
-      "ssl_verify": false,
-      "terms_notes": "HNX official disclosure navigation hub for VCI. Same AJAX shell as FPT HNX target. SSL bypass required (same as FPT HNX target).",
+      "terms_notes": "HNX official disclosure navigation hub for VCI. Same AJAX shell as FPT HNX target.",
       "_access_status": "html_ajax_shell",
       "_parser": "none_ajax_shell_only"
     }
-  ],
-  "_vci_ir_status": {
-    "domain_vietcapital_com_vn": "WRONG ENTITY — this is VCAM (Viet Capital Asset Management), not VCI (Viet Capital Securities). HTTP 200 returned a Rails app with VCAM branding.",
-    "domain_vcsc_com_vn": "TIMEOUT — server exists but did not respond within 20s from probe environment. Unverified.",
-    "resolution": "VCI official IR domain is unresolved. company_ir_vci_disclosures target is NOT_CONFIGURED until a verified official URL is supplied.",
-    "probe_date": "2026-06-12"
-  }
+  ]
 }

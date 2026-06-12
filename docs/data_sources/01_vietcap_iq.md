@@ -24,7 +24,7 @@ Probe stage only — not promoted to canonical storage.
 | FA mapping integration | Option C resolver wired; Mode B active; 7 output columns; 71 integration tests; 53,013 rows; 0 errors |
 | DB write | **Blocked** — all §17 gates not met |
 | Backtest | **Blocked** — DB write not implemented |
-| PIT semantics | **Unconfirmed** — sample status `pit_inconclusive`; FPT canonical evidence supportive; VCI official evidence unresolved |
+| PIT semantics | **Supported (small sample)** — `pit_supported_small_sample`; 8/8 credible; FPT and VCI IR live-verified |
 | Mapping coverage | Below 95% gate — union: BS 89.7% / IS 94.5% / CF 87.6%; 99 conflicts |
 
 ---
@@ -32,7 +32,7 @@ Probe stage only — not promoted to canonical storage.
 ## Key Constraints
 
 - `line_item_name` (legacy) is always empty — never populated by mapping resolver.
-- `publicDate` PIT semantics unconfirmed — sample status `pit_inconclusive`; FPT canonical evidence supportive; VCI official evidence unresolved; do not use for PIT backtest yet.
+- `publicDate` PIT semantics: `pit_supported_small_sample` (8/8 credible, 0 red flags). FPT IR and VCI official IR live-verified. Do not claim full PIT confirmation — small sample only; do not use for PIT backtest yet.
 - DB write blocked until all gates in `vietcap_iq_fa_ingestion_v2_readiness.md` §17 are met.
 - No full-history FA fetch until mapping, PIT, and schema gates are cleared.
 - Fetch universe (1,598 symbols) is not the final tradable asset list — liquidity and
@@ -43,7 +43,7 @@ Probe stage only — not promoted to canonical storage.
 ## Open Blockers
 
 - Mapping coverage below 95% per section; 99 name conflicts remain.
-- `publicDate` PIT semantics unconfirmed — VCI official IR domain unresolved; `vietcapital.com.vn` is VCAM (asset management), not VCI securities; `vcsc.com.vn` timed out; HOSE structured API requires JS runtime. FPT IR live-verified (20 bronze records, `date_only_available`, `quality_status=pass`). Vietstock secondary leads non-canonical.
+- `publicDate` PIT: `pit_supported_small_sample`. VCI official IR (`www.vietcap.com.vn`) live-verified: FY2025 `2026-02-13` (exact_match), Q1 2026 `2026-04-20` (near_match). FPT IR also live-verified (20 records). Vietstock secondary leads non-canonical.
 - Full-history FA fetch not implemented.
 - DB write not implemented (QuestDB schema not designed).
 - Backtest not implemented.
