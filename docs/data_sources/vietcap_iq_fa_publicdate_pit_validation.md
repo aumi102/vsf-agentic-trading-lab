@@ -9,14 +9,25 @@ toc_max_heading_level: 3
 ## Purpose
 
 Check whether Vietcap IQ FA `publicDate` can be treated as a point-in-time
-availability/publication field. This is a small validation pass only; it does
-not unblock DB writes or backtests.
+availability/publication field. This PR adds a machine-readable sample and an
+offline validator. It does not unblock DB writes or backtests.
+
+## Artifacts
+
+- Sample CSV: `docs/data_sources/vietcap_iq_fa_publicdate_validation_samples.csv`
+- Validator: `scripts/validate_vietcap_iq_fa_publicdate_samples.py`
+- Tests: `tests/test_validate_vietcap_iq_fa_publicdate_samples.py`
+
+The validator reads the CSV, parses dates, verifies `date_delta_days`, normalizes
+blank statuses, preserves unresolved statuses, counts confidence levels, and
+emits one of: `pit_red_flags_found`, `pit_inconclusive`, or
+`pit_supported_small_sample`. It never emits `pit_confirmed_full`.
 
 ## Sample Selection
 
-The sample uses saved local FA payloads only. It covers FPT and VCI where saved
-payloads exist, BALANCE_SHEET / INCOME_STATEMENT / CASH_FLOW, annual and Q1
-periods, and recent periods most likely to have accessible disclosure pages.
+The 8-row sample uses saved local FA payloads only. It covers FPT and VCI,
+BALANCE_SHEET / INCOME_STATEMENT / CASH_FLOW, annual and Q1 periods, and recent
+periods likely to have accessible disclosure pages.
 
 Saved payload sources:
 
@@ -29,57 +40,47 @@ Saved payload sources:
 ## Validation Method
 
 For each sample row, compare Vietcap `publicDate` to the best official or
-authoritative disclosure evidence found in a tiny manual lookup. Source priority
-was exchange/company official disclosure pages first. FPT official IR disclosures
-were accessible. Vietcap official disclosure pages returned 403 from this
-environment, and no HOSE disclosure date was recovered in this pass.
+authoritative disclosure evidence found in a tiny manual lookup. FPT official IR
+disclosures were accessible at `https://fpt.com/en/ir/information-disclosures`.
+Vietcap official disclosure pages returned 403 from this environment, and no
+HOSE disclosure date was recovered for VCI in this pass.
 
-Classification:
-
-- `exact_match`: same date.
-- `near_match_1_3_days`: Vietcap date is within 1-3 days of official date.
-- `after_official`: Vietcap date is later than official date by more than 3 days.
-- `before_official`: Vietcap date is earlier than official date.
-- `not_found`: official disclosure date was not found.
-- `ambiguous`: source date is not clearly a disclosure date.
+Normalized `match_status` values: `exact_match`, `near_match_1_3_days`,
+`vietcap_after_official`, `vietcap_before_official`, `official_not_found`,
+`ambiguous_basis`, and `not_comparable`.
 
 ## Sample Results
 
-| Symbol | Section | Period | Vietcap `publicDate` | Official evidence | Official date | Delta | Status | Note |
-|---|---|---:|---|---|---|---:|---|---|
-| FPT | BALANCE_SHEET | 2025 annual | 2026-03-20 | FPT IR: audited consolidated/separate FS 2025 | 2026-03-19 | +1 | near_match_1_3_days | Conservative by 1 day |
-| FPT | CASH_FLOW | 2025 annual | 2026-03-20 | FPT IR: audited consolidated/separate FS 2025 | 2026-03-19 | +1 | near_match_1_3_days | Same period source |
-| FPT | BALANCE_SHEET | 2026 Q1 | 2026-04-28 | FPT IR: consolidated/separate FS Q1 2026 | 2026-04-24 | +4 | after_official | Conservative by 4 days |
-| FPT | CASH_FLOW | 2026 Q1 | 2026-04-28 | FPT IR: consolidated/separate FS Q1 2026 | 2026-04-24 | +4 | after_official | Same period source |
-| VCI | BALANCE_SHEET | 2025 annual | 2026-02-13 | Vietcap official page blocked; HOSE not found |  |  | not_found | Do not infer |
-| VCI | INCOME_STATEMENT | 2025 annual | 2026-02-13 | Vietcap official page blocked; HOSE not found |  |  | not_found | Do not infer |
-| VCI | BALANCE_SHEET | 2026 Q1 | 2026-04-21 | Vietcap official page blocked; HOSE not found |  |  | not_found | Do not infer |
-| VCI | CASH_FLOW | 2026 Q1 | 2026-04-21 | Vietcap official page blocked; HOSE not found |  |  | not_found | Do not infer |
+| Symbol | Section | Period | Vietcap date | Official date | Delta | Status | Confidence |
+|---|---|---:|---|---|---:|---|---|
+| FPT | BALANCE_SHEET | 2025 annual | 2026-03-20 | 2026-03-19 | +1 | `near_match_1_3_days` | medium |
+| FPT | CASH_FLOW | 2025 annual | 2026-03-20 | 2026-03-19 | +1 | `near_match_1_3_days` | medium |
+| FPT | BALANCE_SHEET | 2026 Q1 | 2026-04-28 | 2026-04-24 | +4 | `vietcap_after_official` | medium |
+| FPT | CASH_FLOW | 2026 Q1 | 2026-04-28 | 2026-04-24 | +4 | `vietcap_after_official` | medium |
+| VCI | BALANCE_SHEET | 2025 annual | 2026-02-13 |  |  | `official_not_found` | none |
+| VCI | INCOME_STATEMENT | 2025 annual | 2026-02-13 |  |  | `official_not_found` | none |
+| VCI | BALANCE_SHEET | 2026 Q1 | 2026-04-21 |  |  | `official_not_found` | none |
+| VCI | CASH_FLOW | 2026 Q1 | 2026-04-21 |  |  | `official_not_found` | none |
 
-Official source used for FPT:
-`https://fpt.com/en/ir/information-disclosures` (checked 2026-06-12).
+Validator counts:
+
+- `near_match_1_3_days`: 2
+- `vietcap_after_official`: 2
+- `official_not_found`: 4
+- `exact_match`, `vietcap_before_official`, `ambiguous_basis`, `not_comparable`: 0
+- Confidence: medium=4, none=4
 
 ## Findings
 
-- FPT rows are not early versus official disclosure evidence.
-- FPT 2025 annual rows are within 1 day of the official IR update date.
-- FPT 2026 Q1 rows are 4 days after the official IR update date, which is
-  conservative for PIT use but not an exact match.
-- VCI rows could not be validated in this pass because official disclosure
-  evidence was not accessible/found.
-- No `before_official` red flag was observed in the validated FPT rows.
+Final PIT sample status: `pit_inconclusive`.
 
-Sample evidence supports `publicDate` as a candidate PIT availability field, but
-sample size is too small for full confirmation.
+FPT rows are supportive: none are earlier than official company IR disclosure
+dates, and the Q1 rows are conservative by 4 days. No credible
+`vietcap_before_official` red flag was observed.
 
-## Risk Assessment
-
-`publicDate` remains unconfirmed. The main unresolved risks are:
-
-- FPT-only official matches may not generalize to VCI or other issuers.
-- Company IR "updated" dates may differ from exchange filing timestamps.
-- VCI official evidence was blocked or not found in this tiny pass.
-- Older periods were not cross-checked against official filing records.
+The sample is still inconclusive because 4/8 rows lack official evidence and
+only one issuer has comparable official evidence. `publicDate` remains
+unconfirmed and must not be used for PIT backtests yet.
 
 ## Gate Status
 
@@ -88,10 +89,9 @@ sample size is too small for full confirmation.
 - Backtest remains blocked.
 - QuestDB schema not designed.
 - Full-history FA fetch not implemented.
-- `publicDate` PIT semantics remain unconfirmed.
 
 ## Next Action
 
-Broaden the manual PIT check to exchange records for VCI plus at least one more
-HOSE issuer. Confirm that `publicDate` is never before the official disclosure
-date before using it as a PIT availability field.
+Broaden the PIT check to exchange records for VCI plus at least one more HOSE
+issuer. Require no credible `vietcap_before_official` rows before treating
+`publicDate` as a PIT availability field.

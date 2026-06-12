@@ -20,11 +20,11 @@ Probe stage only — not promoted to canonical storage.
 | OHLCV gap-chart | HTTP 200 for FPT/VNM/VCB; parser dry-run: 14,079 rows; full-universe fetch not approved |
 | Controlled fetcher | Tiny execute passed for FPT/VNM/VCB; checkpoint/resume design in place |
 | FA endpoint | HTTP 200 (clean 8-header profile); BS/IS/CF confirmed for VCI and FPT |
-| FA parser | Dry-run complete; 7 validation checks; `--strict` mode; 566 tests pass |
+| FA parser | Dry-run complete; 7 validation checks; `--strict` mode; 577 tests pass |
 | FA mapping integration | Option C resolver wired; Mode B active; 7 output columns; 71 integration tests; 53,013 rows; 0 errors |
 | DB write | **Blocked** — all §17 gates not met |
 | Backtest | **Blocked** — DB write not implemented |
-| PIT semantics | **Unconfirmed** — tiny FPT spot-check supports candidate field; VCI unresolved |
+| PIT semantics | **Unconfirmed** — sample status `pit_inconclusive`; FPT supportive; VCI unresolved |
 | Mapping coverage | Below 95% gate — union: BS 89.7% / IS 94.5% / CF 87.6%; 99 conflicts |
 
 ---
@@ -32,7 +32,7 @@ Probe stage only — not promoted to canonical storage.
 ## Key Constraints
 
 - `line_item_name` (legacy) is always empty — never populated by mapping resolver.
-- `publicDate` PIT semantics unconfirmed — tiny FPT sample is supportive but insufficient for backtest use.
+- `publicDate` PIT semantics unconfirmed — sample status `pit_inconclusive`; do not use for PIT backtest yet.
 - DB write blocked until all gates in `vietcap_iq_fa_ingestion_v2_readiness.md` §17 are met.
 - No full-history FA fetch until mapping, PIT, and schema gates are cleared.
 - Fetch universe (1,598 symbols) is not the final tradable asset list — liquidity and
@@ -57,7 +57,7 @@ Probe stage only — not promoted to canonical storage.
 | `vietcap_iq_fa_ingestion_v2_readiness.md` | Master gate table — confirmed facts, open gates, all policies |
 | `vietcap_iq_fa_mapping_integration_strategy.md` | Option C design record — options A/B/C, lookup contract |
 | `vietcap_iq_fa_parser_mapping_integration.md` | Parser integration block note (876 words) |
-| `vietcap_iq_fa_publicdate_pit_validation.md` | Small `publicDate` PIT spot-check |
+| `vietcap_iq_fa_publicdate_pit_validation.md` | `publicDate` PIT sample validator |
 | `vietcap_iq_fa_mapping_resolver_tests.md` | Resolver implementation and test coverage (74 tests) |
 | `vietcap_iq_fa_firm_type_determination.md` | Firm-type determination design (Approach D) |
 | `vietcap_iq_fa_mapping_coverage_bank_probe.md` | Bank/insurance union coverage analysis |

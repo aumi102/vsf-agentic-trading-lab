@@ -22,8 +22,8 @@ No DB write, no backtest, no production agent tools yet.
 | FA parser | Dry-run complete; 7 validation checks; `--strict` mode; deterministic sort |
 | FA mapping integration | Option C resolver wired; Mode B active for general symbols; 53,013 rows validated; 0 errors |
 | FA mapping coverage gap probe | 3 general/fund symbols probed; union: 7 payloads, all known groups sampled; BS 89.7% / IS 94.5% / CF 87.6%; gap appears structural |
-| FA `publicDate` PIT spot-check | 8 saved rows reviewed; FPT rows support candidate field; VCI unresolved; PIT still unconfirmed |
-| Test suite | **566 tests pass** (71 integration + 74 resolver + 54 firm-type + others) |
+| FA `publicDate` PIT spot-check | 8-row CSV validator returns `pit_inconclusive`; FPT supportive; VCI unresolved |
+| Test suite | **577 tests pass** (71 integration + 74 resolver + 54 firm-type + 11 PIT validator + others) |
 | DB write | **Blocked** |
 | Backtest | **Blocked** |
 
@@ -32,7 +32,7 @@ No DB write, no backtest, no production agent tools yet.
 ## Main Blockers
 
 - **Mapping coverage:** Below 95% per section — BS 89.7% / IS 94.5% / CF 87.6% (7 payloads, all known groups sampled). Gap appears structural for `/metrics` endpoint: residual codes (`bsi*`, `bss*`, `bsb*`, `cfs*`, `cfi*`) absent from all probed mapping payloads.
-- **PIT semantics:** `publicDate` unconfirmed — tiny FPT spot-check is supportive, but VCI and exchange records remain unresolved before any backtest.
+- **PIT semantics:** `publicDate` unconfirmed — sample status `pit_inconclusive`; do not use for PIT backtest yet.
 - **DB write:** Blocked until all §17 gates met (see `vietcap_iq_fa_ingestion_v2_readiness.md`).
 - **Full-history FA fetch:** Not implemented — blocked on mapping, PIT, and schema gates.
 - **Backtest:** Blocked on DB write.
@@ -49,10 +49,10 @@ No DB write, no backtest, no production agent tools yet.
 | FA parser errors | 0 |
 | FA mapping named rows | 46,412 / 53,013 (87.5% combined validation view) |
 | FPT BS+CF Mode B code-row naming | 485 / 556 named (87%); primary=163; consensus=322; conflict_skipped=2; not_covered=62 |
-| FA `publicDate` PIT sample | 8 rows; 2 near matches, 2 after-official conservative rows, 4 VCI not found; no before-official red flag |
+| FA `publicDate` PIT sample | 8 rows; 2 near matches, 2 `vietcap_after_official`, 4 `official_not_found`; no red flag |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
-| Total tests passing | 566 |
+| Total tests passing | 577 |
 
 ---
 
