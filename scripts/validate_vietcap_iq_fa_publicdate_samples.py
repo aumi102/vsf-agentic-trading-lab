@@ -167,7 +167,9 @@ def summarize_rows(rows: list[dict[str, str]]) -> dict[str, Any]:
     }
 
 
-def load_and_validate(path: Path) -> tuple[list[dict[str, str]], dict[str, Any]]:
+def load_and_validate(
+    path: Path, *, check_payload_paths: bool = False
+) -> tuple[list[dict[str, str]], dict[str, Any]]:
     with path.open(encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
         missing = [col for col in REQUIRED_COLUMNS if col not in (reader.fieldnames or [])]
@@ -178,6 +180,14 @@ def load_and_validate(path: Path) -> tuple[list[dict[str, str]], dict[str, Any]]
     duplicates = sorted({sid for sid in sample_ids if sample_ids.count(sid) > 1})
     if duplicates:
         raise ValueError(f"Duplicate sample_id value(s): {duplicates}")
+    if check_payload_paths:
+        for row in rows:
+            pp = ROOT / row["payload_path"]
+            if not pp.exists():
+                raise FileNotFoundError(
+                    f"Payload path not found: {row['payload_path']!r} "
+                    f"(sample_id={row['sample_id']!r})"
+                )
     return rows, summarize_rows(rows)
 
 
@@ -232,9 +242,14 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--output-md", type=Path, default=None)
     parser.add_argument("--output-json", type=Path, default=None)
+    parser.add_argument(
+        "--check-payload-paths",
+        action="store_true",
+        help="Verify each payload_path exists under repo root.",
+    )
     args = parser.parse_args(argv)
 
-    rows, summary = load_and_validate(args.input)
+    rows, summary = load_and_validate(args.input, check_payload_paths=args.check_payload_paths)
     if args.output_md:
         args.output_md.parent.mkdir(parents=True, exist_ok=True)
         args.output_md.write_text(build_markdown_report(rows, summary), encoding="utf-8")

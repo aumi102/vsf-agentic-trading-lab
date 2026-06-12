@@ -20,11 +20,11 @@ Probe stage only — not promoted to canonical storage.
 | OHLCV gap-chart | HTTP 200 for FPT/VNM/VCB; parser dry-run: 14,079 rows; full-universe fetch not approved |
 | Controlled fetcher | Tiny execute passed for FPT/VNM/VCB; checkpoint/resume design in place |
 | FA endpoint | HTTP 200 (clean 8-header profile); BS/IS/CF confirmed for VCI and FPT |
-| FA parser | Dry-run complete; 7 validation checks; `--strict` mode; 583 tests pass |
+| FA parser | Dry-run complete; 7 validation checks; `--strict` mode; 585 tests pass |
 | FA mapping integration | Option C resolver wired; Mode B active; 7 output columns; 71 integration tests; 53,013 rows; 0 errors |
 | DB write | **Blocked** — all §17 gates not met |
 | Backtest | **Blocked** — DB write not implemented |
-| PIT semantics | **Unconfirmed** — sample status `pit_inconclusive`; FPT supportive; VCI unresolved |
+| PIT semantics | **Unconfirmed** — sample status `pit_inconclusive`; FPT canonical evidence supportive; VCI official evidence unresolved |
 | Mapping coverage | Below 95% gate — union: BS 89.7% / IS 94.5% / CF 87.6%; 99 conflicts |
 
 ---
@@ -32,7 +32,7 @@ Probe stage only — not promoted to canonical storage.
 ## Key Constraints
 
 - `line_item_name` (legacy) is always empty — never populated by mapping resolver.
-- `publicDate` PIT semantics unconfirmed — sample status `pit_inconclusive`; do not use for PIT backtest yet.
+- `publicDate` PIT semantics unconfirmed — sample status `pit_inconclusive`; FPT canonical evidence supportive; VCI official evidence unresolved; do not use for PIT backtest yet.
 - DB write blocked until all gates in `vietcap_iq_fa_ingestion_v2_readiness.md` §17 are met.
 - No full-history FA fetch until mapping, PIT, and schema gates are cleared.
 - Fetch universe (1,598 symbols) is not the final tradable asset list — liquidity and
@@ -43,7 +43,7 @@ Probe stage only — not promoted to canonical storage.
 ## Open Blockers
 
 - Mapping coverage below 95% per section; 99 name conflicts remain.
-- `publicDate` PIT semantics unconfirmed — broader exchange/company filing check needed.
+- `publicDate` PIT semantics unconfirmed — official HOSE/HNX/company IR disclosure dates for VCI needed; Vietstock secondary leads non-canonical.
 - Full-history FA fetch not implemented.
 - DB write not implemented (QuestDB schema not designed).
 - Backtest not implemented.

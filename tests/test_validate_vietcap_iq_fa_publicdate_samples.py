@@ -155,6 +155,11 @@ def test_committed_csv_returns_pit_inconclusive() -> None:
     assert summary["match_status_counts"]["near_match_1_3_days"] == 2
     assert summary["match_status_counts"]["vietcap_after_official"] == 2
     assert summary["match_status_counts"]["official_not_found"] == 4
+    assert summary["match_status_counts"]["exact_match"] == 0
+    assert summary["match_status_counts"]["vietcap_before_official"] == 0
+    assert summary["confidence_counts"]["medium"] == 4
+    assert summary["confidence_counts"]["none"] == 4
+    assert summary["confidence_counts"]["low"] == 0
 
 
 def test_final_status_supported_small_sample(tmp_path: Path) -> None:
@@ -189,6 +194,20 @@ def test_final_status_red_flags_found(tmp_path: Path) -> None:
     ])
     _, summary = load_and_validate(path)
     assert summary["pit_sample_status"] == "pit_red_flags_found"
+
+
+def test_check_payload_paths_missing_raises(tmp_path: Path) -> None:
+    path = tmp_path / "samples.csv"
+    write_csv(path, [row(sample_id="a", payload_path="data/nonexistent/payload.json")])
+    with pytest.raises(FileNotFoundError, match="Payload path not found"):
+        load_and_validate(path, check_payload_paths=True)
+
+
+def test_check_payload_paths_skipped_by_default(tmp_path: Path) -> None:
+    path = tmp_path / "samples.csv"
+    write_csv(path, [row(sample_id="a", payload_path="data/nonexistent/payload.json")])
+    _, summary = load_and_validate(path)  # no error when check_payload_paths=False
+    assert summary["total_samples"] == 1
 
 
 def test_never_emits_pit_confirmed_full(tmp_path: Path) -> None:
