@@ -15,7 +15,7 @@ Master gate table for production Vietcap IQ FA ingestion. No DB write until all 
 | Item | Status |
 |---|---|
 | FA endpoint access | **Confirmed** — HTTP 200 (clean 8-header, no Cookie/Auth) for BS/IS/CF on VCI and FPT |
-| Parser dry-run | **Done** — 53,013 fact rows from saved payloads; 7 validation checks; 583 tests pass |
+| Parser dry-run | **Done** — 53,013 fact rows from saved payloads; 7 validation checks; 585 tests pass |
 | Option C mapping integration | **Done** — Mode B active; 7 output columns; 71 parser integration tests; dry-run: 0 errors |
 | Metric mapping coverage | **Below gate** — union (7 payloads, all known groups sampled): BS 89.7% / IS 94.5% / CF 87.6%; 99 conflicts; gap appears structural for `/metrics` endpoint |
 | `publicDate` PIT semantics | **Unconfirmed** — sample status `pit_inconclusive`; FPT canonical evidence supportive; VCI official evidence unresolved; Vietstock leads non-canonical |

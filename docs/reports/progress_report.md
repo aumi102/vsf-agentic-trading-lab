@@ -52,7 +52,7 @@ No DB write, no backtest, no production agent tools yet.
 | FA `publicDate` PIT sample | 8 rows; 2 near match, 2 `vietcap_after_official`, 4 `official_not_found`; no canonical red flag; credible ratio 4/8 = 0.50 |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
-| Total tests passing | 583 |
+| Total tests passing | 585 |
 
 ---
 
