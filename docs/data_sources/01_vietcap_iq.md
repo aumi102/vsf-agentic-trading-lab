@@ -43,7 +43,7 @@ Probe stage only — not promoted to canonical storage.
 ## Open Blockers
 
 - Mapping coverage below 95% per section; 99 name conflicts remain.
-- `publicDate` PIT semantics unconfirmed — official HOSE/HNX/company IR disclosure dates for VCI needed; Vietstock secondary leads non-canonical.
+- `publicDate` PIT semantics unconfirmed — official HOSE/HNX/company IR disclosure dates for VCI needed; Vietstock secondary leads non-canonical. Official Disclosure Ingestion Foundation v1 built; VCI HOSE URL not yet configured.
 - Full-history FA fetch not implemented.
 - DB write not implemented (QuestDB schema not designed).
 - Backtest not implemented.

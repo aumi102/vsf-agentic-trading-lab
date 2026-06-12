@@ -114,3 +114,19 @@ toc_max_heading_level: 3
 
 ---
 </details>
+
+### Disclosure Probe Status
+
+HOSE is the primary official disclosure source for VCI and other HOSE-listed issuers.
+A disclosure probe foundation has been built but VCI-specific URLs are not yet
+configured. See:
+
+- `docs/data_sources/official_disclosure_source_discovery.md` — surface matrix
+- `docs/data_sources/official_disclosure_ingestion_foundation.md` — adapter/CLI design
+- `scripts/probe_official_disclosures.py` — controlled CLI (plan/execute/checkpoint)
+
+HOSE adapter status: `NOT_CONFIGURED`. Supply a real URL via `--targets-config` to
+enable execute-mode probing. Do not rely on Vietstock or other secondary aggregators
+as canonical disclosure evidence.
+
+---

@@ -23,7 +23,8 @@ No DB write, no backtest, no production agent tools yet.
 | FA mapping integration | Option C resolver wired; Mode B active for general symbols; 53,013 rows validated; 0 errors |
 | FA mapping coverage gap probe | 3 general/fund symbols probed; union: 7 payloads, all known groups sampled; BS 89.7% / IS 94.5% / CF 87.6%; gap appears structural |
 | FA `publicDate` PIT spot-check | 8-row CSV validator returns `pit_inconclusive`; FPT canonical evidence supportive; VCI official evidence unresolved; Vietstock non-canonical |
-| Test suite | **585 tests pass** (71 integration + 74 resolver + 54 firm-type + 19 PIT validator + others) |
+| Official Disclosure Foundation v1 | Contracts + CLI (plan/execute/checkpoint) + bronze parser + 45 tests; HOSE/HNX/FPT IR/VCI IR targets; all `NOT_CONFIGURED` pending URL config |
+| Test suite | **630 tests pass** (71 integration + 74 resolver + 54 firm-type + 19 PIT validator + 45 disclosure + others) |
 | DB write | **Blocked** |
 | Backtest | **Blocked** |
 
@@ -52,7 +53,8 @@ No DB write, no backtest, no production agent tools yet.
 | FA `publicDate` PIT sample | 8 rows; 2 near match, 2 `vietcap_after_official`, 4 `official_not_found`; no canonical red flag; credible ratio 4/8 = 0.50 |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
-| Total tests passing | 585 |
+| Disclosure foundation tests | 45 (PIT status, quality gate, plan/execute, checkpoint, bronze parsing) |
+| Total tests passing | 630 |
 
 ---
 
@@ -70,7 +72,7 @@ No DB write, no backtest, no production agent tools yet.
 1. ~~Close mapping coverage gap (probe additional firm types)~~ — gap appears structural; all known groups sampled.
 2. ~~Activate FPT primary mapping for general symbols~~ — Mode B implemented; legacy `line_item_name` remains empty.
 3. Decide on coverage gate response: lower threshold, or supplement mapping from a secondary source.
-4. Build official disclosure source discovery/crawler POC for HOSE/HNX/company IR. Do not rely on Vietstock or secondary aggregators as canonical evidence.
+4. ~~Build official disclosure source discovery/crawler POC for HOSE/HNX/company IR~~ — Foundation v1 built; HOSE/HNX/FPT IR/VCI IR targets in place; configure real VCI HOSE URL via `targets-config` and run `--execute` to obtain canonical dates.
 5. Design canonical QuestDB schema and dedup/upsert policy.
 6. Build full-history FA fetcher (after gates above are met).
 
