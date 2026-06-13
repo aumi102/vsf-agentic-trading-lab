@@ -58,8 +58,10 @@ disclosure date, and official document title.
 
 VCI official IR evidence is live-verified on `www.vietcap.com.vn`: FY2025
 financial statements dated `2026-02-13`, and Q1 2026 financial statements dated
-`2026-04-20`. FPT official IR evidence provides FY2025 financial statements
-dated `2026-03-19` and Q1 2026 financial statements dated `2026-04-24`.
+`2026-04-20`. FPT official IR evidence provides Q1 2026 financial statements
+dated `2026-04-24` in bounded bronze output. The same captured honest-UA raw
+page contains FY2025 audited financial statements dated `2026-03-19`; those
+FY2025 entries are outside the bounded 20-record bronze output.
 
 This is not full PIT confirmation. The evidence is date-level, not
 timestamp-level. Broader issuer and exchange validation is still required before

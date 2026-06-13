@@ -522,6 +522,18 @@ def load_checkpoint(path: Path) -> dict[str, Any] | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _replace_parse_summary(
+    parse_summaries: list[dict[str, Any]],
+    parse_summary: dict[str, Any],
+) -> None:
+    dataset = parse_summary.get("dataset")
+    parse_summaries[:] = [
+        item for item in parse_summaries
+        if item.get("dataset") != dataset
+    ]
+    parse_summaries.append(parse_summary)
+
+
 # ---------------------------------------------------------------------------
 # Raw evidence capture
 # ---------------------------------------------------------------------------
@@ -1394,7 +1406,9 @@ def run_disclosure_probe(
 
     random_source = rng or random.Random()
 
-    parse_summaries: list[dict[str, Any]] = []
+    parse_summaries: list[dict[str, Any]] = list(
+        prior.get("parse_summaries", []) if prior and not force else []
+    )
 
     checkpoint_doc = build_checkpoint(
         run_id=run_id,
@@ -1441,7 +1455,7 @@ def run_disclosure_probe(
                 crawled_at=crawled_at,
                 max_records=max_records,
             )
-            parse_summaries.append(parse_summary)
+            _replace_parse_summary(parse_summaries, parse_summary)
             _write_json(evidence_dir / "parse_summary.json", parse_summary)
             multi = len(records) > 1
             for rec_idx, record in enumerate(records):
@@ -1468,7 +1482,7 @@ def run_disclosure_probe(
                 error=str(exc),
                 output_dir=Path(request_item["output_dir"]),
             )
-            parse_summaries.append(parse_summary)
+            _replace_parse_summary(parse_summaries, parse_summary)
             _write_json(Path(request_item["output_dir"]) / "parse_summary.json", parse_summary)
 
         pending = [

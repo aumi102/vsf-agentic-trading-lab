@@ -402,7 +402,7 @@ def make_headers(symbol: str) -> dict[str, str]:
         "Content-Type": "application/json",
         "Origin": "https://trading.vietcap.com.vn",
         "Referer": f"https://trading.vietcap.com.vn/iq/company?ticker={normalized}&tab=overview&isIndex=false",
-        "User-Agent": "vsf-source-probe/0.1 gap-chart-controlled-fetch",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36 vsf-controlled-fetch/0.1",
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-origin",

@@ -20,14 +20,14 @@ full-history fetches.
 | `src/trading_agent/source_adapters/disclosure_adapter.py` | Contracts, enums, quality/PIT helpers |
 | `scripts/probe_official_disclosures.py` | Plan/execute CLI, raw capture, checkpoint, parse summaries, parsers |
 | `config/official_disclosure_targets.example.json` | Official target configuration |
-| `tests/test_probe_official_disclosures.py` | 152 focused tests |
+| `tests/test_probe_official_disclosures.py` | 154 focused tests |
 | `docs/data_sources/official_disclosure_source_discovery.md` | Source matrix and live evidence |
 
 ## Contracts And CLI
 
 `DisclosureTarget` defines source family, exchange, official domain, adapter,
 dataset, symbol, URL, headers, request params, and terms notes. There is no
-`ssl_verify` field; TLS certificate verification is always enforced.
+`ssl_verify` field; official disclosure fetches always verify TLS.
 
 `DisclosureRecord` is the bronze schema for real disclosure rows. SPA shells,
 auth pages, blocked requests, network/TLS errors, and valid no-match pages do
@@ -84,7 +84,7 @@ SHA-256.
 
 | Source | Run ID | HTTP | Rows | Dates | Quality/PIT |
 |---|---|---:|---:|---|---|
-| FPT IR | `20260612T091529Z` | 200 | 20 | Q1 2026 FS `2026-04-24`; Annual Report 2025 separately categorized | all pass / `date_only_available` |
+| FPT IR | `20260612T091529Z` | 200 | 20 | Q1 2026 FS `2026-04-24`; Annual Report 2025 separately categorized; raw page contains FY2025 audited FS `2026-03-19` outside bounded bronze output | all pass / `date_only_available` |
 | VCI FY2025 FS | `20260612T102412Z` | 200 | 1 | `2026-02-13` | pass / `date_only_available` |
 | VCI Q1 2026 FS | `20260612T102412Z` | 200 | 1 | `2026-04-20` | pass / `date_only_available` |
 | HOSE parent page | `20260612T052922Z` | 200 | 0 | React SPA shell | parse summary warning |

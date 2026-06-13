@@ -41,6 +41,8 @@ Live probe runs: `20260612T052922Z` (manual), `20260612T091529Z` (FPT honest-UA 
 **Bronze parser output (max_records=20):**
 - 20 records produced, all `quality_status=pass`
 - All `pit_status=date_only_available` (FPT provides M/D/YYYY, no time)
+- Captured raw page contains FY2025 audited consolidated/separate FS dated
+  `2026-03-19`; those entries are outside the bounded 20-record bronze output.
 - Q1 2026 Consolidated FS: `published_date=2026-04-24` ✓
 - 2025 Annual Report: `published_date=2026-04-08` ✓
 - Issuer: FPT Corporation

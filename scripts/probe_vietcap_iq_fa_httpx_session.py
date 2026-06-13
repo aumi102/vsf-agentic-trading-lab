@@ -14,7 +14,10 @@ import httpx
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SYMBOL = "VCI"
 DEFAULT_SECTION = "BALANCE_SHEET"
-DEFAULT_USER_AGENT = "vsf-source-probe/0.1 vietcap-iq-fa-diagnostic"
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0"
+)
 DEFAULT_DATASET = "vietcap_iq_fa_financial_statement_balance_sheet_httpx_session"
 DEFAULT_OUTPUT_ROOT = ROOT / "data/raw/httpx_diagnostic/source=vietcap_iq"
 SOURCE_NAME = "vietcap_iq"

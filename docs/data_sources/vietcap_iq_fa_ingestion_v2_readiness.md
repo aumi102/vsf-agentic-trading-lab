@@ -33,8 +33,9 @@ DB gates are met.
   symbols differ.
 - Union mapping across 7 payloads covers all known groups but remains below the
   95% gate.
-- FPT official IR evidence: FY2025 financial statements `2026-03-19`, Q1 2026
-  financial statements `2026-04-24`.
+- FPT official IR evidence: Q1 2026 financial statements `2026-04-24` in
+  bounded bronze output; FY2025 audited financial statements `2026-03-19` in
+  the captured honest-UA raw page, outside the bounded 20-record bronze output.
 - VCI official IR evidence: FY2025 financial statements `2026-02-13`, Q1 2026
   financial statements `2026-04-20`.
 

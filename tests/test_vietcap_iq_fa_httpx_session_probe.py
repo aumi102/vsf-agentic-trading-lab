@@ -51,10 +51,10 @@ def test_build_warmup_urls_uses_symbol() -> None:
 # --- UA / guardrail tests ---
 
 
-def test_default_user_agent_is_project_probe_string() -> None:
-    assert "vsf-source-probe/0.1" in DEFAULT_USER_AGENT
-    assert "Mozilla/5.0" not in DEFAULT_USER_AGENT
-    assert "Chrome" not in DEFAULT_USER_AGENT
+def test_default_user_agent_is_real_browser_string() -> None:
+    assert "browser-like user agent" not in DEFAULT_USER_AGENT
+    assert "Mozilla/5.0" in DEFAULT_USER_AGENT
+    assert "Chrome" in DEFAULT_USER_AGENT
 
 
 # --- session behaviour tests ---

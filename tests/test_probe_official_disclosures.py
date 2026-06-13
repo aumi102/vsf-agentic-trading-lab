@@ -17,6 +17,7 @@ from scripts.probe_official_disclosures import (
     _infer_fpt_doc_category,
     _infer_vci_doc_category,
     apply_targets_config,
+    build_checkpoint,
     build_default_targets,
     build_fetch_plan,
     build_plan_report,
@@ -1525,6 +1526,120 @@ def test_execute_persists_parse_summary_for_valid_no_match_html(tmp_path: Path) 
     assert parse_summary["parse_status"] == "no_matching_disclosures"
     assert parse_summary["bronze_record_count"] == 0
     assert "no_matching_disclosures" in parse_summary["warning_codes"]
+
+
+def test_resume_preserves_parse_summary_for_completed_dataset(tmp_path: Path) -> None:
+    target = _fpt_target()
+    output_base = tmp_path / "raw"
+    run_id = "test_resume_completed_summary"
+    run_output_dir = output_base / run_id
+    run_output_dir.mkdir(parents=True)
+    prior_summary = {
+        "dataset": target.dataset,
+        "source_family": target.source_family,
+        "official_domain": target.official_domain,
+        "access_status": "verified",
+        "http_status": 200,
+        "parser_name": "parse_fpt_ir_html_records",
+        "parse_status": "parsed",
+        "bronze_record_count": 1,
+        "warning_codes": [],
+        "error_codes": [],
+        "raw_path": "raw/payload.html",
+        "metadata_path": "raw/metadata.json",
+        "body_sha256": "abc123",
+    }
+    (run_output_dir / "checkpoint.json").write_text(
+        json.dumps(
+            build_checkpoint(
+                run_id=run_id,
+                started_at="2026-06-12T10:00:00+00:00",
+                completed_datasets=[target.dataset],
+                failed_datasets=[],
+                pending_datasets=[],
+                plan_path=str(run_output_dir / "plan.json"),
+                parse_summaries=[prior_summary],
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_get(url: str, headers: dict) -> HttpResponse:
+        raise AssertionError("completed dataset should be skipped on resume")
+
+    result = run_disclosure_probe(
+        targets=[target], max_requests=5, sleep_min_seconds=2.0, sleep_max_seconds=5.0,
+        execute=True, force=False, run_id=run_id,
+        output_base=output_base, bronze_base=tmp_path / "bronze",
+        http_get=fake_get, sleeper=lambda _: None,
+    )
+
+    assert result["bronze_records"] == []
+    assert result["parse_summaries"] == [prior_summary]
+    checkpoint = load_checkpoint(result["checkpoint_path"])
+    assert checkpoint is not None
+    assert checkpoint["parse_summaries"] == [prior_summary]
+    plan = json.loads(result["plan_path"].read_text(encoding="utf-8"))
+    assert plan["parse_summaries"] == [prior_summary]
+
+
+def test_resume_replaces_parse_summary_for_retried_dataset(tmp_path: Path) -> None:
+    target = _fpt_target()
+    output_base = tmp_path / "raw"
+    run_id = "test_resume_retry_summary"
+    run_output_dir = output_base / run_id
+    run_output_dir.mkdir(parents=True)
+    old_summary = {
+        "dataset": target.dataset,
+        "source_family": target.source_family,
+        "official_domain": target.official_domain,
+        "access_status": "error",
+        "http_status": 0,
+        "parser_name": "parse_fpt_ir_html_records",
+        "parse_status": "fetch_error",
+        "bronze_record_count": 0,
+        "warning_codes": [],
+        "error_codes": ["request_error:timeout"],
+        "raw_path": "",
+        "metadata_path": "",
+        "body_sha256": "",
+    }
+    (run_output_dir / "checkpoint.json").write_text(
+        json.dumps(
+            build_checkpoint(
+                run_id=run_id,
+                started_at="2026-06-12T10:00:00+00:00",
+                completed_datasets=[],
+                failed_datasets=[target.dataset],
+                pending_datasets=[],
+                plan_path=str(run_output_dir / "plan.json"),
+                parse_summaries=[old_summary],
+            )
+        ),
+        encoding="utf-8",
+    )
+    body = _fpt_ir_html([("/-/media/fpt/q1-2026-fs.pdf", "FPT Q1 2026 Financial Statements", "4/24/2026")])
+
+    def fake_get(url: str, headers: dict) -> HttpResponse:
+        return HttpResponse(200, "text/html; charset=utf-8", body, {})
+
+    result = run_disclosure_probe(
+        targets=[target], max_requests=5, sleep_min_seconds=2.0, sleep_max_seconds=5.0,
+        execute=True, force=False, run_id=run_id,
+        output_base=output_base, bronze_base=tmp_path / "bronze",
+        http_get=fake_get, sleeper=lambda _: None,
+    )
+
+    assert len(result["parse_summaries"]) == 1
+    parse_summary = result["parse_summaries"][0]
+    assert parse_summary["dataset"] == target.dataset
+    assert parse_summary["parse_status"] == "parsed"
+    assert parse_summary["bronze_record_count"] == 1
+    assert parse_summary["error_codes"] == []
+    checkpoint = load_checkpoint(result["checkpoint_path"])
+    assert checkpoint is not None
+    assert len(checkpoint["parse_summaries"]) == 1
+    assert checkpoint["parse_summaries"][0]["parse_status"] == "parsed"
 
 
 # ---------------------------------------------------------------------------

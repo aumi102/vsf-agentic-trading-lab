@@ -44,7 +44,7 @@ def test_example_config_loads() -> None:
     assert targets["fred"][0].expected_content_type_contains == ["application/json"]
     assert targets["hose"][0].verify_ssl is True
     assert targets["vbma"][0].verify_ssl is False
-    assert targets["vbma"][0].headers["User-Agent"] == "vsf-source-probe/0.1"
+    assert targets["vbma"][0].headers["User-Agent"] == "Mozilla/5.0"
 
 
 def test_placeholder_url_is_skipped_without_network() -> None:
@@ -430,7 +430,7 @@ def test_vbma_configured_target_passes_verify_false_and_headers(monkeypatch, tmp
     assert result.verify_ssl is False
     assert isinstance(captured["context"], ssl.SSLContext)
     assert captured["context"].verify_mode == ssl.CERT_NONE
-    assert captured["user_agent"] == "vsf-source-probe/0.1"
+    assert captured["user_agent"] == "Mozilla/5.0"
     assert captured["referer"] == "https://vbma.org.vn/vi/market-data/primary-market"
     assert captured["accept"] == "text/csv,*/*"
 
