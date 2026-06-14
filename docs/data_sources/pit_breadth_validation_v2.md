@@ -22,7 +22,7 @@ five additional sectors.
 |---|---|---|---|---|
 | FPT | Technology | control | control | comparable PIT evidence |
 | VCI | Securities | control | control | comparable PIT evidence |
-| HPG | Industrial/materials | official event found | official event found | no committed Vietcap comparison row |
+| HPG | Industrial/materials | comparable PIT evidence | comparable PIT evidence | Vietcap publicDate comparison rows committed |
 | KDH | Real estate | unresolved | official event found | no committed Vietcap comparison row |
 | MWG | Retail | unresolved | unresolved | official page lacked usable date-bound match |
 | VCB | Bank | network_error | network_error | bounded request timed out; no access-control block observed |
@@ -40,16 +40,18 @@ The execute run used concurrency 1, bounded requests, honest project User-Agent,
 TLS verification, raw capture, metadata capture, checkpointing, and per-target
 parse summaries. Live raw and bronze payloads remain ignored under `data/`.
 
-Verified new official-only events:
+Verified new official-only events with Vietcap publicDate comparison:
 
-| Symbol | Period | Official date | Source |
-|---|---|---|---|
-| HPG | FY2025 | 2026-03-27 | company IR listing |
-| HPG | Q1 2026 | 2026-04-29 | company IR listing |
-| KDH | Q1 2026 | 2026-04-29 | company IR listing |
+| Symbol | Period | Official date | Vietcap publicDate | Delta | Match status |
+|---|---|---|---|---:|---|
+| HPG | FY2025 | 2026-03-27 | 2026-03-30 | +3 | near_match_1_3_days |
+| HPG | Q1 2026 | 2026-04-29 | 2026-05-04 | +5 | vietcap_after_official |
 
-These are official date-level disclosures, but they are not counted as credible
-PIT support until matching Vietcap publicDate observations are committed.
+KDH Q1 2026 official date `2026-04-29` remains `not_comparable`; no local
+Vietcap IQ publicDate evidence was committed for KDH in this pass.
+
+HPG comparison rows used a single bounded Vietcap IQ BALANCE_SHEET direct
+probe (run_id=`20260614T134035Z`). One payload serves both FY2025 and Q1 2026.
 
 ## Validator Result
 
@@ -60,17 +62,18 @@ Committed sample: `docs/data_sources/pit_breadth_validation_v2_samples.csv`.
 | Target issuers | 8 |
 | Target sectors | 7 |
 | Statement/target rows | 20 |
-| Credible comparable statement rows | 8 |
-| Credible unique official evidence events | 4 |
-| Comparable issuers | 2 |
-| Comparable sectors | 2 |
-| Annual evidence events | 2 |
-| Quarterly evidence events | 2 |
-| Blocked/manual/unresolved/not-comparable rows | 12 |
+| Credible comparable statement rows | 10 |
+| Credible unique official evidence events | 6 |
+| Comparable issuers | 3 |
+| Comparable sectors | 3 |
+| Annual evidence events | 3 |
+| Quarterly evidence events | 3 |
+| network_error rows | 2 |
+| Unresolved/not-comparable rows | 10 |
 | Red flags | 0 |
 
-Date-delta distribution for credible events: 1 exact, 2 near matches, 1
-Vietcap-after-official event, and 0 Vietcap-before-official red flags. Statement
+Date-delta distribution for credible events: 1 exact, 3 near matches, 2
+Vietcap-after-official events, and 0 Vietcap-before-official red flags. Statement
 rows are not independent evidence events.
 
 Final breadth sample status: `pit_inconclusive`. The prior FPT/VCI control CSV
