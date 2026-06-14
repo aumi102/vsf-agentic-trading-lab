@@ -131,6 +131,24 @@ def normalize_row(row: dict[str, str]) -> dict[str, str]:
     return normalized
 
 
+def _normalized_evidence_value(value: str) -> str:
+    return (value or "").strip()
+
+
+def _normalized_evidence_url(value: str) -> str:
+    return _normalized_evidence_value(value).rstrip("/")
+
+
+def _make_evidence_key(row: dict[str, str]) -> tuple[str, str, str, str, str]:
+    return (
+        _normalized_evidence_value(row.get("symbol", "")),
+        _normalized_evidence_value(row.get("period_label", "")),
+        _normalized_evidence_url(row.get("official_source_url", "")),
+        _normalized_evidence_value(row.get("official_disclosure_date", "")),
+        _normalized_evidence_value(row.get("official_document_title", "")),
+    )
+
+
 def summarize_rows(rows: list[dict[str, str]]) -> dict[str, Any]:
     status_counts = Counter(row["match_status"] for row in rows)
     confidence_counts = Counter(row["confidence"] for row in rows)
@@ -144,24 +162,63 @@ def summarize_rows(rows: list[dict[str, str]]) -> dict[str, Any]:
         if row["match_status"] == "vietcap_before_official"
         and row["confidence"] in CREDIBLE_CONFIDENCE
     ]
-    comparable_ratio = len(credible_comparable) / len(rows) if rows else 0.0
+    credible_statement_ratio = len(credible_comparable) / len(rows) if rows else 0.0
+
+    all_comparable_events: set[tuple] = {
+        _make_evidence_key(r) for r in rows if r["match_status"] in COMPARABLE_STATUSES
+    }
+    credible_events: set[tuple] = {_make_evidence_key(r) for r in credible_comparable}
+    credible_issuers: set[str] = {
+        _normalized_evidence_value(r.get("symbol", "")) for r in credible_comparable
+    }
+    issuer_period_events: set[tuple[str, str]] = {
+        (
+            _normalized_evidence_value(r.get("symbol", "")),
+            _normalized_evidence_value(r.get("period_label", "")),
+        )
+        for r in rows
+        if r["match_status"] in COMPARABLE_STATUSES
+    }
+
+    unique_evidence_events = len(all_comparable_events)
+    credible_unique_evidence_events = len(credible_events)
+    credible_evidence_ratio = (
+        credible_unique_evidence_events / unique_evidence_events
+        if unique_evidence_events
+        else 0.0
+    )
+    unique_issuers = len(credible_issuers)
+    unique_issuer_period_events = len(issuer_period_events)
 
     if red_flags:
         pit_status = "pit_red_flags_found"
-    elif comparable_ratio >= 0.70:
+    elif (
+        credible_statement_ratio >= 0.70
+        and credible_evidence_ratio >= 0.70
+        and unique_issuers >= 2
+        and credible_unique_evidence_events >= 4
+    ):
         pit_status = "pit_supported_small_sample"
     else:
         pit_status = "pit_inconclusive"
 
     return {
         "total_samples": len(rows),
+        "total_statement_rows": len(rows),
         "match_status_counts": {status: status_counts.get(status, 0) for status in MATCH_STATUSES},
         "confidence_counts": {
             confidence: confidence_counts.get(confidence, 0)
             for confidence in ("high", "medium", "low", "none")
         },
         "credible_comparable_count": len(credible_comparable),
-        "credible_comparable_ratio": comparable_ratio,
+        "credible_comparable_ratio": credible_statement_ratio,
+        "credible_statement_rows": len(credible_comparable),
+        "credible_statement_ratio": credible_statement_ratio,
+        "unique_evidence_events": unique_evidence_events,
+        "credible_unique_evidence_events": credible_unique_evidence_events,
+        "credible_evidence_ratio": credible_evidence_ratio,
+        "unique_issuers": unique_issuers,
+        "unique_issuer_period_events": unique_issuer_period_events,
         "red_flag_count": len(red_flags),
         "pit_sample_status": pit_status,
     }

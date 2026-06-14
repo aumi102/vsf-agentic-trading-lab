@@ -45,12 +45,43 @@ def row(**overrides: str) -> dict[str, str]:
         "sample_id": "sample",
         "symbol": "FPT",
         "section": "BALANCE_SHEET",
+        "period_label": "2025Y",
         "vietcap_public_date": "2026-03-20",
+        "official_source_url": "https://fpt.com/en/ir/information-disclosures",
         "official_disclosure_date": "2026-03-20",
+        "official_document_title": "Financial Statements 2025",
         "confidence": "medium",
     })
     base.update(overrides)
     return base
+
+
+def evidence_row(
+    sample_id: str,
+    *,
+    symbol: str,
+    period_label: str,
+    official_date: str,
+    title: str,
+    confidence: str = "high",
+    status: str = "",
+    vietcap_date: str | None = None,
+    source_url: str | None = None,
+    section: str = "BALANCE_SHEET",
+) -> dict[str, str]:
+    return row(
+        sample_id=sample_id,
+        symbol=symbol,
+        section=section,
+        period_label=period_label,
+        vietcap_public_date=vietcap_date or official_date,
+        official_source_url=source_url or f"https://example.com/{symbol.lower()}/{period_label}",
+        official_disclosure_date=official_date,
+        official_document_title=title,
+        match_status=status,
+        date_delta_days="",
+        confidence=confidence,
+    )
 
 
 def write_csv(path: Path, rows: list[dict[str, str]]) -> None:
@@ -148,31 +179,155 @@ def test_comparable_status_requires_official_date() -> None:
         ))
 
 
-def test_committed_csv_returns_pit_inconclusive() -> None:
+def test_committed_csv_returns_pit_supported_small_sample() -> None:
     _, summary = load_and_validate(DEFAULT_INPUT)
     assert summary["total_samples"] == 8
-    assert summary["pit_sample_status"] == "pit_inconclusive"
-    assert summary["match_status_counts"]["near_match_1_3_days"] == 2
+    assert summary["total_statement_rows"] == 8
+    assert summary["credible_statement_rows"] == 8
+    assert summary["credible_statement_ratio"] == 1.0
+    assert summary["credible_comparable_count"] == 8
+    assert summary["credible_comparable_ratio"] == 1.0
+    assert summary["unique_evidence_events"] == 4
+    assert summary["credible_unique_evidence_events"] == 4
+    assert summary["credible_evidence_ratio"] == 1.0
+    assert summary["unique_issuers"] == 2
+    assert summary["unique_issuer_period_events"] == 4
+    assert summary["red_flag_count"] == 0
+    assert summary["pit_sample_status"] == "pit_supported_small_sample"
+    assert summary["match_status_counts"]["exact_match"] == 2
+    assert summary["match_status_counts"]["near_match_1_3_days"] == 4
     assert summary["match_status_counts"]["vietcap_after_official"] == 2
-    assert summary["match_status_counts"]["official_not_found"] == 4
-    assert summary["match_status_counts"]["exact_match"] == 0
+    assert summary["match_status_counts"]["official_not_found"] == 0
     assert summary["match_status_counts"]["vietcap_before_official"] == 0
+    assert summary["confidence_counts"]["high"] == 4
     assert summary["confidence_counts"]["medium"] == 4
-    assert summary["confidence_counts"]["none"] == 4
-    assert summary["confidence_counts"]["low"] == 0
+    assert summary["confidence_counts"]["none"] == 0
 
 
 def test_final_status_supported_small_sample(tmp_path: Path) -> None:
     path = tmp_path / "samples.csv"
     write_csv(path, [
-        row(sample_id="a", vietcap_public_date="2026-03-20", official_disclosure_date="2026-03-20"),
-        row(sample_id="b", vietcap_public_date="2026-03-21", official_disclosure_date="2026-03-20"),
-        row(sample_id="c", vietcap_public_date="2026-03-25", official_disclosure_date="2026-03-20"),
-        row(sample_id="d", match_status="official_not_found", confidence="none", official_disclosure_date=""),
+        evidence_row("a", symbol="AAA", period_label="2025Y", official_date="2026-03-20", title="AAA FY"),
+        evidence_row("b", symbol="AAA", period_label="2026Q1", official_date="2026-04-20", title="AAA Q1"),
+        evidence_row("c", symbol="BBB", period_label="2025Y", official_date="2026-03-22", title="BBB FY"),
+        evidence_row("d", symbol="BBB", period_label="2026Q1", official_date="2026-04-22", title="BBB Q1"),
     ])
     _, summary = load_and_validate(path)
     assert summary["pit_sample_status"] == "pit_supported_small_sample"
     assert summary["pit_sample_status"] != "pit_confirmed_full"
+
+
+def test_duplicate_sections_sharing_disclosure_count_as_one_event(tmp_path: Path) -> None:
+    path = tmp_path / "samples.csv"
+    write_csv(path, [
+        evidence_row("a", symbol="AAA", period_label="2025Y", official_date="2026-03-20", title="AAA FY", section="BALANCE_SHEET"),
+        evidence_row("b", symbol="AAA", period_label="2025Y", official_date="2026-03-20", title="AAA FY", section="INCOME_STATEMENT"),
+        evidence_row("c", symbol="AAA", period_label="2025Y", official_date="2026-03-20", title="AAA FY", section="CASH_FLOW"),
+    ])
+    _, summary = load_and_validate(path)
+    assert summary["credible_statement_rows"] == 3
+    assert summary["credible_statement_ratio"] == 1.0
+    assert summary["unique_evidence_events"] == 1
+    assert summary["credible_unique_evidence_events"] == 1
+    assert summary["unique_issuer_period_events"] == 1
+    assert summary["pit_sample_status"] == "pit_inconclusive"
+
+
+def test_one_issuer_many_duplicate_rows_cannot_reach_supported(tmp_path: Path) -> None:
+    path = tmp_path / "samples.csv"
+    write_csv(path, [
+        evidence_row("a", symbol="AAA", period_label="2025Y", official_date="2026-03-20", title="AAA FY", section="BALANCE_SHEET"),
+        evidence_row("b", symbol="AAA", period_label="2025Y", official_date="2026-03-20", title="AAA FY", section="INCOME_STATEMENT"),
+        evidence_row("c", symbol="AAA", period_label="2026Q1", official_date="2026-04-20", title="AAA Q1", section="BALANCE_SHEET"),
+        evidence_row("d", symbol="AAA", period_label="2026Q1", official_date="2026-04-20", title="AAA Q1", section="CASH_FLOW"),
+        evidence_row("e", symbol="AAA", period_label="2026Q2", official_date="2026-07-20", title="AAA Q2", section="BALANCE_SHEET"),
+        evidence_row("f", symbol="AAA", period_label="2026Q3", official_date="2026-10-20", title="AAA Q3", section="BALANCE_SHEET"),
+    ])
+    _, summary = load_and_validate(path)
+    assert summary["credible_statement_ratio"] == 1.0
+    assert summary["credible_unique_evidence_events"] == 4
+    assert summary["unique_issuers"] == 1
+    assert summary["pit_sample_status"] == "pit_inconclusive"
+
+
+def test_two_issuers_fewer_than_four_credible_events_inconclusive(tmp_path: Path) -> None:
+    path = tmp_path / "samples.csv"
+    write_csv(path, [
+        evidence_row("a", symbol="AAA", period_label="2025Y", official_date="2026-03-20", title="AAA FY"),
+        evidence_row("b", symbol="AAA", period_label="2026Q1", official_date="2026-04-20", title="AAA Q1"),
+        evidence_row("c", symbol="BBB", period_label="2025Y", official_date="2026-03-22", title="BBB FY"),
+    ])
+    _, summary = load_and_validate(path)
+    assert summary["unique_issuers"] == 2
+    assert summary["credible_unique_evidence_events"] == 3
+    assert summary["pit_sample_status"] == "pit_inconclusive"
+
+
+def test_low_none_and_secondary_evidence_do_not_count_as_credible(tmp_path: Path) -> None:
+    path = tmp_path / "samples.csv"
+    write_csv(path, [
+        evidence_row("a", symbol="AAA", period_label="2025Y", official_date="2026-03-20", title="AAA FY", confidence="high"),
+        evidence_row("b", symbol="AAA", period_label="2026Q1", official_date="2026-04-20", title="AAA Q1", confidence="medium"),
+        evidence_row("c", symbol="BBB", period_label="2025Y", official_date="2026-03-22", title="BBB FY", confidence="low"),
+        evidence_row("d", symbol="BBB", period_label="2026Q1", official_date="2026-04-22", title="BBB Q1", confidence="none"),
+        row(
+            sample_id="e",
+            symbol="CCC",
+            period_label="2025Y",
+            official_source_type="secondary_aggregator",
+            official_disclosure_date="",
+            official_document_title="",
+            match_status="not_comparable",
+            confidence="low",
+        ),
+    ])
+    _, summary = load_and_validate(path)
+    assert summary["credible_statement_rows"] == 2
+    assert summary["credible_unique_evidence_events"] == 2
+    assert summary["credible_statement_ratio"] == 0.4
+    assert summary["pit_sample_status"] == "pit_inconclusive"
+
+
+def test_official_not_found_rows_do_not_count_as_events(tmp_path: Path) -> None:
+    path = tmp_path / "samples.csv"
+    write_csv(path, [
+        evidence_row("a", symbol="AAA", period_label="2025Y", official_date="2026-03-20", title="AAA FY"),
+        row(
+            sample_id="b",
+            symbol="BBB",
+            period_label="2025Y",
+            official_source_url="",
+            official_disclosure_date="",
+            official_document_title="",
+            match_status="official_not_found",
+            confidence="none",
+        ),
+    ])
+    _, summary = load_and_validate(path)
+    assert summary["unique_evidence_events"] == 1
+    assert summary["credible_unique_evidence_events"] == 1
+    assert summary["pit_sample_status"] == "pit_inconclusive"
+
+
+def test_red_flag_overrides_otherwise_sufficient_support(tmp_path: Path) -> None:
+    path = tmp_path / "samples.csv"
+    write_csv(path, [
+        evidence_row("a", symbol="AAA", period_label="2025Y", official_date="2026-03-20", title="AAA FY"),
+        evidence_row("b", symbol="AAA", period_label="2026Q1", official_date="2026-04-20", title="AAA Q1"),
+        evidence_row("c", symbol="BBB", period_label="2025Y", official_date="2026-03-22", title="BBB FY"),
+        evidence_row("d", symbol="BBB", period_label="2026Q1", official_date="2026-04-22", title="BBB Q1"),
+        evidence_row(
+            "e",
+            symbol="CCC",
+            period_label="2025Y",
+            official_date="2026-03-20",
+            title="CCC FY",
+            vietcap_date="2026-03-19",
+        ),
+    ])
+    _, summary = load_and_validate(path)
+    assert summary["red_flag_count"] == 1
+    assert summary["pit_sample_status"] == "pit_red_flags_found"
 
 
 def test_final_status_inconclusive(tmp_path: Path) -> None:
@@ -213,8 +368,10 @@ def test_check_payload_paths_skipped_by_default(tmp_path: Path) -> None:
 def test_never_emits_pit_confirmed_full(tmp_path: Path) -> None:
     path = tmp_path / "samples.csv"
     write_csv(path, [
-        row(sample_id="a"),
-        row(sample_id="b", vietcap_public_date="2026-03-21", official_disclosure_date="2026-03-20"),
+        evidence_row("a", symbol="AAA", period_label="2025Y", official_date="2026-03-20", title="AAA FY"),
+        evidence_row("b", symbol="AAA", period_label="2026Q1", official_date="2026-04-20", title="AAA Q1"),
+        evidence_row("c", symbol="BBB", period_label="2025Y", official_date="2026-03-22", title="BBB FY"),
+        evidence_row("d", symbol="BBB", period_label="2026Q1", official_date="2026-04-22", title="BBB Q1"),
     ])
     _, summary = load_and_validate(path)
     assert summary["pit_sample_status"] in {
