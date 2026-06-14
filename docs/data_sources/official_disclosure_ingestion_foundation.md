@@ -20,8 +20,9 @@ full-history fetches.
 | `src/trading_agent/source_adapters/disclosure_adapter.py` | Contracts, enums, quality/PIT helpers |
 | `scripts/probe_official_disclosures.py` | Plan/execute CLI, raw capture, checkpoint, parse summaries, parsers |
 | `config/official_disclosure_targets.example.json` | Official target configuration |
-| `tests/test_probe_official_disclosures.py` | 154 focused tests |
+| `tests/test_probe_official_disclosures.py` | 179 focused tests |
 | `docs/data_sources/official_disclosure_source_discovery.md` | Source matrix and live evidence |
+| `config/pit_breadth_validation_v2_targets.json` | Draft multi-sector PIT breadth target registry |
 
 ## Contracts And CLI
 
@@ -90,6 +91,11 @@ SHA-256.
 | HOSE parent page | `20260612T052922Z` | 200 | 0 | React SPA shell | parse summary warning |
 | HNX parent page | `20260612T081136Z` | timeout | 0 | structured endpoint unresolved | parse summary error |
 
+PIT Breadth Validation v2 added a bounded draft run (`20260614T130404Z`)
+against FPT, VCI, HPG, KDH, MWG, VCB, SSI, and VNM. It found new official-only
+date-level evidence for HPG FY2025 (`2026-03-27`), HPG Q1 2026 (`2026-04-29`),
+and KDH Q1 2026 (`2026-04-29`), but did not reach the breadth PIT threshold.
+
 Both `data/raw/` and `data/bronze/` are gitignored; live outputs are not
 committed.
 
@@ -97,6 +103,8 @@ committed.
 
 - PIT sample: 8/8 statement rows credible, 4/4 unique official disclosure
   events credible, 2 issuers, zero red flags, `pit_supported_small_sample`.
+- Breadth v2 sample: 20 rows, 4 credible comparable unique events, 8 target
+  issuers, 7 target sectors, zero red flags, `pit_inconclusive`.
 - This is not full PIT confirmation; evidence is date-level, not timestamp-level.
 - Broader issuer/exchange validation is still required.
 - Mapping coverage remains below 95%.

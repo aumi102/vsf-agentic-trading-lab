@@ -12,11 +12,13 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import hashlib
+import html as html_lib
 import json
 import re
 import random
 import sys
 import time
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -90,6 +92,12 @@ _VCI_H1_RE = re.compile(r'<h1[^>]*>\s*([^<]+?)\s*</h1>', re.IGNORECASE | re.DOTA
 _VCI_H2_RE = re.compile(r'<h2[^>]*>\s*([^<]+?)\s*</h2>', re.IGNORECASE | re.DOTALL)
 _VCI_TITLE_TAG_RE = re.compile(r'<title[^>]*>\s*([^<]+?)\s*</title>', re.IGNORECASE)
 _VCI_PDF_RE = re.compile(r'href="([^"]*\.pdf[^"]*)"', re.IGNORECASE)
+_ANCHOR_RE = re.compile(
+    r'<a\b(?P<attrs>[^>]*)>(?P<body>.*?)</a>',
+    re.IGNORECASE | re.DOTALL,
+)
+_HREF_RE = re.compile(r'\bhref\s*=\s*["\']([^"\']+)["\']', re.IGNORECASE)
+_VI_DATE_RE = re.compile(r'\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b')
 
 GUARDRAILS = [
     "No network requests unless --execute is supplied.",
@@ -260,7 +268,7 @@ def apply_targets_config(
     targets: list[DisclosureTarget],
     config: dict[str, Any],
 ) -> list[DisclosureTarget]:
-    """Overlay URL / headers / official_domain from external config onto matching targets by dataset."""
+    """Overlay existing targets and append explicit validated targets by dataset."""
     validate_targets_config(config)
     overrides: dict[str, dict[str, Any]] = {}
     for entry in config.get("targets", []):
@@ -273,7 +281,19 @@ def apply_targets_config(
         if ov:
             updates = {
                 k: ov[k]
-                for k in ("url", "method", "headers", "request_params", "terms_notes", "official_domain")
+                for k in (
+                    "source_family",
+                    "exchange",
+                    "official_domain",
+                    "adapter_name",
+                    "dataset",
+                    "symbol",
+                    "url",
+                    "method",
+                    "headers",
+                    "request_params",
+                    "terms_notes",
+                )
                 if k in ov
             }
             official_domain = str(updates.get("official_domain", t.official_domain)).strip()
@@ -283,7 +303,51 @@ def apply_targets_config(
                 updates["headers"] = _validate_safe_headers(updates["headers"], dataset=t.dataset)
             t = dataclasses.replace(t, **updates)
         result.append(t)
+    existing = {t.dataset for t in result}
+    for dataset, ov in overrides.items():
+        if dataset in existing:
+            continue
+        if not _looks_like_additional_target(ov):
+            continue
+        result.append(_target_from_config_entry(ov))
     return result
+
+
+def _looks_like_additional_target(entry: dict[str, Any]) -> bool:
+    return any(
+        str(entry.get(name, "")).strip()
+        for name in ("source_family", "exchange", "adapter_name", "symbol", "official_domain")
+    )
+
+
+def _target_from_config_entry(entry: dict[str, Any]) -> DisclosureTarget:
+    dataset = str(entry.get("dataset", "")).strip()
+    if not dataset:
+        raise ValueError("Additional target requires dataset")
+    required = ("source_family", "exchange", "official_domain", "adapter_name", "symbol", "url")
+    missing = [name for name in required if not str(entry.get(name, "")).strip()]
+    if missing:
+        raise ValueError(f"Additional target {dataset} missing required field(s): {missing}")
+    official_domain = str(entry["official_domain"]).strip()
+    url = str(entry["url"]).strip()
+    _validate_target_url(url, official_domain, dataset=dataset)
+    headers = _validate_safe_headers(entry.get("headers", {}), dataset=dataset) if "headers" in entry else {}
+    request_params = entry.get("request_params", {})
+    if not isinstance(request_params, dict):
+        raise ValueError(f"request_params for {dataset} must be an object")
+    return DisclosureTarget(
+        source_family=str(entry["source_family"]).strip(),
+        exchange=str(entry["exchange"]).strip(),
+        official_domain=official_domain,
+        adapter_name=str(entry["adapter_name"]).strip(),
+        dataset=dataset,
+        symbol=str(entry["symbol"]).strip().upper(),
+        url=url,
+        method=str(entry.get("method", "GET")).strip() or "GET",
+        headers=headers,
+        request_params=request_params,
+        terms_notes=str(entry.get("terms_notes", "")).strip(),
+    )
 
 
 def load_targets_config(path: Path) -> dict[str, Any]:
@@ -310,6 +374,51 @@ def validate_targets_config(config: dict[str, Any]) -> None:
         url = str(entry.get("url", "")).strip()
         if url and official_domain:
             _validate_target_url(url, official_domain, dataset=dataset)
+
+
+def validate_pit_breadth_registry(config: dict[str, Any]) -> None:
+    """Validate the PIT breadth registry without making network calls."""
+    _validate_config_tree(config)
+    targets = config.get("targets", [])
+    if not isinstance(targets, list) or not targets:
+        raise ValueError("pit breadth registry requires a non-empty targets list")
+    seen: set[tuple[str, str]] = set()
+    required = (
+        "symbol",
+        "issuer_name",
+        "sector",
+        "exchange",
+        "target_period",
+        "target_document_type",
+        "official_source_family",
+        "official_domain",
+        "url",
+        "adapter",
+        "parser",
+        "expected_max_requests",
+        "current_access_status",
+        "notes",
+    )
+    for idx, entry in enumerate(targets):
+        if not isinstance(entry, dict):
+            raise ValueError(f"targets[{idx}] must be an object")
+        missing = [name for name in required if not str(entry.get(name, "")).strip()]
+        if missing:
+            raise ValueError(f"targets[{idx}] missing required field(s): {missing}")
+        symbol = str(entry["symbol"]).strip().upper()
+        period = str(entry["target_period"]).strip().lower()
+        key = (symbol, period)
+        if key in seen:
+            raise ValueError(f"Duplicate symbol/period target: {symbol} {period}")
+        seen.add(key)
+        url = str(entry["url"]).strip()
+        official_domain = str(entry["official_domain"]).strip()
+        _validate_target_url(url, official_domain, dataset=f"{symbol}_{period}")
+        source_type = str(entry.get("official_source_family", "")).strip().lower()
+        if source_type.startswith("secondary") or "aggregator" in source_type:
+            raise ValueError(f"Secondary canonical source rejected for {symbol} {period}")
+        if "headers" in entry:
+            _validate_safe_headers(entry["headers"], dataset=f"{symbol}_{period}")
 
 
 def _validate_config_tree(value: Any, path: str = "config") -> None:
@@ -678,7 +787,162 @@ _HTML_ENTITY_MAP = {
 def _decode_html_entities(text: str) -> str:
     for entity, char in _HTML_ENTITY_MAP.items():
         text = text.replace(entity, char)
-    return text
+    return html_lib.unescape(text)
+
+
+def _fold_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value or "")
+    ascii_text = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return re.sub(r"\s+", " ", ascii_text).strip().lower()
+
+
+def _parse_vietnamese_date(date_str: str) -> str:
+    match = _VI_DATE_RE.search(date_str or "")
+    if not match:
+        return ""
+    day, month, year = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    try:
+        return datetime(year, month, day).strftime("%Y-%m-%d")
+    except ValueError:
+        return ""
+
+
+def _first_vi_date(context: str) -> str:
+    for match in _VI_DATE_RE.finditer(context or ""):
+        parsed = _parse_vietnamese_date(match.group(0))
+        if parsed:
+            return parsed
+    return ""
+
+
+def _infer_company_ir_doc_category(target: DisclosureTarget) -> str:
+    expected = str(target.request_params.get("expected_period_type", "")).strip().lower()
+    if expected == "annual":
+        return "annual_financial_statement"
+    if expected == "quarterly":
+        return "quarterly_financial_statement"
+    return "financial_statement"
+
+
+def _company_ir_semantics_match(target: DisclosureTarget, title: str, href: str, context: str) -> bool:
+    folded = _fold_text(f"{title} {href}")
+    expected_period = str(target.request_params.get("expected_period_label", "")).strip().lower()
+    expected_type = str(target.request_params.get("expected_period_type", "")).strip().lower()
+    if any(marker in folded for marker in ("annual report", "bao cao thuong nien")):
+        return False
+    if not any(marker in folded for marker in ("bao cao tai chinh", "bctc", "financial statement")):
+        return False
+    if expected_type == "annual":
+        return "2025" in folded and not any(q in folded for q in ("q1", "quy i", "quy 1", "quarter 1"))
+    if expected_type == "quarterly":
+        if "2026" not in folded:
+            return False
+        return any(q in folded for q in ("q1", "quy i", "quy 1", "quarter 1", "1st quarter"))
+    if expected_period:
+        return expected_period.replace(" ", "") in folded.replace(" ", "")
+    return True
+
+
+def _extract_company_ir_title(anchor_body: str, context: str) -> str:
+    title = _compact_text(anchor_body)
+    if title:
+        return title
+    return _compact_text(context)[:180]
+
+
+def _normalize_company_ir_url_with_warning(href: str, target: DisclosureTarget) -> DocumentUrlValidation:
+    allowed = {
+        str(item).strip().lower()
+        for item in target.request_params.get("allowed_document_domains", [])
+        if str(item).strip()
+    }
+    return _normalize_document_url(href, official_domain=target.official_domain, allowed_hosts=allowed)
+
+
+def parse_company_ir_listing_records(
+    body: bytes,
+    target: DisclosureTarget,
+    payload_path: Path,
+    metadata_path: Path,
+    crawled_at: str,
+    max_records: int = DEFAULT_MAX_RECORDS_PER_TARGET,
+) -> list[DisclosureRecord]:
+    """Parse simple company IR listing pages into target-bound financial statement records."""
+    html = body.decode("utf-8", errors="replace")
+    body_sha256 = hashlib.sha256(body).hexdigest()
+    issuer_name = str(target.request_params.get("issuer_name") or target.symbol).strip()
+    language = str(target.request_params.get("language") or "vi").strip()
+
+    records: list[DisclosureRecord] = []
+    seen_urls: set[str] = set()
+    for match in _ANCHOR_RE.finditer(html):
+        if len(records) >= max_records:
+            break
+        href_match = _HREF_RE.search(match.group("attrs"))
+        if not href_match:
+            continue
+        href = href_match.group(1).strip()
+        if not href.lower().split("?")[0].endswith(".pdf"):
+            continue
+        start = max(0, match.start() - 500)
+        end = min(len(html), match.end() + 700)
+        context_html = html[start:end]
+        context_text = _compact_text(context_html)
+        title = _extract_company_ir_title(match.group("body"), context_html)
+        if not _company_ir_semantics_match(target, title, href, context_text):
+            continue
+        doc_validation = _normalize_company_ir_url_with_warning(href, target)
+        if not doc_validation.url:
+            continue
+        if doc_validation.url in seen_urls:
+            continue
+        seen_urls.add(doc_validation.url)
+        published_date = _first_vi_date(context_text)
+        if not published_date:
+            continue
+        warning_codes: list[str] = []
+        if doc_validation.warning_code:
+            warning_codes.append(doc_validation.warning_code)
+        attachment_name = doc_validation.url.split("/")[-1].split("?")[0]
+        record_dict: dict[str, Any] = {
+            "source_family": target.source_family,
+            "exchange": target.exchange,
+            "official_domain": target.official_domain,
+            "adapter_name": target.adapter_name,
+            "disclosure_id": f"{target.dataset}_{hashlib.sha256(doc_validation.url.encode()).hexdigest()[:12]}",
+            "symbol": target.symbol,
+            "issuer_name": issuer_name,
+            "document_category": _infer_company_ir_doc_category(target),
+            "title": title,
+            "published_at": "",
+            "published_date": published_date,
+            "effective_at": "",
+            "page_url": target.url,
+            "document_url": doc_validation.url,
+            "attachment_name": attachment_name,
+            "attachment_type": "pdf",
+            "language": language,
+            "crawled_at": crawled_at,
+            "raw_path": str(payload_path),
+            "metadata_path": str(metadata_path),
+            "body_sha256": body_sha256,
+            "parser_version": BRONZE_PARSER_VERSION,
+            "schema_version": BRONZE_SCHEMA_VERSION,
+            "quality_status": "",
+            "pit_status": assign_pit_status(
+                published_at="",
+                published_date=published_date,
+                access_status="verified",
+            ),
+            "warning_codes": warning_codes,
+            "error_codes": [],
+        }
+        quality_status, extra_warnings, extra_errors = check_disclosure_quality(record_dict)
+        record_dict["quality_status"] = quality_status
+        record_dict["warning_codes"] = sorted(set(warning_codes + extra_warnings))
+        record_dict["error_codes"] = sorted(set(extra_errors))
+        records.append(DisclosureRecord(**record_dict))
+    return records
 
 
 def parse_fpt_ir_html_records(
@@ -709,6 +973,13 @@ def parse_fpt_ir_html_records(
         seen_hrefs.add(href)
 
         title = _decode_html_entities(title_raw.strip())
+        if target.request_params.get("expected_period_type") and not _company_ir_semantics_match(
+            target,
+            title,
+            href,
+            title,
+        ):
+            continue
         doc_validation = _normalize_fpt_url_with_warning(href)
         doc_url = doc_validation.url
         published_date = _parse_fpt_date(date_raw)
@@ -1082,7 +1353,16 @@ def extract_disclosure_records_with_summary(
     ct = response.content_type.lower()
     records: list[DisclosureRecord]
     if "html" in ct:
-        if target.official_domain == _FPT_OFFICIAL_DOMAIN:
+        if target.adapter_name == "company_ir_listing_v1":
+            records = parse_company_ir_listing_records(
+                body=response.body,
+                target=target,
+                payload_path=payload_path,
+                metadata_path=metadata_path,
+                crawled_at=crawled_at,
+                max_records=max_records,
+            )
+        elif target.official_domain == _FPT_OFFICIAL_DOMAIN:
             records = parse_fpt_ir_html_records(
                 body=response.body,
                 target=target,
@@ -1145,6 +1425,8 @@ def _parser_name_for(
         return "none"
     content_type = (response.content_type if response else "").lower()
     if "html" in content_type:
+        if target.adapter_name == "company_ir_listing_v1":
+            return "parse_company_ir_listing_records"
         if target.official_domain == _FPT_OFFICIAL_DOMAIN:
             return "parse_fpt_ir_html_records"
         if target.official_domain == _VCI_OFFICIAL_DOMAIN:
@@ -1178,6 +1460,8 @@ def _diagnose_no_record_parse_warnings(target: DisclosureTarget, body: bytes) ->
         return ["no_matching_disclosures"]
     if target.official_domain == _FPT_OFFICIAL_DOMAIN:
         return ["no_matching_disclosures"]
+    if target.adapter_name == "company_ir_listing_v1":
+        return ["no_matching_financial_statement"]
     return ["no_structured_parser"]
 
 

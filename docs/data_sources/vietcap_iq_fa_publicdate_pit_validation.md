@@ -20,8 +20,9 @@ CSV and offline validator. It does not unblock DB writes or backtests.
 
 The validator parses dates, verifies `date_delta_days`, preserves unresolved
 statuses, groups duplicate statement sections by official evidence event, and
-emits only `pit_red_flags_found`, `pit_inconclusive`, or
-`pit_supported_small_sample`. It never emits `pit_confirmed_full`.
+emits only `pit_red_flags_found`, `pit_inconclusive`,
+`pit_supported_small_sample`, or `pit_supported_breadth_sample`. It never emits
+`pit_confirmed_full`.
 
 ## Evidence Policy
 
@@ -67,9 +68,20 @@ This is not full PIT confirmation. The evidence is date-level, not
 timestamp-level. Broader issuer and exchange validation is still required before
 `publicDate` can be used for PIT backtests.
 
+## Breadth v2 Draft
+
+`docs/data_sources/pit_breadth_validation_v2_samples.csv` extends the review
+surface to 8 target issuers and 7 sectors. It keeps the 4 credible control
+events and records 12 blocked, unresolved, or not-comparable target rows.
+Official-only date-level evidence was captured for HPG FY2025, HPG Q1 2026,
+and KDH Q1 2026, but no committed Vietcap publicDate comparison rows exist for
+those new events. Result: `pit_inconclusive`, zero red flags. Statement rows are
+not independent evidence events.
+
 ## Gate Status
 
 - `publicDate` PIT semantics: supported small sample, `pit_supported_small_sample`.
+- Breadth v2 status: draft, `pit_inconclusive`.
 - Mapping coverage remains below 95%: BS 89.7%, IS 94.5%, CF 87.6%.
 - DB write remains blocked.
 - Backtest remains blocked.

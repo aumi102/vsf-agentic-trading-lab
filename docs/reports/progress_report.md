@@ -24,7 +24,8 @@ No DB write, no backtest, no production agent tools yet.
 | FA mapping coverage gap probe | 3 general/fund symbols probed; union: 7 payloads, all known groups sampled; BS 89.7% / IS 94.5% / CF 87.6%; gap appears structural |
 | FA `publicDate` PIT spot-check | 8-row CSV validator returns `pit_supported_small_sample`; 8/8 statement rows credible; 4/4 unique official disclosure events credible; 2 issuers; zero red flags |
 | Official Disclosure Foundation v1 | Hardened+VCI: FPT IR 20 bounded records (pass), plus FY2025 audited FS in raw HTML; VCI FY2025 `2026-02-13` (pass); VCI Q1 2026 `2026-04-20` (pass); HOSE=js_app_shell; HNX=timeout. Honest UA; official disclosure fetches verify TLS; no pseudo rows. |
-| Test suite | **745 tests pass** |
+| PIT Breadth Validation v2 | Draft: 8 target issuers, 7 sectors, 3 new official-only events; comparable sample remains `pit_inconclusive` |
+| Test suite | **781 tests pass** |
 | DB write | **Blocked** |
 | Backtest | **Blocked** |
 
@@ -34,6 +35,10 @@ No DB write, no backtest, no production agent tools yet.
 
 - **Mapping coverage:** Below 95% per section — BS 89.7% / IS 94.5% / CF 87.6% (7 payloads, all known groups sampled). Gap appears structural for `/metrics` endpoint: residual codes (`bsi*`, `bss*`, `bsb*`, `cfs*`, `cfi*`) absent from all probed mapping payloads.
 - **PIT semantics:** `pit_supported_small_sample` (8/8 statement rows credible, 4/4 unique official disclosure events credible, 2 issuers, zero red flags). Evidence is date-level, not timestamp-level; do not claim full PIT confirmation or use for PIT backtest yet.
+- **PIT breadth:** v2 verified HPG FY2025, HPG Q1 2026, and KDH Q1 2026 as
+  official-only events, but no committed Vietcap comparison rows exist for
+  those events. Statement rows are not independent evidence events; breadth
+  remains `pit_inconclusive`.
 - **DB write:** Blocked until all §17 gates met (see `vietcap_iq_fa_ingestion_v2_readiness.md`).
 - **Full-history FA fetch:** Not implemented — blocked on mapping, PIT, and schema gates.
 - **Backtest:** Blocked on DB write.
@@ -51,10 +56,11 @@ No DB write, no backtest, no production agent tools yet.
 | FA mapping named rows | 46,412 / 53,013 (87.5% combined validation view) |
 | FPT BS+CF Mode B code-row naming | 485 / 556 named (87%); primary=163; consensus=322; conflict_skipped=2; not_covered=62 |
 | FA `publicDate` PIT sample | 8 rows; 4 unique official disclosure events; 2 issuers; 2 exact_match, 4 near_match, 2 vietcap_after_official; 0 red flags |
+| PIT breadth v2 sample | 20 rows; 4 credible unique comparable events; 8 target issuers; 7 sectors; 12 unresolved/blocked/not-comparable rows; 0 red flags |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
-| Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 745 |
+| Disclosure foundation tests | 179 targeted tests |
+| Total tests passing | 781 |
 
 ---
 
@@ -73,8 +79,11 @@ No DB write, no backtest, no production agent tools yet.
 2. ~~Activate FPT primary mapping for general symbols~~ — Mode B implemented; legacy `line_item_name` remains empty.
 3. Decide on coverage gate response: lower threshold, or supplement mapping from a secondary source.
 4. ~~Build official disclosure source discovery/crawler POC for HOSE/HNX/company IR~~ — Foundation v1 hardened+VCI: FPT IR (20 records), VCI FY2025+Q1 2026 (2 records, exact/near match). Honest UA, TLS enforced, no pseudo rows. PIT gate: `pit_supported_small_sample`.
-5. Design canonical QuestDB schema and dedup/upsert policy.
-6. Build full-history FA fetcher (after gates above are met).
+5. Continue PIT breadth validation until at least 4 new issuers, 4 sectors, and
+   8 new canonical official evidence events have comparable Vietcap rows.
+6. Design canonical QuestDB schema and dedup/upsert policy after PIT and mapping
+   gates improve.
+7. Build full-history FA fetcher after gates above are met.
 
 ---
 

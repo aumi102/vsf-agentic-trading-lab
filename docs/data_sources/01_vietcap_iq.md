@@ -20,6 +20,7 @@ statements. Probe stage only; not promoted to canonical storage.
 | FA parser | Dry-run complete; 7 validation checks; strict mode |
 | FA mapping | Option C resolver wired; Mode B active; 53,013 rows; 0 errors |
 | PIT semantics | Supported small sample: 8/8 statement rows credible, 4/4 unique official disclosure events credible, 2 issuers, zero red flags, `pit_supported_small_sample` |
+| PIT breadth v2 | Draft: 8 target issuers, 7 sectors, 3 new official-only events, but comparable breadth remains `pit_inconclusive` |
 | Mapping coverage | Below 95% gate: BS 89.7% / IS 94.5% / CF 87.6%; 99 conflicts |
 | DB write | Blocked |
 | Backtest | Blocked |
@@ -30,6 +31,7 @@ statements. Probe stage only; not promoted to canonical storage.
 - `publicDate` PIT evidence is date-level, not timestamp-level.
 - `pit_supported_small_sample` is not full PIT confirmation.
 - Broader issuer/exchange validation is required before PIT backtests.
+- Statement rows are not independent evidence events.
 - DB write remains blocked until mapping, PIT breadth, QuestDB schema, and
   full-history gates are resolved.
 - Full-history FA fetch is not implemented.
@@ -42,12 +44,16 @@ statements. Probe stage only; not promoted to canonical storage.
   HTML, outside the bounded 20-record bronze output.
 - VCI official IR: FY2025 financial statements `2026-02-13`; Q1 2026 financial
   statements `2026-04-20`.
+- PIT breadth v2: HPG FY2025 `2026-03-27`, HPG Q1 2026 `2026-04-29`, and KDH
+  Q1 2026 `2026-04-29` were verified as official-only date-level events; no
+  canonical Vietcap comparison rows are committed for those new events yet.
 - Secondary aggregators are non-canonical.
 
 ## Open Blockers
 
 - Mapping coverage below 95% per section.
 - PIT validation is only a 2-issuer, 4-event small sample.
+- PIT breadth v2 did not reach the new-issuer/new-sector evidence threshold.
 - HOSE structured disclosure endpoint unresolved.
 - HNX structured source unresolved.
 - Full-history FA fetch not implemented.
@@ -60,6 +66,7 @@ statements. Probe stage only; not promoted to canonical storage.
 |---|---|
 | `vietcap_iq_fa_ingestion_v2_readiness.md` | Master gate table |
 | `vietcap_iq_fa_publicdate_pit_validation.md` | PIT sample validator |
+| `pit_breadth_validation_v2.md` | Draft multi-sector PIT breadth validation |
 | `official_disclosure_ingestion_foundation.md` | Official disclosure adapter and CLI |
 | `official_disclosure_source_discovery.md` | Official source matrix |
 | `vietcap_iq_fa_parser_mapping_integration.md` | Parser integration note |

@@ -24,12 +24,15 @@ from scripts.probe_official_disclosures import (
     capture_raw_evidence,
     classify_access_status,
     extract_disclosure_records,
+    extract_disclosure_records_with_summary,
     load_checkpoint,
+    parse_company_ir_listing_records,
     parse_fpt_ir_html_records,
     parse_vci_ir_detail_records,
     parse_symbols,
     parse_to_bronze_record,
     run_disclosure_probe,
+    validate_pit_breadth_registry,
     validate_targets_config,
 )
 from trading_agent.source_adapters.disclosure_adapter import (
@@ -2177,3 +2180,332 @@ def test_infer_vci_doc_category_q1() -> None:
         "Q1 2026 Financial Statements",
         "https://www.vietcap.com.vn/en/investor-relations/financial-statements-q1-2026",
     ) == "quarterly_financial_statement"
+
+
+# ---------------------------------------------------------------------------
+# PIT breadth v2 registry and generic company IR parser
+# ---------------------------------------------------------------------------
+
+def _breadth_registry_entry(**overrides: object) -> dict[str, object]:
+    entry: dict[str, object] = {
+        "dataset": "company_ir_hpg_fy2025_fs",
+        "symbol": "HPG",
+        "issuer_name": "Hoa Phat Group JSC",
+        "sector": "Industrial/materials",
+        "exchange": "HOSE",
+        "target_period": "FY2025",
+        "target_document_type": "annual_financial_statement",
+        "official_source_family": "company_ir",
+        "official_domain": "www.hoaphat.com.vn",
+        "url": "https://www.hoaphat.com.vn/quan-he-co-dong/bao-cao-tai-chinh",
+        "adapter": "company_ir_listing_v1",
+        "parser": "parse_company_ir_listing_records",
+        "source_family": "company_ir",
+        "adapter_name": "company_ir_listing_v1",
+        "expected_max_requests": 1,
+        "current_access_status": "verified_static_html",
+        "notes": "official page",
+    }
+    entry.update(overrides)
+    return entry
+
+
+def _company_listing_target(
+    *,
+    symbol: str = "HPG",
+    dataset: str = "company_ir_hpg_fy2025_fs",
+    period_type: str = "annual",
+    period_label: str = "FY2025",
+    official_domain: str = "www.hoaphat.com.vn",
+) -> DisclosureTarget:
+    return DisclosureTarget(
+        source_family="company_ir",
+        exchange="HOSE",
+        official_domain=official_domain,
+        adapter_name="company_ir_listing_v1",
+        dataset=dataset,
+        symbol=symbol,
+        url=f"https://{official_domain}/ir",
+        request_params={
+            "issuer_name": f"{symbol} Issuer",
+            "expected_period_type": period_type,
+            "expected_period_label": period_label,
+            "allowed_document_domains": ["file.hoaphat.com.vn"],
+        },
+    )
+
+
+def _listing_html(items: list[tuple[str, str, str]]) -> bytes:
+    blocks = ""
+    for href, title, date_text in items:
+        blocks += f'<div class="stockcol"><a href="{href}">{title}<i>({date_text})</i></a></div>'
+    return f"<html><body>{blocks}</body></html>".encode("utf-8")
+
+
+def test_pit_breadth_registry_valid_target() -> None:
+    validate_pit_breadth_registry({"targets": [_breadth_registry_entry()]})
+
+
+def test_pit_breadth_registry_rejects_duplicate_symbol_period() -> None:
+    config = {"targets": [_breadth_registry_entry(), _breadth_registry_entry(dataset="other")]}
+    with pytest.raises(ValueError, match="Duplicate symbol/period"):
+        validate_pit_breadth_registry(config)
+
+
+def test_pit_breadth_registry_requires_sector() -> None:
+    with pytest.raises(ValueError, match="sector"):
+        validate_pit_breadth_registry({"targets": [_breadth_registry_entry(sector="")]})
+
+
+def test_pit_breadth_registry_rejects_non_https() -> None:
+    with pytest.raises(ValueError, match="must use https"):
+        validate_pit_breadth_registry({"targets": [_breadth_registry_entry(url="http://www.hoaphat.com.vn/ir")]})
+
+
+def test_pit_breadth_registry_rejects_domain_mismatch() -> None:
+    with pytest.raises(ValueError, match="must match official_domain"):
+        validate_pit_breadth_registry({"targets": [_breadth_registry_entry(url="https://evil.example/ir")]})
+
+
+def test_pit_breadth_registry_rejects_secondary_canonical_source() -> None:
+    with pytest.raises(ValueError, match="Secondary canonical source"):
+        validate_pit_breadth_registry({
+            "targets": [_breadth_registry_entry(official_source_family="secondary_aggregator")]
+        })
+
+
+def test_pit_breadth_registry_rejects_secret_key_recursively() -> None:
+    with pytest.raises(ValueError, match="Secret-like config key"):
+        validate_pit_breadth_registry({
+            "targets": [_breadth_registry_entry(request_params={"nested": {"api_key": "x"}})]
+        })
+
+
+def test_pit_breadth_registry_rejects_auth_header_recursively() -> None:
+    with pytest.raises(ValueError, match="Forbidden config key|Forbidden header"):
+        validate_pit_breadth_registry({
+            "targets": [_breadth_registry_entry(headers={"Authorization": "secret"})]
+        })
+
+
+def test_pit_breadth_registry_rejects_browser_user_agent() -> None:
+    with pytest.raises(ValueError, match="Browser impersonation User-Agent"):
+        validate_pit_breadth_registry({
+            "targets": [_breadth_registry_entry(headers={"User-Agent": "Mozilla/5.0 Chrome/125"})]
+        })
+
+
+def test_apply_targets_config_appends_valid_breadth_target() -> None:
+    targets = build_default_targets(["FPT"])
+    updated = apply_targets_config(targets, {"targets": [_breadth_registry_entry()]})
+    assert any(t.dataset == "company_ir_hpg_fy2025_fs" for t in updated)
+
+
+def test_apply_targets_config_preserves_appended_request_params() -> None:
+    entry = _breadth_registry_entry(request_params={"expected_period_type": "annual"})
+    updated = apply_targets_config(build_default_targets(["FPT"]), {"targets": [entry]})
+    target = next(t for t in updated if t.dataset == "company_ir_hpg_fy2025_fs")
+    assert target.request_params["expected_period_type"] == "annual"
+
+
+def test_parse_company_ir_listing_correct_annual_statement(tmp_path: Path) -> None:
+    href = "https://file.hoaphat.com.vn/hpg/bctc-hop-nhat-nam-2025-sau-kiem-toan.pdf"
+    body = _listing_html([(href, "BCTC hop nhat nam 2025 sau kiem toan", "27/03/2026")])
+    records = parse_company_ir_listing_records(
+        body=body,
+        target=_company_listing_target(),
+        payload_path=tmp_path / "p.html",
+        metadata_path=tmp_path / "m.json",
+        crawled_at="2026-06-14T00:00:00+00:00",
+    )
+    assert len(records) == 1
+    assert records[0].published_date == "2026-03-27"
+    assert records[0].document_category == "annual_financial_statement"
+
+
+def test_parse_company_ir_listing_correct_q1_statement(tmp_path: Path) -> None:
+    href = "https://file.hoaphat.com.vn/hpg/bctc-hop-nhat-quy-i-2026.pdf"
+    body = _listing_html([(href, "Bao cao tai chinh hop nhat Quy I/2026", "29/04/2026")])
+    records = parse_company_ir_listing_records(
+        body=body,
+        target=_company_listing_target(dataset="company_ir_hpg_q1_2026_fs", period_type="quarterly", period_label="Q1 2026"),
+        payload_path=tmp_path / "p.html",
+        metadata_path=tmp_path / "m.json",
+        crawled_at="2026-06-14T00:00:00+00:00",
+    )
+    assert len(records) == 1
+    assert records[0].published_date == "2026-04-29"
+    assert records[0].document_category == "quarterly_financial_statement"
+
+
+def test_parse_company_ir_listing_accepts_ordinal_quarter_wording(tmp_path: Path) -> None:
+    href = "https://file.hoaphat.com.vn/hpg/consolidated-financial-statements-for-quarter-1-2026.pdf"
+    body = _listing_html([(href, "Consolidated Financial Statements for 1st quarter of 2026", "29/04/2026")])
+    records = parse_company_ir_listing_records(
+        body=body,
+        target=_company_listing_target(dataset="company_ir_hpg_q1_2026_fs", period_type="quarterly", period_label="Q1 2026"),
+        payload_path=tmp_path / "p.html",
+        metadata_path=tmp_path / "m.json",
+        crawled_at="2026-06-14T00:00:00+00:00",
+    )
+    assert len(records) == 1
+
+
+def test_parse_company_ir_listing_rejects_annual_report(tmp_path: Path) -> None:
+    href = "https://file.hoaphat.com.vn/hpg/annual-report-2025.pdf"
+    body = _listing_html([(href, "Bao cao thuong nien 2025", "27/03/2026")])
+    records = parse_company_ir_listing_records(
+        body=body,
+        target=_company_listing_target(),
+        payload_path=tmp_path / "p.html",
+        metadata_path=tmp_path / "m.json",
+        crawled_at="2026-06-14T00:00:00+00:00",
+    )
+    assert records == []
+
+
+def test_parse_company_ir_listing_rejects_wrong_period(tmp_path: Path) -> None:
+    href = "https://file.hoaphat.com.vn/hpg/bctc-hop-nhat-quy-i-2026.pdf"
+    body = _listing_html([(href, "Bao cao tai chinh hop nhat Quy I/2026", "29/04/2026")])
+    records = parse_company_ir_listing_records(
+        body=body,
+        target=_company_listing_target(period_type="annual", period_label="FY2025"),
+        payload_path=tmp_path / "p.html",
+        metadata_path=tmp_path / "m.json",
+        crawled_at="2026-06-14T00:00:00+00:00",
+    )
+    assert records == []
+
+
+def test_parse_company_ir_listing_ignores_unrelated_pdf(tmp_path: Path) -> None:
+    body = _listing_html([
+        ("https://file.hoaphat.com.vn/hpg/business-update-q1.pdf", "Tong quan tinh hinh kinh doanh Quy I/2026", "29/04/2026"),
+        ("https://file.hoaphat.com.vn/hpg/bctc-hop-nhat-quy-i-2026.pdf", "BCTC hop nhat Quy I/2026", "29/04/2026"),
+    ])
+    records = parse_company_ir_listing_records(
+        body=body,
+        target=_company_listing_target(dataset="company_ir_hpg_q1_2026_fs", period_type="quarterly", period_label="Q1 2026"),
+        payload_path=tmp_path / "p.html",
+        metadata_path=tmp_path / "m.json",
+        crawled_at="2026-06-14T00:00:00+00:00",
+    )
+    assert len(records) == 1
+    assert records[0].document_url.endswith("bctc-hop-nhat-quy-i-2026.pdf")
+
+
+def test_parse_company_ir_listing_rejects_off_domain_pdf(tmp_path: Path) -> None:
+    body = _listing_html([
+        ("https://evil.example/hpg/bctc-hop-nhat-nam-2025.pdf", "BCTC hop nhat nam 2025 sau kiem toan", "27/03/2026"),
+    ])
+    records = parse_company_ir_listing_records(
+        body=body,
+        target=_company_listing_target(),
+        payload_path=tmp_path / "p.html",
+        metadata_path=tmp_path / "m.json",
+        crawled_at="2026-06-14T00:00:00+00:00",
+    )
+    assert records == []
+
+
+def test_parse_company_ir_listing_rejects_userinfo_host_trick(tmp_path: Path) -> None:
+    body = _listing_html([
+        ("https://www.hoaphat.com.vn@evil.example/bctc-hop-nhat-nam-2025.pdf", "BCTC hop nhat nam 2025 sau kiem toan", "27/03/2026"),
+    ])
+    records = parse_company_ir_listing_records(
+        body=body,
+        target=_company_listing_target(),
+        payload_path=tmp_path / "p.html",
+        metadata_path=tmp_path / "m.json",
+        crawled_at="2026-06-14T00:00:00+00:00",
+    )
+    assert records == []
+
+
+def test_parse_company_ir_listing_accepts_root_relative_pdf(tmp_path: Path) -> None:
+    body = _listing_html([
+        ("/files/bctc-hop-nhat-nam-2025-sau-kiem-toan.pdf", "BCTC hop nhat nam 2025 sau kiem toan", "27/03/2026"),
+    ])
+    records = parse_company_ir_listing_records(
+        body=body,
+        target=_company_listing_target(official_domain="www.hoaphat.com.vn"),
+        payload_path=tmp_path / "p.html",
+        metadata_path=tmp_path / "m.json",
+        crawled_at="2026-06-14T00:00:00+00:00",
+    )
+    assert len(records) == 1
+    assert records[0].document_url == "https://www.hoaphat.com.vn/files/bctc-hop-nhat-nam-2025-sau-kiem-toan.pdf"
+
+
+def test_parse_company_ir_listing_rejects_malformed_date(tmp_path: Path) -> None:
+    body = _listing_html([
+        ("https://file.hoaphat.com.vn/hpg/bctc-hop-nhat-nam-2025.pdf", "BCTC hop nhat nam 2025 sau kiem toan", "31/02/2026"),
+    ])
+    records = parse_company_ir_listing_records(
+        body=body,
+        target=_company_listing_target(),
+        payload_path=tmp_path / "p.html",
+        metadata_path=tmp_path / "m.json",
+        crawled_at="2026-06-14T00:00:00+00:00",
+    )
+    assert records == []
+
+
+def test_parse_company_ir_listing_deduplicates_same_pdf(tmp_path: Path) -> None:
+    href = "https://file.hoaphat.com.vn/hpg/bctc-hop-nhat-nam-2025.pdf"
+    body = _listing_html([
+        (href, "BCTC hop nhat nam 2025 sau kiem toan", "27/03/2026"),
+        (href, "BCTC hop nhat nam 2025 sau kiem toan", "27/03/2026"),
+    ])
+    records = parse_company_ir_listing_records(
+        body=body,
+        target=_company_listing_target(),
+        payload_path=tmp_path / "p.html",
+        metadata_path=tmp_path / "m.json",
+        crawled_at="2026-06-14T00:00:00+00:00",
+    )
+    assert len(records) == 1
+
+
+def test_parse_company_ir_listing_respects_max_records(tmp_path: Path) -> None:
+    body = _listing_html([
+        ("https://file.hoaphat.com.vn/hpg/bctc-hop-nhat-nam-2025.pdf", "BCTC hop nhat nam 2025 sau kiem toan", "27/03/2026"),
+        ("https://file.hoaphat.com.vn/hpg/bctc-cong-ty-me-nam-2025.pdf", "BCTC cong ty me nam 2025 sau kiem toan", "27/03/2026"),
+    ])
+    records = parse_company_ir_listing_records(
+        body=body,
+        target=_company_listing_target(),
+        payload_path=tmp_path / "p.html",
+        metadata_path=tmp_path / "m.json",
+        crawled_at="2026-06-14T00:00:00+00:00",
+        max_records=1,
+    )
+    assert len(records) == 1
+
+
+def test_extract_company_ir_listing_no_match_returns_parse_summary_warning(tmp_path: Path) -> None:
+    body = b"<html><body><a href='https://file.hoaphat.com.vn/doc.pdf'>Other document</a></body></html>"
+    response = HttpResponse(200, "text/html; charset=utf-8", body, {})
+    records, summary = extract_disclosure_records_with_summary(
+        response=response,
+        target=_company_listing_target(),
+        payload_path=tmp_path / "p.html",
+        metadata_path=tmp_path / "m.json",
+        crawled_at="2026-06-14T00:00:00+00:00",
+    )
+    assert records == []
+    assert summary["parse_status"] == "no_matching_disclosures"
+    assert "no_matching_financial_statement" in summary["warning_codes"]
+
+
+def test_extract_company_ir_listing_auth_produces_zero_rows(tmp_path: Path) -> None:
+    response = HttpResponse(403, "text/html", b"<html>Forbidden</html>", {})
+    records, summary = extract_disclosure_records_with_summary(
+        response=response,
+        target=_company_listing_target(),
+        payload_path=tmp_path / "p.html",
+        metadata_path=tmp_path / "m.json",
+        crawled_at="2026-06-14T00:00:00+00:00",
+    )
+    assert records == []
+    assert summary["access_status"] == "auth_required"
+    assert summary["bronze_record_count"] == 0
