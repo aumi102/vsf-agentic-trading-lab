@@ -25,7 +25,7 @@ five additional sectors.
 | HPG | Industrial/materials | official event found | official event found | no committed Vietcap comparison row |
 | KDH | Real estate | unresolved | official event found | no committed Vietcap comparison row |
 | MWG | Retail | unresolved | unresolved | official page lacked usable date-bound match |
-| VCB | Bank | blocked | blocked | bounded request failed |
+| VCB | Bank | network_error | network_error | bounded request timed out; no access-control block observed |
 | SSI | Securities | unresolved | unresolved | parent page only in bounded request |
 | VNM | Consumer | unresolved | unresolved | calendar page only in bounded request |
 

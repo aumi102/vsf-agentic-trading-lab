@@ -166,6 +166,34 @@ def test_official_not_found_preserved() -> None:
     assert normalized["match_status"] == "official_not_found"
 
 
+def test_network_error_preserved_and_not_blocked() -> None:
+    normalized = normalize_row(row(
+        official_disclosure_date="",
+        match_status="network_error",
+        confidence="none",
+    ))
+    assert normalized["match_status"] == "network_error"
+    assert normalized["match_status"] != "blocked"
+
+
+def test_network_error_does_not_count_as_credible_evidence(tmp_path: Path) -> None:
+    path = tmp_path / "samples.csv"
+    write_csv(path, [
+        evidence_row("a", symbol="AAA", period_label="2025Y", official_date="2026-03-20", title="AAA FY"),
+        row(
+            sample_id="b",
+            symbol="VCB",
+            period_label="2025Y",
+            official_disclosure_date="",
+            match_status="network_error",
+            confidence="none",
+        ),
+    ])
+    _, summary = load_and_validate(path)
+    assert summary["credible_unique_evidence_events"] == 1
+    assert summary["blocked_manual_unresolved_targets"] == 1
+
+
 def test_ambiguous_basis_preserved() -> None:
     normalized = normalize_row(row(match_status="ambiguous_basis", confidence="low"))
     assert normalized["match_status"] == "ambiguous_basis"

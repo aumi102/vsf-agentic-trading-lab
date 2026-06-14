@@ -26,7 +26,7 @@ draft).
 | HPG IR | www.hoaphat.com.vn | verified | FY2025 `2026-03-27`; Q1 2026 `2026-04-29` | `parse_company_ir_listing_records` | Vietcap comparison rows not committed |
 | KDH IR | www.khangdien.com.vn | partial | Q1 2026 `2026-04-29`; FY2025 unresolved | `parse_company_ir_listing_records` | Static page did not expose FY2025 |
 | MWG IR | mwg.vn | unresolved | report links without usable publication date | `parse_company_ir_listing_records` | Date binding unresolved |
-| VCB IR | portal.vietcombank.com.vn | blocked | none | none | Bounded request failed |
+| VCB IR | portal.vietcombank.com.vn | network_error | none | none | Bounded request timed out; no HTTP denial or access-control block observed |
 | SSI IR | www.ssi.com.vn | unresolved | parent page only | `parse_company_ir_listing_records` | Detail endpoint unresolved |
 | VNM IR | www.vinamilk.com.vn | unresolved | calendar page only | `parse_company_ir_listing_records` | FS attachment unresolved |
 | HOSE CBTT | www.hsx.vn | js_app_shell | React SPA shell only | none | Structured endpoint unresolved |

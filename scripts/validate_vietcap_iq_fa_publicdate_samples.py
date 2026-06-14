@@ -20,6 +20,7 @@ MATCH_STATUSES = (
     "official_not_found",
     "manual_only",
     "blocked",
+    "network_error",
     "ambiguous_basis",
     "not_comparable",
 )
@@ -51,6 +52,7 @@ PRESERVED_STATUSES = frozenset({
     "official_not_found",
     "manual_only",
     "blocked",
+    "network_error",
     "ambiguous_basis",
     "not_comparable",
 })
@@ -254,7 +256,7 @@ def summarize_rows(rows: list[dict[str, str]]) -> dict[str, Any]:
     })
     blocked_manual_unresolved_targets = sum(
         1 for row in rows
-        if row["match_status"] in {"official_not_found", "manual_only", "blocked", "ambiguous_basis", "not_comparable"}
+        if row["match_status"] in {"official_not_found", "manual_only", "blocked", "network_error", "ambiguous_basis", "not_comparable"}
     )
 
     if red_flags:
