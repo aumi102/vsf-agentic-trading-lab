@@ -8,143 +8,71 @@ toc_max_heading_level: 3
 
 ## Purpose
 
-Map known official disclosure surfaces for Vietnamese listed companies.
-Records what is known from actual HTTP probes and live execution. Informs
-target configuration for `probe_official_disclosures.py`.
-
----
+Map known official disclosure surfaces for Vietnamese listed companies. Records
+come from bounded HTTP probes and live execution, and inform
+`probe_official_disclosures.py` target configuration.
 
 ## Source Activation Matrix
 
-Live probe runs: `20260612T052922Z` (manual), `20260612T091529Z` (FPT honest-UA production), `20260612T102412Z` (VCI production revalidation).
+Live runs: `20260612T052922Z` (manual), `20260612T091529Z` (FPT honest-UA),
+`20260612T102412Z` (VCI revalidation), and `20260614T130404Z` (PIT breadth v2
+draft). Closeout candidate runs: `20260616T014621Z`, `20260616T014940Z`, and
+`20260616T015329Z`.
 
-| Source | Domain | HTTP | Access Status | Data Available | Parser | Blocker |
-|---|---|---|---|---|---|---|
-| FPT IR | fpt.com | 200 | verified | YES — 689 PDF links, server-rendered | `parse_fpt_ir_html_records` | None |
-| VCI IR (FY2025 FS) | www.vietcap.com.vn | 200 | verified | YES — date 2026-02-13, PDF URL | `parse_vci_ir_detail_records` | None |
-| VCI IR (Q1 2026 FS) | www.vietcap.com.vn | 200 | verified | YES — date 2026-04-20, PDF URL | `parse_vci_ir_detail_records` | None |
-| HOSE CBTT | www.hsx.vn | 200 | js_app_shell | NO — React SPA, 1.9 KB shell | none | React SPA; api.hsx.vn paths unresolved |
-| HNX CBTT | www.hnx.vn | timeout | error | NO — timed out in probe | none | Network timeout from probe env |
+| Source | Domain | Access | Data Available | Parser | Blocker |
+|---|---|---|---|---|---|
+| FPT IR | fpt.com | verified | 689 PDF links; FY2025 raw date `2026-03-19`; Q1 2026 date `2026-04-24` | `parse_fpt_ir_html_records` | None |
+| VCI FY2025 FS | www.vietcap.com.vn | verified | date `2026-02-13`, PDF URL | `parse_vci_ir_detail_records` | None |
+| VCI Q1 2026 FS | www.vietcap.com.vn | verified | date `2026-04-20`, PDF URL | `parse_vci_ir_detail_records` | None |
+| HPG IR | www.hoaphat.com.vn | verified | FY2025 `2026-03-27`; Q1 2026 `2026-04-29` | `parse_company_ir_listing_records` | Comparable rows committed |
+| KDH IR | www.khangdien.com.vn | partial | Q1 2026 `2026-04-29`; FY2025 unresolved | `parse_company_ir_listing_records` | Static page did not expose FY2025 |
+| MWG IR | mwg.vn | unresolved | report links without usable publication date | `parse_company_ir_listing_records` | Date binding unresolved |
+| ACB IR | acb.com.vn | verified | FY2025 `2026-02-27`; Q1 2026 `2026-04-23` | embedded Next data | Vietcap fa-direct returned 403; legacy browser-UA diagnostic only |
+| DGC IR | ducgiangchem.vn | partial | Q1 2026 `2026-04-28`; FY2025 unresolved | listing text | Vietcap fa-direct returned 403; legacy browser-UA diagnostic only |
+| VCB IR | portal.vietcombank.com.vn | network_error | none | none | Bounded request timed out; no HTTP denial or access-control block observed |
+| SSI IR | www.ssi.com.vn | unresolved | parent page only | `parse_company_ir_listing_records` | Detail endpoint unresolved |
+| VNM IR | www.vinamilk.com.vn | unresolved | calendar page only | `parse_company_ir_listing_records` | FS attachment unresolved |
+| HOSE CBTT | www.hsx.vn | js_app_shell | React SPA shell only | none | Structured endpoint unresolved |
+| HNX CBTT | www.hnx.vn | error | timeout / AJAX shell | none | Feed URL unresolved |
 
----
+## Positive Controls
 
-## FPT Company IR (Positive Control)
+FPT official IR is a server-rendered Sitecore page. The honest-UA run
+`20260612T091529Z` returned HTTP 200 and 20 bounded bronze records, all quality
+pass and `date_only_available`. Q1 2026 financial statements are in bounded
+bronze output. FY2025 audited financial statements are present in captured raw
+HTML but outside that 20-row bounded output.
 
-**Domain:** `fpt.com`
-**URL:** `fpt.com/en/ir/information-disclosures`
-**CMS:** Sitecore (server-rendered HTML)
+VCI official IR has direct detail pages for FY2025 and Q1 2026 financial
+statements. Run `20260612T102412Z` returned HTTP 200 for both pages, one bronze
+record per target, quality pass, and `date_only_available`.
 
-**Live probe evidence (run_id=20260612T091529Z):**
-- HTTP 200, 1,402,681 bytes, `text/html; charset=utf-8`
-- 689+ distinct PDF disclosure links in static HTML
+## PIT Breadth v2 Draft
 
-**Bronze parser output (max_records=20):**
-- 20 records produced, all `quality_status=pass`
-- All `pit_status=date_only_available` (FPT provides M/D/YYYY, no time)
-- Captured raw page contains FY2025 audited consolidated/separate FS dated
-  `2026-03-19`; those entries are outside the bounded 20-record bronze output.
-- Q1 2026 Consolidated FS: `published_date=2026-04-24` ✓
-- 2025 Annual Report: `published_date=2026-04-08` ✓
-- Issuer: FPT Corporation
+Registry: `config/pit_breadth_validation_v2_targets.json`.
+Sample: `docs/data_sources/pit_breadth_validation_v2_samples.csv`.
 
-**Parser:** `parse_fpt_ir_html_records` in `scripts/probe_official_disclosures.py`
+The draft added non-control candidates across bank, industrial, materials,
+real estate, retail, securities, and consumer sectors. HPG FY2025 and HPG Q1
+2026 now have committed Vietcap comparison rows and count as credible PIT
+support. KDH Q1, ACB FY2025, ACB Q1 2026, and DGC Q1 2026 are official-source
+events only because bounded Vietcap fa-direct probes returned HTTP 403 or no
+usable `publicDate`. ACB/DGC are `legacy_browser_ua_diagnostic` metadata-only
+blocker rows because the commands omitted an explicit project User-Agent.
+Statement rows are not independent evidence events.
 
----
-
-## HOSE (HSX)
-
-**Domain:** `www.hsx.vn`
-**URL probed:** `www.hsx.vn/Modules/CMS/Web/CategoryDetail?alias=CBTT`
-
-**Live probe evidence (run_id=20260612T052922Z):**
-- HTTP 200, 1,900 bytes, React SPA shell
-- HTML contains `<div id="HOSE">` and `<noscript>You need to enable JavaScript to run this app.</noscript>`
-- All routes return identical SPA shell regardless of path
-- Backend at `api.hsx.vn` discovered from JS bundle (`main.d430e296.js`, 2.4 MB)
-- API base URL uses `REACT_APP_API_URL_*` env vars replaced at build time
-- Actual disclosure endpoint paths not extractable from minified bundle statically
-
-**Access status:** `js_app_shell`
-**Parse summary:** zero bronze records, warning `js_app_shell_no_structured_data`.
-
-**Blocker:** Requires browser/JS runtime to execute disclosure API calls against `api.hsx.vn`. Not addressable without headless browser or API contract discovery.
-
----
-
-## HNX
-
-**Domain:** `www.hnx.vn`
-**URL probed:** `www.hnx.vn/en-gb/cong-bo-thong-tin.html`
-
-**Manual capture evidence (run_id=20260612T052922Z):**
-- HTTP 200, 41,114 bytes, navigation hub HTML
-- 3 jQuery AJAX calls in source; disclosure items loaded dynamically
-- No disclosure records in static HTML
-
-**Production execute (run_id=20260612T081136Z):** Timed out (20s limit).
-
-**Access status:** `error` (timeout in production run) / `html_ajax_shell` (manual capture)
-**Blocker:** Network timeout from probe environment; even if reachable, AJAX-loaded data requires follow-up endpoint discovery.
-
----
-
-## VCI Company IR
-
-**VCI** = Viet Capital Securities Corporation (ticker `VCI`, listed HOSE).
-
-**Domain `www.vietcap.com.vn`:** Official VCI Securities IR portal. Live-verified 2026-06-12
-(run_id=`20260612T102412Z`). Honest project UA accepted; TLS certificate verified.
-
-**FY2025 FS detail page:**
-- URL: `/en/investor-relations/financial-statements-for-financial-year-of-2025`
-- HTTP 200; `parse_vci_ir_detail_records` extracted `published_date=2026-02-13`
-- `quality_status=pass`, `pit_status=date_only_available`
-- PDF: `api/cms-api/uploads/froala/files/20260213 - VCI - Fin...` (on-domain)
-
-**Q1 2026 FS detail page:**
-- URL: `/en/investor-relations/financial-statements-q1-2026`
-- HTTP 200; `parse_vci_ir_detail_records` extracted `published_date=2026-04-20`
-- `quality_status=pass`, `pit_status=date_only_available`
-- PDF: `api/cms-api/uploads/froala/files/20260420 - VCI - Fin...` (on-domain)
-
-**Previous wrong-entity probes (for reference only):**
-`vietcapital.com.vn` — VCAM (asset management), not VCI. `vcsc.com.vn` — timed out.
-Both are superseded by the verified `www.vietcap.com.vn` domain.
-
----
+Breadth result: `pit_inconclusive`, zero red flags, no full PIT confirmation.
+DB write and backtest remain blocked.
 
 ## Evidence Priority Policy
 
-From `vietcap_iq_fa_publicdate_pit_validation.md`:
-
-1. HOSE official disclosure record.
-2. HNX official disclosure record.
-3. Company official IR page (directly accessible).
-4. Official PDF/report metadata if clearly tied to publication date.
-
-Secondary aggregators (Vietstock, vnstock) are non-canonical. They do not
-populate `official_disclosure_date` and do not affect PIT gate computation.
-
----
-
-## Configuration
-
-Real targets are configured via `config/official_disclosure_targets.example.json`.
-Copy and adjust; do not add secrets. Pass via `--targets-config`:
-
-```
-python scripts/probe_official_disclosures.py \
-  --symbols FPT \
-  --targets-config config/official_disclosure_targets.example.json \
-  --max-records 20 \
-  --execute
-```
-
----
+Canonical PIT evidence must come from official sources: HOSE, HNX, company IR,
+or official report/PDF metadata clearly tied to publication date. Secondary
+aggregators such as Vietstock, vnstock, Cafef, and FireAnt are investigation
+leads only; they do not populate `official_disclosure_date`.
 
 ## Open Blockers
 
-1. **HOSE structured API:** React SPA. `api.hsx.vn` endpoint paths require JS runtime or separate API contract documentation.
-2. **HNX structured feed:** Navigation hub. Disclosure items load via jQuery AJAX; feed URL not in static HTML. Also times out in probe environment.
-
-VCI IR is fully resolved — both FY2025 and Q1 2026 FS pages are live-verified.
+1. HOSE structured disclosure API remains unresolved behind the React SPA.
+2. HNX structured feed remains unresolved.
+3. PIT breadth v2 did not reach the minimum new-issuer/new-sector event gate.

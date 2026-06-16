@@ -18,6 +18,9 @@ MATCH_STATUSES = (
     "vietcap_after_official",
     "vietcap_before_official",
     "official_not_found",
+    "manual_only",
+    "blocked",
+    "network_error",
     "ambiguous_basis",
     "not_comparable",
 )
@@ -45,7 +48,14 @@ REQUIRED_COLUMNS = (
     "confidence",
     "reviewer_note",
 )
-PRESERVED_STATUSES = frozenset({"official_not_found", "ambiguous_basis", "not_comparable"})
+PRESERVED_STATUSES = frozenset({
+    "official_not_found",
+    "manual_only",
+    "blocked",
+    "network_error",
+    "ambiguous_basis",
+    "not_comparable",
+})
 COMPARABLE_STATUSES = frozenset({
     "exact_match",
     "near_match_1_3_days",
@@ -149,6 +159,21 @@ def _make_evidence_key(row: dict[str, str]) -> tuple[str, str, str, str, str]:
     )
 
 
+def _has_evidence_identity(row: dict[str, str]) -> bool:
+    key = _make_evidence_key(row)
+    return all(value for value in key)
+
+
+def _period_bucket(row: dict[str, str]) -> str:
+    period_type = _normalized_evidence_value(row.get("period_type", "")).lower()
+    period_label = _normalized_evidence_value(row.get("period_label", "")).lower()
+    if period_type in {"annual", "year", "yearly"} or period_label.endswith("y"):
+        return "annual"
+    if period_type in {"quarter", "quarterly"} or "q" in period_label:
+        return "quarterly"
+    return ""
+
+
 def summarize_rows(rows: list[dict[str, str]]) -> dict[str, Any]:
     status_counts = Counter(row["match_status"] for row in rows)
     confidence_counts = Counter(row["confidence"] for row in rows)
@@ -156,6 +181,7 @@ def summarize_rows(rows: list[dict[str, str]]) -> dict[str, Any]:
         row for row in rows
         if row["match_status"] in COMPARABLE_STATUSES
         and row["confidence"] in CREDIBLE_CONFIDENCE
+        and _has_evidence_identity(row)
     ]
     red_flags = [
         row for row in rows
@@ -164,9 +190,10 @@ def summarize_rows(rows: list[dict[str, str]]) -> dict[str, Any]:
     ]
     credible_statement_ratio = len(credible_comparable) / len(rows) if rows else 0.0
 
-    all_comparable_events: set[tuple] = {
-        _make_evidence_key(r) for r in rows if r["match_status"] in COMPARABLE_STATUSES
-    }
+    comparable_with_identity = [
+        r for r in rows if r["match_status"] in COMPARABLE_STATUSES and _has_evidence_identity(r)
+    ]
+    all_comparable_events: set[tuple] = {_make_evidence_key(r) for r in comparable_with_identity}
     credible_events: set[tuple] = {_make_evidence_key(r) for r in credible_comparable}
     credible_issuers: set[str] = {
         _normalized_evidence_value(r.get("symbol", "")) for r in credible_comparable
@@ -179,6 +206,22 @@ def summarize_rows(rows: list[dict[str, str]]) -> dict[str, Any]:
         for r in rows
         if r["match_status"] in COMPARABLE_STATUSES
     }
+    credible_symbols_by_event = {
+        _make_evidence_key(r): _normalized_evidence_value(r.get("symbol", ""))
+        for r in credible_comparable
+    }
+    credible_sectors_by_event = {
+        _make_evidence_key(r): _normalized_evidence_value(r.get("sector", ""))
+        for r in credible_comparable
+    }
+    credible_periods_by_event = {
+        _make_evidence_key(r): _period_bucket(r)
+        for r in credible_comparable
+    }
+    credible_status_by_event = {
+        _make_evidence_key(r): r["match_status"]
+        for r in credible_comparable
+    }
 
     unique_evidence_events = len(all_comparable_events)
     credible_unique_evidence_events = len(credible_events)
@@ -189,9 +232,44 @@ def summarize_rows(rows: list[dict[str, str]]) -> dict[str, Any]:
     )
     unique_issuers = len(credible_issuers)
     unique_issuer_period_events = len(issuer_period_events)
+    total_target_issuers = len({
+        _normalized_evidence_value(r.get("symbol", ""))
+        for r in rows
+        if _normalized_evidence_value(r.get("symbol", ""))
+    })
+    total_sectors = len({
+        _normalized_evidence_value(r.get("sector", ""))
+        for r in rows
+        if _normalized_evidence_value(r.get("sector", ""))
+    })
+    verified_issuers = len({symbol for symbol in credible_symbols_by_event.values() if symbol})
+    verified_sectors = len({sector for sector in credible_sectors_by_event.values() if sector})
+    annual_evidence_events = sum(1 for key in credible_events if credible_periods_by_event.get(key) == "annual")
+    quarterly_evidence_events = sum(1 for key in credible_events if credible_periods_by_event.get(key) == "quarterly")
+    exact_match_events = sum(1 for key in credible_events if credible_status_by_event.get(key) == "exact_match")
+    near_match_events = sum(1 for key in credible_events if credible_status_by_event.get(key) == "near_match_1_3_days")
+    vietcap_after_official_events = sum(
+        1 for key in credible_events if credible_status_by_event.get(key) == "vietcap_after_official"
+    )
+    vietcap_before_official_red_flags = len({
+        _make_evidence_key(r) for r in red_flags if _has_evidence_identity(r)
+    })
+    blocked_manual_unresolved_targets = sum(
+        1 for row in rows
+        if row["match_status"] in {"official_not_found", "manual_only", "blocked", "network_error", "ambiguous_basis", "not_comparable"}
+    )
 
     if red_flags:
         pit_status = "pit_red_flags_found"
+    elif (
+        unique_issuers >= 6
+        and verified_sectors >= 5
+        and credible_unique_evidence_events >= 12
+        and annual_evidence_events > 0
+        and quarterly_evidence_events > 0
+        and credible_evidence_ratio >= 0.80
+    ):
+        pit_status = "pit_supported_breadth_sample"
     elif (
         credible_statement_ratio >= 0.70
         and credible_evidence_ratio >= 0.70
@@ -219,6 +297,18 @@ def summarize_rows(rows: list[dict[str, str]]) -> dict[str, Any]:
         "credible_evidence_ratio": credible_evidence_ratio,
         "unique_issuers": unique_issuers,
         "unique_issuer_period_events": unique_issuer_period_events,
+        "total_target_issuers": total_target_issuers,
+        "verified_issuers": verified_issuers,
+        "total_sectors": total_sectors,
+        "verified_sectors": verified_sectors,
+        "total_unique_evidence_events": unique_evidence_events,
+        "annual_evidence_events": annual_evidence_events,
+        "quarterly_evidence_events": quarterly_evidence_events,
+        "exact_match_events": exact_match_events,
+        "near_match_events": near_match_events,
+        "vietcap_after_official_events": vietcap_after_official_events,
+        "vietcap_before_official_red_flags": vietcap_before_official_red_flags,
+        "blocked_manual_unresolved_targets": blocked_manual_unresolved_targets,
         "red_flag_count": len(red_flags),
         "pit_sample_status": pit_status,
     }
