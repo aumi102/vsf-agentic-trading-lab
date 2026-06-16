@@ -20,7 +20,7 @@ statements. Probe stage only; not promoted to canonical storage.
 | FA parser | Dry-run complete; 7 validation checks; strict mode |
 | FA mapping | Option C resolver wired; Mode B active; 53,013 rows; 0 errors |
 | PIT semantics | Supported small sample: 8/8 statement rows credible, 4/4 unique official disclosure events credible, 2 issuers, zero red flags, `pit_supported_small_sample` |
-| PIT breadth v2 | Draft: 8 target issuers, 7 sectors, 3 new official-only events, but comparable breadth remains `pit_inconclusive` |
+| PIT breadth v2 | Draft: 20 rows; 10 credible statement rows; 6 credible unique events; 3 comparable issuers/sectors; `pit_inconclusive` |
 | Mapping coverage | Below 95% gate: BS 89.7% / IS 94.5% / CF 87.6%; 99 conflicts |
 | DB write | Blocked |
 | Backtest | Blocked |
@@ -44,9 +44,11 @@ statements. Probe stage only; not promoted to canonical storage.
   HTML, outside the bounded 20-record bronze output.
 - VCI official IR: FY2025 financial statements `2026-02-13`; Q1 2026 financial
   statements `2026-04-20`.
-- PIT breadth v2: HPG FY2025 `2026-03-27`, HPG Q1 2026 `2026-04-29`, and KDH
-  Q1 2026 `2026-04-29` were verified as official-only date-level events; no
-  canonical Vietcap comparison rows are committed for those new events yet.
+- PIT breadth v2: HPG FY2025 `2026-03-27` and HPG Q1 2026 `2026-04-29` have
+  committed Vietcap comparison rows. KDH Q1 2026 has official date
+  `2026-04-29`, but one KDH fa-direct probe returned HTTP 403 with no JSON
+  `publicDate`; the official title is parent-company-only, so no basis-compatible
+  comparison row is committed.
 - Secondary aggregators are non-canonical.
 
 ## Open Blockers

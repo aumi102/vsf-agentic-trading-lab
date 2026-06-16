@@ -23,7 +23,7 @@ five additional sectors.
 | FPT | Technology | control | control | comparable PIT evidence |
 | VCI | Securities | control | control | comparable PIT evidence |
 | HPG | Industrial/materials | comparable PIT evidence | comparable PIT evidence | Vietcap publicDate comparison rows committed |
-| KDH | Real estate | unresolved | official event found | no committed Vietcap comparison row |
+| KDH | Real estate | unresolved | official event found | KDH fa-direct returned 403; no publicDate comparison row |
 | MWG | Retail | unresolved | unresolved | official page lacked usable date-bound match |
 | VCB | Bank | network_error | network_error | bounded request timed out; no access-control block observed |
 | SSI | Securities | unresolved | unresolved | parent page only in bounded request |
@@ -47,8 +47,12 @@ Verified new official-only events with Vietcap publicDate comparison:
 | HPG | FY2025 | 2026-03-27 | 2026-03-30 | +3 | near_match_1_3_days |
 | HPG | Q1 2026 | 2026-04-29 | 2026-05-04 | +5 | vietcap_after_official |
 
-KDH Q1 2026 official date `2026-04-29` remains `not_comparable`; no local
-Vietcap IQ publicDate evidence was committed for KDH in this pass.
+KDH Q1 2026 official date `2026-04-29` remains `not_comparable`. A single
+KDH `BALANCE_SHEET` fa-direct probe (run_id=`20260616T011504Z`) returned HTTP
+403 `text/html` with no JSON payload, so there is no explicit `yearReport=2026`,
+`lengthReport=1`, or `publicDate` to compare. The official KDH title is
+parent-company-only (`Cong ty Me`), and no basis-compatible Vietcap row was
+available from this pass.
 
 HPG comparison rows used a single bounded Vietcap IQ BALANCE_SHEET direct
 probe (run_id=`20260614T134035Z`). One payload serves both FY2025 and Q1 2026.

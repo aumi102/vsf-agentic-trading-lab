@@ -24,7 +24,7 @@ No DB write, no backtest, no production agent tools yet.
 | FA mapping coverage gap probe | 3 general/fund symbols probed; union: 7 payloads, all known groups sampled; BS 89.7% / IS 94.5% / CF 87.6%; gap appears structural |
 | FA `publicDate` PIT spot-check | 8-row CSV validator returns `pit_supported_small_sample`; 8/8 statement rows credible; 4/4 unique official disclosure events credible; 2 issuers; zero red flags |
 | Official Disclosure Foundation v1 | Hardened+VCI: FPT IR 20 bounded records (pass), plus FY2025 audited FS in raw HTML; VCI FY2025 `2026-02-13` (pass); VCI Q1 2026 `2026-04-20` (pass); HOSE=js_app_shell; HNX=timeout. Honest UA; official disclosure fetches verify TLS; no pseudo rows. |
-| PIT Breadth Validation v2 | Draft: 8 target issuers, 7 sectors, 3 new official-only events; comparable sample remains `pit_inconclusive` |
+| PIT Breadth Validation v2 | Draft: 20 rows; 10 credible statement rows; 6 credible unique events; 3 comparable issuers/sectors; remains `pit_inconclusive` |
 | Test suite | **781 tests pass** |
 | DB write | **Blocked** |
 | Backtest | **Blocked** |
@@ -35,10 +35,10 @@ No DB write, no backtest, no production agent tools yet.
 
 - **Mapping coverage:** Below 95% per section — BS 89.7% / IS 94.5% / CF 87.6% (7 payloads, all known groups sampled). Gap appears structural for `/metrics` endpoint: residual codes (`bsi*`, `bss*`, `bsb*`, `cfs*`, `cfi*`) absent from all probed mapping payloads.
 - **PIT semantics:** `pit_supported_small_sample` (8/8 statement rows credible, 4/4 unique official disclosure events credible, 2 issuers, zero red flags). Evidence is date-level, not timestamp-level; do not claim full PIT confirmation or use for PIT backtest yet.
-- **PIT breadth:** v2 verified HPG FY2025, HPG Q1 2026, and KDH Q1 2026 as
-  official-only events, but no committed Vietcap comparison rows exist for
-  those events. Statement rows are not independent evidence events; breadth
-  remains `pit_inconclusive`.
+- **PIT breadth:** v2 has comparable rows for FPT, VCI, and HPG. KDH Q1 2026
+  has official date `2026-04-29`, but the KDH fa-direct probe returned HTTP
+  403 with no JSON `publicDate`; the parent-company-only title also prevents a
+  basis decision. Breadth remains `pit_inconclusive`.
 - **DB write:** Blocked until all §17 gates met (see `vietcap_iq_fa_ingestion_v2_readiness.md`).
 - **Full-history FA fetch:** Not implemented — blocked on mapping, PIT, and schema gates.
 - **Backtest:** Blocked on DB write.
@@ -56,7 +56,7 @@ No DB write, no backtest, no production agent tools yet.
 | FA mapping named rows | 46,412 / 53,013 (87.5% combined validation view) |
 | FPT BS+CF Mode B code-row naming | 485 / 556 named (87%); primary=163; consensus=322; conflict_skipped=2; not_covered=62 |
 | FA `publicDate` PIT sample | 8 rows; 4 unique official disclosure events; 2 issuers; 2 exact_match, 4 near_match, 2 vietcap_after_official; 0 red flags |
-| PIT breadth v2 sample | 20 rows; 4 credible unique comparable events; 8 target issuers; 7 sectors; 12 unresolved/blocked/not-comparable rows; 0 red flags |
+| PIT breadth v2 sample | 20 rows; 10 credible statement rows; 6 credible unique comparable events; 3 comparable issuers; 3 comparable sectors; 10 unresolved/network/not-comparable rows; 0 red flags |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 179 targeted tests |
