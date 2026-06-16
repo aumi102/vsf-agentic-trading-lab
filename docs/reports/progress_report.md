@@ -26,7 +26,8 @@ No production DB write, no backtest, no broker execution.
 | Official Disclosure Foundation v1 | Hardened+VCI: FPT IR 20 bounded records (pass), plus FY2025 audited FS in raw HTML; VCI FY2025 `2026-02-13` (pass); VCI Q1 2026 `2026-04-20` (pass); HOSE=js_app_shell; HNX=timeout. Honest UA; official disclosure fetches verify TLS; no pseudo rows. |
 | MVP DB/tool demo | SQLite local store from saved gap-chart payloads; tools return latest market data, features, signal, risk, and Vietnamese answer. Demo symbols: FPT, VNM, VCB. |
 | Agent tool orchestrator demo | Deterministic wrapper resolves a symbol, calls market/features/signal/risk/report tools, and returns a Vietnamese answer. No LLM, fetch, broker execution, or backtest. |
-| Test suite | **764 tests pass** |
+| Agent demo readiness | Scenario runner with `market_brief`, `risk_check`, `compare`. Structured result dict with tool-call trace, Vietnamese answer, caveats, `not_financial_advice=True`. CLI: `scripts/run_agent_demo.py`. |
+| Test suite | **779 tests pass** |
 | Production DB write | **Blocked** |
 | Backtest | **Blocked** |
 
@@ -56,6 +57,7 @@ No production DB write, no backtest, no broker execution.
 | FA `publicDate` PIT sample | 8 rows; 4 unique official disclosure events; 2 issuers; 2 exact_match, 4 near_match, 2 vietcap_after_official; 0 red flags |
 | MVP DB/tool demo | 3 demo securities; 14,079 daily price rows; 14,071 feature snapshots/signals; 8 OHLC fail rows excluded from features |
 | Agent orchestrator demo | Exact tool sequence: market_data -> features -> signal -> risk -> report; missing DB and unknown-symbol paths return clear non-traceback statuses |
+| Agent demo runner | 3 scenarios (market_brief, risk_check, compare); 15 targeted tests; FPT ok, HPG not_found, compare table in input order |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
@@ -78,9 +80,9 @@ No production DB write, no backtest, no broker execution.
 2. ~~Activate FPT primary mapping for general symbols~~ — Mode B implemented; legacy `line_item_name` remains empty.
 3. Decide on coverage gate response: lower threshold, or supplement mapping from a secondary source.
 4. ~~Build official disclosure source discovery/crawler POC for HOSE/HNX/company IR~~ — Foundation v1 hardened+VCI: FPT IR (20 records), VCI FY2025+Q1 2026 (2 records, exact/near match). Honest UA, TLS enforced, no pseudo rows. PIT gate: `pit_supported_small_sample`.
-5. Use the SQLite MVP tools and orchestrator CLI to demo agent-style answers from cached data.
+5. ~~Use the SQLite MVP tools and orchestrator CLI to demo agent-style answers from cached data.~~ — Scenario runner (`market_brief`, `risk_check`, `compare`) added in phase/agent-demo-readiness.
 6. Decide production DB path: extend SQLite contracts, design QuestDB, or add another durable store.
-7. Add a minimal agent runner only after the deterministic tool orchestration is accepted.
+7. Present mentor-facing demo and collect feedback before adding LLM reasoning layer.
 8. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
 
 ---
@@ -102,6 +104,7 @@ All docs under `docs/` target ≤1500 words. All files comply as of PR #9 (2026-
 | `docs/data_sources/vietcap_iq_fa_mapping_coverage_gap_probe.md` | ~1050 | Compliant |
 | `docs/ingestion_v2_schema_plan.md` | 1473 | Compliant |
 | `docs/data_sources/vietcap_iq_fa_parser_mapping_integration.md` | 876 | Compliant |
+| `docs/data_platform/agent_demo_readiness.md` | ~500 | Compliant |
 | All other `docs/` files (stubs + minor docs) | below 500 | Compliant |
 
 Archived historical detail (probe notes, paper notes, writing guide, legacy sections) lives in `notes/archive/` (outside Docusaurus tree).
