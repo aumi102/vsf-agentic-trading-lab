@@ -26,7 +26,7 @@ No production DB write, no backtest, no broker execution.
 | Official Disclosure Foundation v1 | Hardened+VCI: FPT IR 20 bounded records (pass), plus FY2025 audited FS in raw HTML; VCI FY2025 `2026-02-13` (pass); VCI Q1 2026 `2026-04-20` (pass); HOSE=js_app_shell; HNX=timeout. Honest UA; official disclosure fetches verify TLS; no pseudo rows. |
 | MVP DB/tool demo | SQLite local store from saved gap-chart payloads; tools return latest market data, features, signal, risk, and Vietnamese answer. Demo symbols: FPT, VNM, VCB. |
 | Agent tool orchestrator demo | Deterministic wrapper resolves a symbol, calls market/features/signal/risk/report tools, and returns a Vietnamese answer. No LLM, fetch, broker execution, or backtest. |
-| Test suite | **762 tests pass** |
+| Test suite | **764 tests pass** |
 | Production DB write | **Blocked** |
 | Backtest | **Blocked** |
 
@@ -59,7 +59,7 @@ No production DB write, no backtest, no broker execution.
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 762 |
+| Total tests passing | 764 |
 
 ---
 

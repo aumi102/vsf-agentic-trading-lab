@@ -40,6 +40,21 @@ def test_extracts_symbol_from_vietnamese_query(tmp_path: Path) -> None:
     assert "khuyến nghị đầu tư" in str(result["answer_markdown"])
 
 
+def test_extracts_lowercase_and_phrase_query_symbols(tmp_path: Path) -> None:
+    db_path = _build_fixture_db(tmp_path)
+
+    lowercase = answer_market_query(query="fpt hôm nay thế nào?", db_path=db_path)
+    phrase = answer_market_query(query="Cho tôi xem FPT", db_path=db_path)
+    prefixed = answer_market_query(query="mã FPT hôm nay ra sao?", db_path=db_path)
+
+    assert lowercase["status"] == "ok"
+    assert lowercase["symbol"] == "FPT"
+    assert phrase["status"] == "ok"
+    assert phrase["symbol"] == "FPT"
+    assert prefixed["status"] == "ok"
+    assert prefixed["symbol"] == "FPT"
+
+
 def test_unknown_query_without_symbol_returns_needs_symbol(tmp_path: Path) -> None:
     db_path = _build_fixture_db(tmp_path)
 
@@ -58,6 +73,17 @@ def test_unknown_symbol_returns_not_found_without_traceback(tmp_path: Path) -> N
 
     assert result["status"] == "not_found"
     assert result["symbol"] == "XYZ"
+    assert result["tool_outputs"]["market_data"]["status"] == "not_found"
+    assert "traceback" not in str(result["answer_markdown"]).lower()
+
+
+def test_unavailable_hpg_symbol_returns_not_found_without_traceback(tmp_path: Path) -> None:
+    db_path = _build_fixture_db(tmp_path)
+
+    result = answer_market_query(query="HPG hôm nay thế nào?", db_path=db_path)
+
+    assert result["status"] == "not_found"
+    assert result["symbol"] == "HPG"
     assert result["tool_outputs"]["market_data"]["status"] == "not_found"
     assert "traceback" not in str(result["answer_markdown"]).lower()
 
