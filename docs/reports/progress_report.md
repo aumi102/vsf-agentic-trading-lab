@@ -25,7 +25,8 @@ No production DB write, no backtest, no broker execution.
 | FA `publicDate` PIT spot-check | 8-row CSV validator returns `pit_supported_small_sample`; 8/8 statement rows credible; 4/4 unique official disclosure events credible; 2 issuers; zero red flags |
 | Official Disclosure Foundation v1 | Hardened+VCI: FPT IR 20 bounded records (pass), plus FY2025 audited FS in raw HTML; VCI FY2025 `2026-02-13` (pass); VCI Q1 2026 `2026-04-20` (pass); HOSE=js_app_shell; HNX=timeout. Honest UA; official disclosure fetches verify TLS; no pseudo rows. |
 | MVP DB/tool demo | SQLite local store from saved gap-chart payloads; tools return latest market data, features, signal, risk, and Vietnamese answer. Demo symbols: FPT, VNM, VCB. |
-| Test suite | **754 tests pass** |
+| Agent tool orchestrator demo | Deterministic wrapper resolves a symbol, calls market/features/signal/risk/report tools, and returns a Vietnamese answer. No LLM, fetch, broker execution, or backtest. |
+| Test suite | **764 tests pass** |
 | Production DB write | **Blocked** |
 | Backtest | **Blocked** |
 
@@ -54,10 +55,11 @@ No production DB write, no backtest, no broker execution.
 | FPT BS+CF Mode B code-row naming | 485 / 556 named (87%); primary=163; consensus=322; conflict_skipped=2; not_covered=62 |
 | FA `publicDate` PIT sample | 8 rows; 4 unique official disclosure events; 2 issuers; 2 exact_match, 4 near_match, 2 vietcap_after_official; 0 red flags |
 | MVP DB/tool demo | 3 demo securities; 14,079 daily price rows; 14,071 feature snapshots/signals; 8 OHLC fail rows excluded from features |
+| Agent orchestrator demo | Exact tool sequence: market_data -> features -> signal -> risk -> report; missing DB and unknown-symbol paths return clear non-traceback statuses |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 754 |
+| Total tests passing | 764 |
 
 ---
 
@@ -76,9 +78,10 @@ No production DB write, no backtest, no broker execution.
 2. ~~Activate FPT primary mapping for general symbols~~ — Mode B implemented; legacy `line_item_name` remains empty.
 3. Decide on coverage gate response: lower threshold, or supplement mapping from a secondary source.
 4. ~~Build official disclosure source discovery/crawler POC for HOSE/HNX/company IR~~ — Foundation v1 hardened+VCI: FPT IR (20 records), VCI FY2025+Q1 2026 (2 records, exact/near match). Honest UA, TLS enforced, no pseudo rows. PIT gate: `pit_supported_small_sample`.
-5. Use the SQLite MVP tools to demo agent-style answers from cached data.
+5. Use the SQLite MVP tools and orchestrator CLI to demo agent-style answers from cached data.
 6. Decide production DB path: extend SQLite contracts, design QuestDB, or add another durable store.
-7. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
+7. Add a minimal agent runner only after the deterministic tool orchestration is accepted.
+8. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
 
 ---
 

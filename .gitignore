@@ -39,6 +39,7 @@ build/
 !trading_agent/__init__.py
 !src/trading_agent/source_adapters/__init__.py
 !src/trading_agent/db/__init__.py
+!src/trading_agent/agent/__init__.py
 !src/trading_agent/features/__init__.py
 !src/trading_agent/signals/__init__.py
 !src/trading_agent/tools/__init__.py
