@@ -150,6 +150,25 @@ def test_demo_cli_smoke(tmp_path: Path) -> None:
     assert "không phải khuyến nghị đầu tư" in completed.stdout
 
 
+def test_repo_root_imports_work_without_manual_sys_path() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from trading_agent.db.build_mvp_store import build_mvp_store; "
+            "from trading_agent.tools.report_tool import compose_market_answer; "
+            "print('imports_ok')",
+        ],
+        cwd=ROOT,
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        check=True,
+    )
+
+    assert completed.stdout.strip() == "imports_ok"
+
+
 def _daily_prices(symbol: str, closes: list[float]) -> pd.DataFrame:
     dates = pd.date_range("2026-01-01", periods=len(closes), freq="D")
     return pd.DataFrame(

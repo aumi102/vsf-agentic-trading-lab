@@ -25,7 +25,7 @@ No production DB write, no backtest, no broker execution.
 | FA `publicDate` PIT spot-check | 8-row CSV validator returns `pit_supported_small_sample`; 8/8 statement rows credible; 4/4 unique official disclosure events credible; 2 issuers; zero red flags |
 | Official Disclosure Foundation v1 | Hardened+VCI: FPT IR 20 bounded records (pass), plus FY2025 audited FS in raw HTML; VCI FY2025 `2026-02-13` (pass); VCI Q1 2026 `2026-04-20` (pass); HOSE=js_app_shell; HNX=timeout. Honest UA; official disclosure fetches verify TLS; no pseudo rows. |
 | MVP DB/tool demo | SQLite local store from saved gap-chart payloads; tools return latest market data, features, signal, risk, and Vietnamese answer. Demo symbols: FPT, VNM, VCB. |
-| Test suite | **745 tests pass** |
+| Test suite | **754 tests pass** |
 | Production DB write | **Blocked** |
 | Backtest | **Blocked** |
 
@@ -57,7 +57,7 @@ No production DB write, no backtest, no broker execution.
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 745 |
+| Total tests passing | 754 |
 
 ---
 
