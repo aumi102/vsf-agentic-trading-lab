@@ -27,7 +27,7 @@ No production DB write, no backtest, no broker execution.
 | MVP DB/tool demo | SQLite local store from saved gap-chart payloads; tools return latest market data, features, signal, risk, and Vietnamese answer. Demo symbols: FPT, VNM, VCB. |
 | Agent tool orchestrator demo | Deterministic wrapper resolves a symbol, calls market/features/signal/risk/report tools, and returns a Vietnamese answer. No LLM, fetch, broker execution, or backtest. |
 | Agent demo readiness | Scenario runner with `market_brief`, `risk_check`, `compare`. Structured result dict with tool-call trace, Vietnamese answer, caveats, `not_financial_advice=True`. CLI: `scripts/run_agent_demo.py`. |
-| Test suite | **779 tests pass** |
+| Test suite | **781 tests pass** |
 | Production DB write | **Blocked** |
 | Backtest | **Blocked** |
 
@@ -57,11 +57,11 @@ No production DB write, no backtest, no broker execution.
 | FA `publicDate` PIT sample | 8 rows; 4 unique official disclosure events; 2 issuers; 2 exact_match, 4 near_match, 2 vietcap_after_official; 0 red flags |
 | MVP DB/tool demo | 3 demo securities; 14,079 daily price rows; 14,071 feature snapshots/signals; 8 OHLC fail rows excluded from features |
 | Agent orchestrator demo | Exact tool sequence: market_data -> features -> signal -> risk -> report; missing DB and unknown-symbol paths return clear non-traceback statuses |
-| Agent demo runner | 3 scenarios (market_brief, risk_check, compare); 15 targeted tests; FPT ok, HPG not_found, compare table in input order |
+| Agent demo runner | 3 scenarios (market_brief, risk_check, compare); 17 targeted tests; FPT ok, HPG not_found, all-missing exits nonzero, compare table in input order |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 764 |
+| Total tests passing | 781 |
 
 ---
 

@@ -233,3 +233,25 @@ def test_cli_missing_db(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "Traceback" not in result.stderr
     assert "build_mvp_db.py" in result.stdout
+
+
+def test_compare_all_symbols_missing_returns_not_found_no_traceback(tmp_path: Path) -> None:
+    db_path = _build_single_fixture_db(tmp_path, "FPT")
+    result = run_demo("compare", symbols=["HPG", "XYZ"], db_path=db_path)
+    assert result["status"] == "not_found"
+    assert result["not_financial_advice"] is True
+    rows = result["outputs"]["rows"]
+    assert all(r["status"] == "not_found" for r in rows)
+    assert "Traceback" not in result["answer_markdown"]
+
+
+def test_cli_compare_all_missing_exits_nonzero_no_traceback(tmp_path: Path) -> None:
+    db_path = _build_single_fixture_db(tmp_path, "FPT")
+    result = _run_cli(
+        "--scenario", "compare",
+        "--symbols", "HPG,XYZ",
+        "--db-path", str(db_path),
+    )
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
+    assert "not_found" in result.stdout
