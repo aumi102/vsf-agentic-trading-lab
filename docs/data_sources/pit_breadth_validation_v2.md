@@ -65,7 +65,11 @@ consolidated Q1 2026 (`2026-04-23`) statements. DGC official IR exposed Q1 2026
 consolidated and separate statement entries dated `2026-04-28`. Single
 BALANCE_SHEET fa-direct probes for ACB and DGC both returned HTTP 403
 `text/html` with no JSON payload, so no `publicDate` comparison rows are
-available.
+available. Those two commands omitted an explicit project User-Agent and used
+the script default browser-style User-Agent; they are recorded as
+`legacy_browser_ua_diagnostic`, metadata-only, non-credible blocker evidence.
+They do not satisfy the clean-request policy and do not count toward comparable
+PIT support.
 
 HPG comparison rows used a single bounded Vietcap IQ BALANCE_SHEET direct
 probe (run_id=`20260614T134035Z`). One payload serves both FY2025 and Q1 2026.
@@ -85,9 +89,9 @@ Committed sample: `docs/data_sources/pit_breadth_validation_v2_samples.csv`.
 | Comparable sectors | 3 |
 | Annual evidence events | 3 |
 | Quarterly evidence events | 3 |
-| blocked rows | 3 |
-| network_error rows | 2 |
-| Unresolved/not-comparable rows | 13 |
+| Non-credible rows total | 13 |
+| blocked rows within non-credible total | 3 |
+| network_error rows within non-credible total | 2 |
 | Red flags | 0 |
 
 Date-delta distribution for credible events: 1 exact, 3 near matches, 2

@@ -27,8 +27,8 @@ draft). Closeout candidate runs: `20260616T014621Z`, `20260616T014940Z`, and
 | HPG IR | www.hoaphat.com.vn | verified | FY2025 `2026-03-27`; Q1 2026 `2026-04-29` | `parse_company_ir_listing_records` | Comparable rows committed |
 | KDH IR | www.khangdien.com.vn | partial | Q1 2026 `2026-04-29`; FY2025 unresolved | `parse_company_ir_listing_records` | Static page did not expose FY2025 |
 | MWG IR | mwg.vn | unresolved | report links without usable publication date | `parse_company_ir_listing_records` | Date binding unresolved |
-| ACB IR | acb.com.vn | verified | FY2025 `2026-02-27`; Q1 2026 `2026-04-23` | embedded Next data | Vietcap fa-direct returned 403 |
-| DGC IR | ducgiangchem.vn | partial | Q1 2026 `2026-04-28`; FY2025 unresolved | listing text | Vietcap fa-direct returned 403 |
+| ACB IR | acb.com.vn | verified | FY2025 `2026-02-27`; Q1 2026 `2026-04-23` | embedded Next data | Vietcap fa-direct returned 403; legacy browser-UA diagnostic only |
+| DGC IR | ducgiangchem.vn | partial | Q1 2026 `2026-04-28`; FY2025 unresolved | listing text | Vietcap fa-direct returned 403; legacy browser-UA diagnostic only |
 | VCB IR | portal.vietcombank.com.vn | network_error | none | none | Bounded request timed out; no HTTP denial or access-control block observed |
 | SSI IR | www.ssi.com.vn | unresolved | parent page only | `parse_company_ir_listing_records` | Detail endpoint unresolved |
 | VNM IR | www.vinamilk.com.vn | unresolved | calendar page only | `parse_company_ir_listing_records` | FS attachment unresolved |
@@ -57,7 +57,9 @@ real estate, retail, securities, and consumer sectors. HPG FY2025 and HPG Q1
 2026 now have committed Vietcap comparison rows and count as credible PIT
 support. KDH Q1, ACB FY2025, ACB Q1 2026, and DGC Q1 2026 are official-source
 events only because bounded Vietcap fa-direct probes returned HTTP 403 or no
-usable `publicDate`. Statement rows are not independent evidence events.
+usable `publicDate`. ACB/DGC are `legacy_browser_ua_diagnostic` metadata-only
+blocker rows because the commands omitted an explicit project User-Agent.
+Statement rows are not independent evidence events.
 
 Breadth result: `pit_inconclusive`, zero red flags, no full PIT confirmation.
 DB write and backtest remain blocked.
