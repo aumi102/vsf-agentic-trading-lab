@@ -28,6 +28,7 @@ No production DB write, no backtest, no broker execution.
 | Agent tool orchestrator demo | Deterministic wrapper resolves a symbol, calls market/features/signal/risk/report tools, and returns a Vietnamese answer. No LLM, fetch, broker execution, or backtest. |
 | Agent demo readiness | Scenario runner with `market_brief`, `risk_check`, `compare`. Structured result dict with tool-call trace, Vietnamese answer, caveats, `not_financial_advice=True`. CLI: `scripts/run_agent_demo.py`. |
 | Mentor demo package | Runbook (`docs/demo/mentor_demo_runbook.md`), demo report (`docs/reports/mentor_demo_report.md`), and suite runner (`scripts/run_mentor_demo_suite.py`). All scenarios validated. Production DB/backtest still blocked. |
+| Post-demo acceptance | Mentor review checklist (`docs/demo/mentor_review_checklist.md`), post-demo technical roadmap (`docs/plans/post_demo_technical_roadmap.md`), current demo architecture (`docs/architecture/current_demo_architecture.md`). Awaiting mentor feedback on store, backtest, LLM timeline. |
 | Test suite | **788 tests pass** |
 | Production DB write | **Blocked** |
 | Backtest | **Blocked** |
@@ -83,8 +84,9 @@ No production DB write, no backtest, no broker execution.
 4. ~~Build official disclosure source discovery/crawler POC for HOSE/HNX/company IR~~ — Foundation v1 hardened+VCI: FPT IR (20 records), VCI FY2025+Q1 2026 (2 records, exact/near match). Honest UA, TLS enforced, no pseudo rows. PIT gate: `pit_supported_small_sample`.
 5. ~~Use the SQLite MVP tools and orchestrator CLI to demo agent-style answers from cached data.~~ — Scenario runner (`market_brief`, `risk_check`, `compare`) added in phase/agent-demo-readiness.
 6. Decide production DB path: extend SQLite contracts, design QuestDB, or add another durable store.
-7. Present mentor-facing demo and collect feedback before adding LLM reasoning layer.
-8. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
+7. ~~Present mentor-facing demo and collect feedback before adding LLM reasoning layer.~~ — Demo package complete. Send `docs/demo/mentor_demo_runbook.md` + `docs/demo/mentor_review_checklist.md` to mentor. Wait for feedback.
+8. Execute `docs/plans/post_demo_technical_roadmap.md` phases based on mentor answers (store decision → backtest → LLM).
+9. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
 
 ---
 
