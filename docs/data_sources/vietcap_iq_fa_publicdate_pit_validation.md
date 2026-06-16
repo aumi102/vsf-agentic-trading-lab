@@ -71,13 +71,13 @@ timestamp-level. Broader issuer and exchange validation is still required before
 ## Breadth v2 Draft
 
 `docs/data_sources/pit_breadth_validation_v2_samples.csv` extends the review
-surface to 8 target issuers and 7 sectors. It has 20 rows, 10 credible
-statement rows, 6 credible unique events, 3 comparable issuers, and 3 comparable
-sectors. HPG FY2025 and Q1 2026 have committed Vietcap comparison rows. KDH Q1
-2026 has official date `2026-04-29`, but one KDH fa-direct probe returned HTTP
-403 with no JSON `publicDate`; the official title is parent-company-only, so no
-basis-compatible comparison row is committed. Result: `pit_inconclusive`, zero
-red flags. Statement rows are not independent evidence events.
+surface to 10 target issuers and 8 sectors. It has 23 rows, 10 credible
+statement rows, 6 credible unique events, 3 comparable issuers, 3 comparable
+sectors, and 3 blocked rows. HPG FY2025 and Q1 2026 have committed Vietcap
+comparison rows. KDH Q1 2026, ACB FY2025, ACB Q1 2026, and DGC Q1 2026 have
+official dates but no usable Vietcap `publicDate` payload from bounded
+fa-direct probes. Result: `pit_inconclusive`, zero red flags. Statement rows are
+not independent evidence events.
 
 ## Gate Status
 

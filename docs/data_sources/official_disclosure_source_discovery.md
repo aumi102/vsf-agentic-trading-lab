@@ -16,16 +16,19 @@ come from bounded HTTP probes and live execution, and inform
 
 Live runs: `20260612T052922Z` (manual), `20260612T091529Z` (FPT honest-UA),
 `20260612T102412Z` (VCI revalidation), and `20260614T130404Z` (PIT breadth v2
-draft).
+draft). Closeout candidate runs: `20260616T014621Z`, `20260616T014940Z`, and
+`20260616T015329Z`.
 
 | Source | Domain | Access | Data Available | Parser | Blocker |
 |---|---|---|---|---|---|
 | FPT IR | fpt.com | verified | 689 PDF links; FY2025 raw date `2026-03-19`; Q1 2026 date `2026-04-24` | `parse_fpt_ir_html_records` | None |
 | VCI FY2025 FS | www.vietcap.com.vn | verified | date `2026-02-13`, PDF URL | `parse_vci_ir_detail_records` | None |
 | VCI Q1 2026 FS | www.vietcap.com.vn | verified | date `2026-04-20`, PDF URL | `parse_vci_ir_detail_records` | None |
-| HPG IR | www.hoaphat.com.vn | verified | FY2025 `2026-03-27`; Q1 2026 `2026-04-29` | `parse_company_ir_listing_records` | Vietcap comparison rows not committed |
+| HPG IR | www.hoaphat.com.vn | verified | FY2025 `2026-03-27`; Q1 2026 `2026-04-29` | `parse_company_ir_listing_records` | Comparable rows committed |
 | KDH IR | www.khangdien.com.vn | partial | Q1 2026 `2026-04-29`; FY2025 unresolved | `parse_company_ir_listing_records` | Static page did not expose FY2025 |
 | MWG IR | mwg.vn | unresolved | report links without usable publication date | `parse_company_ir_listing_records` | Date binding unresolved |
+| ACB IR | acb.com.vn | verified | FY2025 `2026-02-27`; Q1 2026 `2026-04-23` | embedded Next data | Vietcap fa-direct returned 403 |
+| DGC IR | ducgiangchem.vn | partial | Q1 2026 `2026-04-28`; FY2025 unresolved | listing text | Vietcap fa-direct returned 403 |
 | VCB IR | portal.vietcombank.com.vn | network_error | none | none | Bounded request timed out; no HTTP denial or access-control block observed |
 | SSI IR | www.ssi.com.vn | unresolved | parent page only | `parse_company_ir_listing_records` | Detail endpoint unresolved |
 | VNM IR | www.vinamilk.com.vn | unresolved | calendar page only | `parse_company_ir_listing_records` | FS attachment unresolved |
@@ -49,12 +52,12 @@ record per target, quality pass, and `date_only_available`.
 Registry: `config/pit_breadth_validation_v2_targets.json`.
 Sample: `docs/data_sources/pit_breadth_validation_v2_samples.csv`.
 
-The draft added six non-control issuer candidates across bank, industrial,
-real estate, retail, securities, and consumer sectors. It verified three new
-official-only date-level events: HPG FY2025, HPG Q1 2026, and KDH Q1 2026.
-Those events do not count as credible PIT support until bounded Vietcap
-publicDate comparison rows are committed. Statement rows are not independent
-evidence events.
+The draft added non-control candidates across bank, industrial, materials,
+real estate, retail, securities, and consumer sectors. HPG FY2025 and HPG Q1
+2026 now have committed Vietcap comparison rows and count as credible PIT
+support. KDH Q1, ACB FY2025, ACB Q1 2026, and DGC Q1 2026 are official-source
+events only because bounded Vietcap fa-direct probes returned HTTP 403 or no
+usable `publicDate`. Statement rows are not independent evidence events.
 
 Breadth result: `pit_inconclusive`, zero red flags, no full PIT confirmation.
 DB write and backtest remain blocked.

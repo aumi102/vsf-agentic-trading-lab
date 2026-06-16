@@ -18,7 +18,7 @@ DB gates are met.
 | Mapping integration | Done: Option C resolver, Mode B active, 7 output columns, 0 dry-run errors |
 | Mapping coverage | Below gate: BS 89.7% / IS 94.5% / CF 87.6%; 99 conflicts |
 | `publicDate` PIT sample | Supported small sample: 8/8 statement rows credible; 4/4 unique official disclosure events credible; 2 issuers; 0 red flags; `pit_supported_small_sample` |
-| PIT breadth v2 | Draft: 8 target issuers, 7 sectors, 3 new official-only events, but comparable breadth remains `pit_inconclusive` |
+| PIT breadth v2 | Draft: 10 target issuers, 8 sectors, 23 rows, 6 credible unique events, 3 comparable issuers/sectors, 3 blocked rows; `pit_inconclusive` |
 | Full-history FA fetch | Not implemented |
 | QuestDB schema | Not implemented |
 | DB write | Blocked |
@@ -39,10 +39,10 @@ DB gates are met.
   the captured honest-UA raw page, outside the bounded 20-record bronze output.
 - VCI official IR evidence: FY2025 financial statements `2026-02-13`, Q1 2026
   financial statements `2026-04-20`.
-- PIT breadth v2 official-source-first run verified HPG FY2025 (`2026-03-27`),
-  HPG Q1 2026 (`2026-04-29`), and KDH Q1 2026 (`2026-04-29`) as official-only
-  date-level events; these do not count as PIT support without Vietcap
-  publicDate comparison rows.
+- PIT breadth v2 has comparable rows for FPT, VCI, and HPG. KDH Q1, ACB
+  FY2025, ACB Q1 2026, and DGC Q1 2026 are official-only or blocked because
+  bounded Vietcap fa-direct probes returned HTTP 403 or no usable JSON
+  `publicDate`.
 
 ## PIT Availability Policy
 
