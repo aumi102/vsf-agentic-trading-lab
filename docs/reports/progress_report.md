@@ -33,9 +33,10 @@ No production DB write, no production backtest, no broker execution.
 | Data store decision | Decision matrix (`docs/plans/data_store_decision_matrix.md`); ADR-0001 (`docs/decisions/0001_local_sqlite_mvp_store.md`). Recommendation: keep SQLite for now; DuckDB when backtest needs columnar queries; QuestDB deferred until schema stable. |
 | OHLCV ingestion foundation | Cached ingestion foundation records `source_runs`, per-run `raw_source_payloads`, and `ingestion_watermarks`; refreshes canonical prices/features/signals by symbol. |
 | Controlled live OHLCV adapter | Vietcap IQ gap-chart adapter can run only with `--mode live --allow-network`, is capped at 3 explicit symbols, saves raw payloads before parsing, and reuses ingestion refresh. Docs: `docs/data_platform/live_ohlcv_adapter_foundation.md`, `docs/data_platform/live_ohlcv_smoke_report.md`, `docs/data_platform/live_ingestion_readiness_checklist.md`. No scheduler/full-universe crawl/QuestDB. |
+| Ingestion observability status | Read-only status API/tool/CLI reports source runs, raw payloads, watermarks, lineage, freshness, and tool readiness. Docs: `docs/data_platform/ingestion_observability_status.md`. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | Template at `docs/demo/mentor_feedback_capture.md` — fill in after mentor session. |
-| Test suite | **850 tests pass** |
+| Test suite | **866 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -67,10 +68,11 @@ No production DB write, no production backtest, no broker execution.
 | Agent orchestrator demo | Exact tool sequence: market_data -> features -> signal -> risk -> report; missing DB and unknown-symbol paths return clear non-traceback statuses |
 | Agent/backtest demo runner | market_brief, risk_check, compare, and Backtest MVP suite rows; expected nonzero edge cases display as OK when status matches |
 | OHLCV ingestion/live adapter tests | 38 targeted tests |
+| Ingestion status tests | 15 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 850 |
+| Total tests passing | 866 |
 
 ---
 

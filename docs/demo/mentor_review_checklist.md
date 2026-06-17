@@ -28,6 +28,17 @@ python scripts/run_mentor_demo_suite.py
 
 Expected: status table with OK for market brief, risk check, compare, and Backtest MVP rows. Expected nonzero edge cases are labeled OK when status matches.
 
+### DB/ingestion status
+
+```bash
+python scripts/run_ingestion_status.py --symbols FPT,VNM,VCB
+```
+
+Expected: table counts, lineage check, source run/watermark status, and tool
+readiness. `quality_warn` is acceptable for a builder-only DB when
+`tool_readiness=ok`; it means the audit trail is incomplete. Use this before
+trusting demo or backtest output.
+
 ### Backtest MVP focus commands
 
 ```bash
@@ -49,6 +60,7 @@ python scripts/run_backtest_demo.py --symbols FPT --start-date 2030-01-01 --end-
 | Backtest base run | `status=ok`; metrics present; gates pass/warn |
 | Backtest FPT,HPG | `symbols_missing=["HPG"]`; still `status=ok` |
 | Backtest 2030 date range | `status=not_found`; no usable rows; no traceback |
+| Ingestion status | source lineage, watermarks, freshness, tool readiness |
 | `not_financial_advice` | Always `true` |
 
 ---

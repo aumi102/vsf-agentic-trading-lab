@@ -17,8 +17,16 @@ BUILD_SCRIPT = "scripts/build_mvp_db.py"
 BUILD_ARGS = ["--symbols", "FPT,VNM,VCB"]
 AGENT_SCRIPT = "scripts/run_agent_demo.py"
 BACKTEST_SCRIPT = "scripts/run_backtest_demo.py"
+STATUS_SCRIPT = "scripts/run_ingestion_status.py"
 
 DEMO_SCENARIOS = [
+    {
+        "label": "ingestion_status --symbols FPT,VNM,VCB",
+        "script": STATUS_SCRIPT,
+        "args": ["--symbols", "FPT,VNM,VCB"],
+        "expect_exit": 0,
+        "expect_status": ["ok", "quality_warn"],
+    },
     {
         "label": "market_brief --symbol FPT",
         "script": AGENT_SCRIPT,
@@ -140,7 +148,11 @@ def main(db_path: str | None = None, skip_build: bool = False) -> int:
         summary = _extract_summary(result.stdout)
         status = str(summary.get("status") or "unknown")
         want_status = scenario.get("expect_status")
-        passed = got_exit == want_exit and (want_status is None or status == want_status)
+        if isinstance(want_status, list):
+            status_ok = status in want_status
+        else:
+            status_ok = want_status is None or status == want_status
+        passed = got_exit == want_exit and status_ok
         key_result = _key_result(scenario["script"], summary)
 
         mark = "OK  " if passed else "FAIL"
@@ -169,6 +181,16 @@ def _extract_summary(stdout: str) -> dict[str, object]:
 
 
 def _key_result(script: str, summary: dict[str, object]) -> str:
+    if script == STATUS_SCRIPT:
+        readiness = summary.get("tool_readiness")
+        counts = summary.get("table_counts")
+        if isinstance(readiness, dict) and isinstance(counts, dict):
+            return (
+                f"tool_ready={readiness.get('market_data')}/{readiness.get('features')}/"
+                f"{readiness.get('signals')}; source_runs={counts.get('source_runs')}"
+            )
+        return "status report"
+
     if script == BACKTEST_SCRIPT:
         missing = summary.get("symbols_missing")
         if isinstance(missing, list) and missing:
