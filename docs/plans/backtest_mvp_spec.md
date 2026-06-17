@@ -8,9 +8,9 @@ toc_max_heading_level: 3
 
 ## Scope
 
-This spec covers the minimum viable backtest for the current demo phase. It is rule-based only. No LLM decisions, no broker execution, no realtime data, no portfolio optimizer.
+This spec covers the minimum viable backtest scaffold for the current demo phase. It is rule-based only. No LLM decisions, no broker execution, no realtime data, no portfolio optimizer.
 
-The backtest reads canonical daily prices from the existing SQLite MVP store (or a compatible replacement) and applies the current deterministic signal logic.
+The scaffold reads cached `daily_prices`, `feature_snapshots`, and `signals` from the existing SQLite MVP store and applies the current deterministic signal logic. It is exploratory only and not financial advice.
 
 ---
 
@@ -20,9 +20,10 @@ The backtest reads canonical daily prices from the existing SQLite MVP store (or
 
 - BUY when `close > MA20 > MA50` and `return_20d > 0`
 - SELL when `close < MA20 < MA50` and `return_20d < 0`
-- HOLD otherwise (including low-confidence cases with insufficient lookback)
+- HOLD otherwise
+- HOLD_WITH_LOW_CONFIDENCE does not open a new position
 
-Position sizing: long-only, flat position (fully in or fully out). No short-selling in MVP.
+Position sizing: long-only, cash or fully long per symbol allocation. No short-selling in MVP.
 
 ---
 
@@ -34,11 +35,11 @@ Position sizing: long-only, flat position (fully in or fully out). No short-sell
 | `start_date` | Earliest available | Inclusive |
 | `end_date` | Latest available | Inclusive |
 | `strategy_id` | `mvp_ma20_ma50_momentum` | Used as key in results |
-| `cost_bps` | 20 | Round-trip brokerage cost in basis points |
-| `slippage_bps` | 5 | Execution slippage per trade |
-| `price_basis` | `close` | Must match `price_basis` in DB |
-| `initial_capital` | 1_000_000 | VND (or any unit — ratio metrics are unit-invariant) |
-| `position_sizing` | `full_equity` | All-in when signal=BUY; flat when SELL/HOLD |
+| `transaction_cost` | 0.001 | Fractional cost per trade |
+| `slippage` | 0.0005 | Fractional slippage per trade |
+| `price_basis` | Store-reported | Reported in output |
+| `initial_capital` | 100_000_000 | VND or any unit; ratio metrics are unit-invariant |
+| `position_sizing` | per-symbol allocation | All-in per symbol when signal=BUY; flat when SELL |
 
 ---
 
@@ -46,53 +47,52 @@ Position sizing: long-only, flat position (fully in or fully out). No short-sell
 
 | Output | Description |
 |---|---|
-| `trades` | List of `{date, symbol, action, price, cost_bps, slippage_bps}` |
+| `trades` | List of `{date, symbol, action, price, fill_price, transaction_cost, slippage}` |
 | `equity_curve` | `{date, portfolio_value}` per day |
-| `sharpe_ratio` | Annualised, using daily returns, risk-free=0 |
-| `sortino_ratio` | Downside deviation variant |
+| `sharpe` | Annualized, using daily returns, risk-free=0 |
+| `sortino` | Downside deviation variant |
 | `profit_factor` | Gross profit / gross loss |
 | `max_drawdown` | Peak-to-trough percentage |
 | `win_rate` | Fraction of closed trades with positive P&L |
-| `exposure_pct` | Fraction of days with non-zero position |
-| `total_return_pct` | Final equity / initial capital − 1 |
+| `exposure` | Fraction of days with non-zero position |
+| `total_return` | Final equity / initial capital minus 1 |
 | `caveats` | Data quality warnings carried through from tools |
-| `not_for_live_trading` | Always `true` |
+| `not_financial_advice` | Always `true` |
+
+Metrics that cannot be computed reliably return `None` with a caveat.
 
 ---
 
 ## Validation Gates
 
-The backtest must refuse to run or emit an explicit `quality=fail` if any of the following are true:
+The backtest emits validation gates and returns `quality_fail` if a blocking gate fails:
 
-1. Any row used has `quality_status=fail` (OHLC inconsistency).
-2. `adjustment_status` is not `unknown` but the backtest config says `adjusted=True` — mismatch.
-3. Lookback is below MA50 minimum (50 days) at the start date.
-4. `source_id` or `raw_path` is missing from any row used.
-5. Cost and slippage assumptions are not explicitly stated in output.
-6. `price_basis` in config does not match `price_basis` in DB row.
+1. The SQLite store exists.
+2. Requested symbols exist in the store.
+3. Rows with `quality_status=fail` are excluded.
+4. `source_id` and `raw_path` are present on rows used.
+5. At least 50-day lookback is available for the requested window.
+6. Cost and slippage assumptions are explicitly stated in output.
+7. Price basis is reported in the assumptions.
+8. `adjustment_status` is carried through with an explicit corporate-action caveat.
+9. Same-day close execution is labeled as an MVP leakage caveat; production must use a stricter next-bar convention.
 
-Gate failure emits a structured dict with `status=quality_fail` and `blocking_caveats`, not a Python exception.
+Gate failure emits a structured dict with `status=quality_fail`, not a Python exception.
 
 ---
 
 ## Demo Scenario
 
-```
-backtest(
-    symbols=["FPT", "VNM", "VCB"],
-    strategy_id="mvp_ma20_ma50_momentum",
-    cost_bps=20,
-    slippage_bps=5,
-    initial_capital=1_000_000,
-)
+```bash
+python scripts/build_mvp_db.py --symbols FPT,VNM,VCB
+python scripts/run_backtest_demo.py --symbols FPT,VNM,VCB --strategy-id mvp_ma20_ma50_momentum
 ```
 
 Output must be clearly labeled:
 
-```
-## backtest_mvp_ma20_ma50_momentum — EXPLORATORY ONLY
-
-Not for live trading. Data: saved local payloads, adjustment_status=unknown.
+```text
+backtest_mvp_ma20_ma50_momentum - EXPLORATORY ONLY
+Not for live trading. Data: saved local payloads, adjustment_status may be unknown.
 Results reflect rule-based logic on unvalidated historical data.
 ```
 
@@ -100,15 +100,15 @@ Results reflect rule-based logic on unvalidated historical data.
 
 ## Not in Scope
 
-- Portfolio optimization or capital allocation across symbols.
+- Portfolio optimization.
 - Live trading or order routing.
 - Reinforcement learning or LLM-generated trade decisions.
 - Walk-forward optimization or parameter search.
-- Transaction cost modeling beyond flat bps.
-- Corporate-action adjustment (blocked until adjustment engine exists).
+- Transaction cost modeling beyond flat fractional assumptions.
+- Corporate-action adjustment, blocked until an adjustment engine exists.
 
 ---
 
 ## Prerequisite
 
-The backtest reads from the existing `daily_prices` table. No new store migration is required for the MVP backtest. If the store is replaced (e.g., DuckDB), the backtest module must be adapted, but the spec and validation gates remain identical.
+The backtest reads from the existing SQLite MVP store. No new store migration is required for the MVP scaffold. If the store is replaced, for example with DuckDB, the module must be adapted, but the validation gates remain the same.

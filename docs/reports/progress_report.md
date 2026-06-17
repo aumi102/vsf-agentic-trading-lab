@@ -30,11 +30,11 @@ No production DB write, no backtest, no broker execution.
 | Mentor demo package | Runbook (`docs/demo/mentor_demo_runbook.md`), demo report (`docs/reports/mentor_demo_report.md`), and suite runner (`scripts/run_mentor_demo_suite.py`). All scenarios validated. Production DB/backtest still blocked. |
 | Post-demo acceptance | Mentor review checklist (`docs/demo/mentor_review_checklist.md`), post-demo technical roadmap (`docs/plans/post_demo_technical_roadmap.md`), current demo architecture (`docs/architecture/current_demo_architecture.md`). Awaiting mentor feedback on store, backtest, LLM timeline. |
 | Data store decision | Decision matrix (`docs/plans/data_store_decision_matrix.md`); ADR-0001 (`docs/decisions/0001_local_sqlite_mvp_store.md`). Recommendation: keep SQLite for now; DuckDB when backtest needs columnar queries; QuestDB deferred until schema stable. |
-| Backtest MVP spec | Scope, required inputs/outputs, validation gates, and demo scenario at `docs/plans/backtest_mvp_spec.md`. Implementation blocked pending mentor decision on store and symbol universe. |
+| Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; CLI `scripts/run_backtest_demo.py`; docs at `docs/backtest/backtest_mvp_demo.md` and `docs/plans/backtest_mvp_spec.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | Template at `docs/demo/mentor_feedback_capture.md` — fill in after mentor session. |
-| Test suite | **788 tests pass** |
+| Test suite | **803 tests pass** |
 | Production DB write | **Blocked** |
-| Backtest | **Blocked** |
+| Production backtest hardening | **Blocked** |
 
 ---
 
@@ -45,7 +45,7 @@ No production DB write, no backtest, no broker execution.
 - **MVP DB/tool demo:** Implemented as local SQLite only. It is suitable for deterministic tool-call demo, not production storage.
 - **Production DB write:** Blocked until all §17 gates met (see `vietcap_iq_fa_ingestion_v2_readiness.md`).
 - **Full-history FA fetch:** Not implemented — blocked on mapping, PIT, and schema gates.
-- **Backtest:** Blocked on DB write.
+- **Production backtest hardening:** Blocked on mentor review of store choice, execution convention, cost/slippage assumptions, and data adjustment policy.
 
 ---
 
@@ -66,7 +66,7 @@ No production DB write, no backtest, no broker execution.
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 788 |
+| Total tests passing | 803 |
 
 ---
 
@@ -89,8 +89,9 @@ No production DB write, no backtest, no broker execution.
 6. Decide production DB path: extend SQLite contracts, design QuestDB, or add another durable store.
 7. ~~Present mentor-facing demo and collect feedback before adding LLM reasoning layer.~~ — Demo package complete. Send `docs/demo/mentor_demo_runbook.md` + `docs/demo/mentor_review_checklist.md` to mentor. Wait for feedback.
 8. ~~Execute `docs/plans/post_demo_technical_roadmap.md` phases based on mentor answers.~~ — Decision pack created: store matrix, backtest spec, ADR-0001, and feedback capture template ready. Awaiting mentor session to unlock next phase.
-9. Implement backtest MVP (`mvp_ma20_ma50_momentum` strategy over FPT/VNM/VCB) after mentor confirms store choice and symbol universe.
-10. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
+9. ~~Implement exploratory backtest MVP (`mvp_ma20_ma50_momentum` strategy over FPT/VNM/VCB).~~ - Scaffold added over cached SQLite data with explicit caveats and validation gates.
+10. Get mentor review of backtest assumptions and store decision before expanding universe or adding QuestDB/LLM.
+11. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
 
 ---
 
