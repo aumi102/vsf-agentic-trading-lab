@@ -37,6 +37,10 @@ Expected behavior:
 
 ## Decisions Required Before Expansion
 
+See the mentor-facing checklist at
+`docs/demo/mentor_ingestion_decision_checklist.md` for the full decision list and
+commands to run during the mentor session.
+
 | Decision | Why it matters |
 |---|---|
 | approved live source | confirms which endpoint is allowed for repeated use |
@@ -45,6 +49,7 @@ Expected behavior:
 | raw retention policy | defines how long payload evidence is kept |
 | production DB path | chooses SQLite/DuckDB/QuestDB/Postgres before scaling |
 | scheduler readiness gates | prevents daemon work before controls are approved |
+| backtest execution convention | same-day vs next-bar fills before hardening |
 
 ## Boundaries
 

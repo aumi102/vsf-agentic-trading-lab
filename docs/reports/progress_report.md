@@ -34,10 +34,10 @@ No production DB write, no production backtest, no broker execution.
 | OHLCV ingestion foundation | Cached ingestion foundation records `source_runs`, per-run `raw_source_payloads`, and `ingestion_watermarks`; refreshes canonical prices/features/signals by symbol. |
 | Controlled live OHLCV adapter | Vietcap IQ gap-chart adapter can run only with `--mode live --allow-network`, is capped at 3 explicit symbols, saves raw payloads before parsing, and reuses ingestion refresh. Docs: `docs/data_platform/live_ohlcv_adapter_foundation.md`, `docs/data_platform/live_ohlcv_smoke_report.md`, `docs/data_platform/live_ingestion_readiness_checklist.md`. No scheduler/full-universe crawl/QuestDB. |
 | Ingestion observability status | Read-only status API/tool/CLI reports source runs, raw payloads, watermarks, lineage, freshness, and tool readiness. Docs: `docs/data_platform/ingestion_observability_status.md`. |
-| Production ingestion control plan | Dry-run planner validates live symbol allowlist, batch cap, countBack, and rate-limit policy before scheduler/full ingestion. No network or DB mutation. |
+| Production ingestion control plan | Dry-run planner validates live symbol allowlist (non-empty, default subset), batch cap, countBack vs `max_count_back`, retention, scheduler-disabled, and manual-network-required policy before scheduler/full ingestion. No network or DB mutation. Mentor checklist: `docs/demo/mentor_ingestion_decision_checklist.md`. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | Template at `docs/demo/mentor_feedback_capture.md` — fill in after mentor session. |
-| Test suite | **877 tests pass** |
+| Test suite | **883 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -70,11 +70,11 @@ No production DB write, no production backtest, no broker execution.
 | Agent/backtest demo runner | market_brief, risk_check, compare, and Backtest MVP suite rows; expected nonzero edge cases display as OK when status matches |
 | OHLCV ingestion/live adapter tests | 38 targeted tests |
 | Ingestion status tests | 15 targeted tests |
-| Production ingestion control-plan tests | 11 targeted tests |
+| Production ingestion control-plan tests | 17 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 877 |
+| Total tests passing | 883 |
 
 ---
 

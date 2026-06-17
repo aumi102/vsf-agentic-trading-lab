@@ -25,9 +25,11 @@ def plan_live_ingestion_run(
     symbol_config = _load_json(Path(config_path))
     rate_config = _load_json(Path(rate_limit_path))
     allowed = _normalize_symbols(symbol_config.get("allowed_symbols", []))
-    requested = _normalize_symbols(symbols or symbol_config.get("default_symbols", []))
+    default_symbols = _normalize_symbols(symbol_config.get("default_symbols", []))
+    requested = _normalize_symbols(symbols) if symbols else default_symbols
     default_count_back = int(symbol_config.get("default_count_back") or 100)
     effective_count_back = int(count_back if count_back is not None else default_count_back)
+    max_count_back = int(symbol_config.get("max_count_back") or 5000)
     max_symbols_per_batch = min(
         int(symbol_config.get("max_symbols_per_batch") or 3),
         int(rate_config.get("max_symbols_per_batch") or 3),
@@ -39,7 +41,9 @@ def plan_live_ingestion_run(
     validation = _validate(
         requested=requested,
         allowed=allowed,
+        default_symbols=default_symbols,
         count_back=effective_count_back,
+        max_count_back=max_count_back,
         max_symbols_per_batch=max_symbols_per_batch,
         rate_config=rate_config,
     )
@@ -64,6 +68,7 @@ def plan_live_ingestion_run(
         "symbols_requested": requested,
         "allowed_symbols": allowed,
         "count_back": effective_count_back,
+        "max_count_back": max_count_back,
         "max_symbols_per_batch": max_symbols_per_batch,
         "rate_limit_policy": {
             "policy_name": rate_config.get("policy_name"),
@@ -106,11 +111,20 @@ def _validate(
     *,
     requested: list[str],
     allowed: list[str],
+    default_symbols: list[str],
     count_back: int,
+    max_count_back: int,
     max_symbols_per_batch: int,
     rate_config: dict[str, Any],
 ) -> list[str]:
     reasons = []
+    if not allowed:
+        reasons.append("allowed_symbols must be non-empty.")
+    if not default_symbols:
+        reasons.append("default_symbols must be non-empty.")
+    default_unknown = [symbol for symbol in default_symbols if symbol not in allowed]
+    if default_unknown:
+        reasons.append(f"default_symbols not in allowlist: {', '.join(default_unknown)}.")
     if not requested:
         reasons.append("No symbols requested.")
     unknown = [symbol for symbol in requested if symbol not in allowed]
@@ -120,12 +134,18 @@ def _validate(
         reasons.append(f"Requested {len(requested)} symbols; max per batch is {max_symbols_per_batch}.")
     if count_back <= 0:
         reasons.append("count_back must be positive.")
+    if max_count_back > 0 and count_back > max_count_back:
+        reasons.append(f"count_back {count_back} exceeds max_count_back {max_count_back}.")
     if int(rate_config.get("min_seconds_between_requests") or 0) < 1:
         reasons.append("min_seconds_between_requests must be at least 1.")
     if int(rate_config.get("max_batches_per_manual_run") or 0) < 1:
         reasons.append("max_batches_per_manual_run must be at least 1.")
+    if int(rate_config.get("raw_retention_days") or 0) <= 0:
+        reasons.append("raw_retention_days must be positive.")
     if bool(rate_config.get("scheduler_enabled")):
         reasons.append("scheduler_enabled must remain false for this dry-run planner.")
+    if not bool(rate_config.get("requires_manual_allow_network", True)):
+        reasons.append("requires_manual_allow_network must remain true.")
     return reasons
 
 
