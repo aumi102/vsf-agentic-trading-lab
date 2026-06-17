@@ -83,6 +83,7 @@ def test_demo_scenarios_list_has_expected_scenarios() -> None:
     assert any("risk_check" in lbl for lbl in labels)
     assert any("compare" in lbl for lbl in labels)
     assert any("backtest" in lbl for lbl in labels)
+    assert any("ASCII fallback" in lbl for lbl in labels)
 
 
 def test_backtest_commands_are_included_in_suite_scenarios() -> None:

@@ -27,7 +27,7 @@ DEMO_SCENARIOS = [
         "expect_status": "ok",
     },
     {
-        "label": 'market_brief --query "FPT hom nay the nao?"',
+        "label": 'market_brief --query ASCII fallback "FPT hom nay the nao?"',
         "script": AGENT_SCRIPT,
         "args": ["--scenario", "market_brief", "--query", "FPT hom nay the nao?"],
         "expect_exit": 0,

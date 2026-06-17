@@ -35,19 +35,21 @@ The SQLite file is gitignored. No network call is made during build or demo.
 
 ```bash
 python scripts/run_agent_demo.py --scenario market_brief --symbol FPT
-python scripts/run_agent_demo.py --scenario market_brief --query "FPT hom nay the nao?"
+python scripts/run_agent_demo.py --scenario market_brief --query "FPT hôm nay thế nào?"
 python scripts/run_agent_demo.py --scenario risk_check --symbol VCB
 python scripts/run_agent_demo.py --scenario compare --symbols FPT,VNM,VCB
 python scripts/run_agent_demo.py --scenario compare --symbols FPT,HPG
 python scripts/run_agent_demo.py --scenario compare --symbols HPG,XYZ
 ```
 
+If the local shell has encoding issues, use the ASCII fallback: `FPT hom nay the nao?`.
+
 Expected behavior:
 
 | Command | Exit | Status | Key result |
 |---|---:|---|---|
 | `market_brief --symbol FPT` | 0 | ok | tool trace and Vietnamese answer |
-| `market_brief --query "FPT hom nay the nao?"` | 0 | ok | FPT resolved without LLM |
+| `market_brief --query "FPT hôm nay thế nào?"` | 0 | ok | FPT resolved without LLM |
 | `risk_check --symbol VCB` | 0 | ok | risk flags and caveats |
 | `compare --symbols FPT,VNM,VCB` | 0 | ok | 3 rows in input order |
 | `compare --symbols FPT,HPG` | 0 | ok | FPT ok, HPG not_found |
