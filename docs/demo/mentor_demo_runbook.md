@@ -38,8 +38,10 @@ python scripts/run_ingestion_status.py --symbols FPT,VNM,VCB
 ```
 
 Expected: `status=ok`, table counts, source lineage, freshness, and tool
-readiness. A DB built by `build_mvp_db.py` may show no `source_runs`; a DB
-updated by `run_ohlcv_ingestion.py` should show source runs and watermarks.
+readiness after ingestion. A DB built only by `build_mvp_db.py` may return
+`status=quality_warn` while `tool_readiness=ok` because it has no ingestion audit
+trail yet. A DB updated by `run_ohlcv_ingestion.py` should show source runs and
+watermarks.
 
 ---
 
@@ -110,6 +112,7 @@ Key fields:
 | `symbols_found`, `symbols_missing` | backtest symbol coverage |
 | `validation_gates` | backtest data and assumption checks |
 | `tool_readiness` | DB readiness for market data, features, signals, and backtest |
+| `quality_warn` | tool-readable DB with audit, lineage, or watermark warnings |
 | `caveats` | adjustment, data, or execution-convention warnings |
 | `not_financial_advice` | always `true` |
 

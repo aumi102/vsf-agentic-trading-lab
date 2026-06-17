@@ -15,7 +15,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from trading_agent.db.build_mvp_store import build_mvp_store
-from scripts.run_mentor_demo_suite import BACKTEST_SCRIPT, DEMO_SCENARIOS, BUILD_ARGS, BUILD_SCRIPT
+from scripts.run_mentor_demo_suite import BACKTEST_SCRIPT, STATUS_SCRIPT, DEMO_SCENARIOS, BUILD_ARGS, BUILD_SCRIPT
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +79,7 @@ def _build_multi_fixture_db(tmp_path: Path, symbols: list[str]) -> Path:
 
 def test_demo_scenarios_list_has_expected_scenarios() -> None:
     labels = [s["label"] for s in DEMO_SCENARIOS]
+    assert any("ingestion_status" in lbl for lbl in labels)
     assert any("market_brief" in lbl for lbl in labels)
     assert any("risk_check" in lbl for lbl in labels)
     assert any("compare" in lbl for lbl in labels)
@@ -98,7 +99,20 @@ def test_demo_scenarios_specify_exit_codes() -> None:
     for scenario in DEMO_SCENARIOS:
         assert "expect_exit" in scenario
         assert scenario["expect_exit"] in (0, 1)
-        assert scenario["expect_status"] in ("ok", "not_found")
+        expect_status = scenario["expect_status"]
+        if isinstance(expect_status, list):
+            assert set(expect_status) <= {"ok", "not_found", "quality_warn"}
+        else:
+            assert expect_status in ("ok", "not_found", "quality_warn")
+
+
+def test_ingestion_status_command_is_included_in_suite_scenarios() -> None:
+    statuses = [s for s in DEMO_SCENARIOS if s["script"] == STATUS_SCRIPT]
+
+    assert len(statuses) == 1
+    assert statuses[0]["expect_exit"] == 0
+    assert statuses[0]["expect_status"] == ["ok", "quality_warn"]
+    assert statuses[0]["args"] == ["--symbols", "FPT,VNM,VCB"]
 
 
 def test_backtest_expected_success_and_edge_case_statuses() -> None:
@@ -156,6 +170,7 @@ def test_suite_cli_shows_status_for_each_scenario(tmp_path: Path) -> None:
     db_path = _build_multi_fixture_db(tmp_path, ["FPT", "VNM", "VCB"])
     result = _run_suite_cli("--db-path", str(db_path), "--skip-build")
     assert "market_brief" in result.stdout
+    assert "ingestion_status" in result.stdout
     assert "risk_check" in result.stdout
     assert "compare" in result.stdout
     assert "backtest" in result.stdout

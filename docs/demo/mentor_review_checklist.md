@@ -35,7 +35,9 @@ python scripts/run_ingestion_status.py --symbols FPT,VNM,VCB
 ```
 
 Expected: table counts, lineage check, source run/watermark status, and tool
-readiness. Use this before trusting demo or backtest output.
+readiness. `quality_warn` is acceptable for a builder-only DB when
+`tool_readiness=ok`; it means the audit trail is incomplete. Use this before
+trusting demo or backtest output.
 
 ### Backtest MVP focus commands
 

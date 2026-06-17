@@ -193,7 +193,10 @@ def _missing_lineage(con: sqlite3.Connection, symbols: list[str]) -> int:
         f"""
         SELECT COUNT(*) AS rows
         FROM daily_prices
-        {prefix} (source_id = '' OR raw_path = '')
+        {prefix} (
+            source_id IS NULL OR TRIM(source_id) = ''
+            OR raw_path IS NULL OR TRIM(raw_path) = ''
+        )
         """,
         params,
     ).fetchone()
@@ -276,7 +279,7 @@ def _caveats(
 def _overall_status(counts: dict[str, int | None], missing_lineage: int) -> str:
     if not counts.get("daily_prices") and not counts.get("securities"):
         return "empty_store"
-    if missing_lineage:
+    if missing_lineage or not counts.get("source_runs") or not counts.get("ingestion_watermarks"):
         return "quality_warn"
     return "ok"
 

@@ -65,10 +65,14 @@ watermarks, and freshness.
 ## Mentor Use
 
 Run this before trusting demo or backtest output. A DB built by
-`build_mvp_db.py` can be tool-ready but may have no `source_runs` because it was
-rebuilt deterministically from cached payloads. A DB updated by
-`run_ohlcv_ingestion.py` should show source runs, raw payload rows, and
-watermarks.
+`build_mvp_db.py` can have `tool_readiness=ok` but `status=quality_warn` because
+it may have no `source_runs` or `ingestion_watermarks`. A DB updated by
+`run_ohlcv_ingestion.py` should show source runs, raw payload rows, watermarks,
+and `status=ok` when lineage is complete.
+
+`tool_readiness=ok` only means the local deterministic tools have enough rows to
+answer. It does not mean production-grade ingestion, source approval, or
+freshness guarantees.
 
 ## Boundaries
 

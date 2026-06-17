@@ -49,7 +49,7 @@ def test_build_mvp_store_status_is_tool_ready_without_source_runs(tmp_path: Path
 
     result = get_ingestion_status(db_path, symbols=["FPT"])
 
-    assert result["status"] == "ok"
+    assert result["status"] == "quality_warn"
     assert result["table_counts"]["source_runs"] == 0
     assert result["table_counts"]["daily_prices"] == 60
     assert result["tool_readiness"] == {
@@ -84,6 +84,27 @@ def test_lineage_missing_count_zero_for_ingested_rows(tmp_path: Path) -> None:
     result = get_ingestion_status(db_path, symbols=["FPT"])
 
     assert result["lineage"]["daily_prices_missing_source_id_raw_path"] == 0
+
+
+def test_lineage_blank_or_whitespace_returns_quality_warn(tmp_path: Path) -> None:
+    raw_base = _write_gap_chart_fixture(tmp_path, "FPT", closes=[float(10 + i) for i in range(60)])
+    db_path = tmp_path / "demo.sqlite"
+    run_ohlcv_ingestion(["FPT"], db_path=db_path, raw_base_dir=raw_base)
+    with sqlite3.connect(db_path) as con:
+        con.execute(
+            """
+            UPDATE daily_prices
+            SET source_id = '   ', raw_path = ''
+            WHERE symbol = 'FPT' AND trade_date = '2026-01-01'
+            """
+        )
+        con.commit()
+
+    result = get_ingestion_status(db_path, symbols=["FPT"])
+
+    assert result["status"] == "quality_warn"
+    assert result["lineage"]["daily_prices_missing_source_id_raw_path"] == 1
+    assert any("missing source_id or raw_path" in caveat for caveat in result["caveats"])
 
 
 def test_symbols_filter_limits_status_rows(tmp_path: Path) -> None:
@@ -142,6 +163,30 @@ def test_cli_missing_db_no_traceback(tmp_path: Path) -> None:
     assert "Traceback" not in completed.stderr
 
 
+def test_cli_empty_db_no_traceback(tmp_path: Path) -> None:
+    db_path = tmp_path / "empty.sqlite"
+    with sqlite3.connect(db_path) as con:
+        create_schema(con)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_ingestion_status.py",
+            "--db-path",
+            str(db_path),
+        ],
+        cwd=ROOT,
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 1
+    assert '"status": "empty_store"' in completed.stdout
+    assert "Traceback" not in completed.stderr
+
+
 def test_cli_cached_ingested_db_prints_watermarks(tmp_path: Path) -> None:
     raw_base = _write_gap_chart_fixture(tmp_path, "FPT", closes=[float(10 + i) for i in range(60)])
     db_path = tmp_path / "demo.sqlite"
@@ -174,6 +219,46 @@ def test_status_module_has_no_network_fetch_code() -> None:
     assert "urlopen" not in text
     assert "requests" not in text
     assert "httpx" not in text
+
+
+def test_fake_live_ingested_db_reports_live_audit_ok(tmp_path: Path, monkeypatch) -> None:
+    raw_base = _write_gap_chart_fixture(tmp_path, "FPT", closes=[float(10 + i) for i in range(60)])
+    raw_path = next(raw_base.glob("*/vietcap_iq_gap_chart_fpt_countback_5000/payload.json"))
+    metadata_path = raw_path.parent / "metadata.json"
+    db_path = tmp_path / "live.sqlite"
+
+    def fake_fetch(symbols, **kwargs):
+        return {
+            "status": "ok",
+            "source": "vietcap_iq_gap_chart",
+            "mode": "live",
+            "symbols_requested": symbols,
+            "symbols_loaded": ["FPT"],
+            "symbols_failed": [],
+            "payloads": [
+                {
+                    "symbol": "FPT",
+                    "raw_path": str(raw_path),
+                    "metadata_path": str(metadata_path),
+                    "content_hash": hashlib.sha256(raw_path.read_bytes()).hexdigest(),
+                    "row_count": 60,
+                    "status": "success",
+                }
+            ],
+            "caveats": [],
+        }
+
+    monkeypatch.setattr("trading_agent.ingestion.ohlcv_ingestion.fetch_vietcap_iq_gap_chart_live", fake_fetch)
+    run = run_ohlcv_ingestion(["FPT"], db_path=db_path, mode="live", allow_network=True)
+
+    result = get_ingestion_status(db_path, symbols=["FPT"])
+
+    assert result["status"] == "ok"
+    assert result["latest_source_runs"][0]["run_id"] == run["run_id"]
+    assert result["latest_source_runs"][0]["mode"] == "live"
+    assert result["latest_source_runs"][0]["allow_network"] is True
+    assert result["table_counts"]["raw_source_payloads"] == 1
+    assert result["watermarks"][0]["last_run_id"] == run["run_id"]
 
 
 def test_generated_artifacts_not_required_outside_tmp_dirs(tmp_path: Path) -> None:
