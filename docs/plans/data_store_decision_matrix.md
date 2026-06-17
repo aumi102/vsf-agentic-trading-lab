@@ -25,7 +25,7 @@ No production DB write is implemented. No realtime ingestion is wired.
 | Criterion | SQLite | DuckDB | QuestDB | Postgres + Timescale | Parquet only |
 |---|---|---|---|---|---|
 | Local dev speed | Excellent | Excellent | Needs Docker | Needs server | No query layer |
-| Time-series query | Adequate (<10 symbols) | Fast (columnar) | Excellent (native) | Good (extension) | Slow ad hoc |
+| Time-series query | Adequate (&lt;10 symbols) | Fast (columnar) | Excellent (native) | Good (extension) | Slow ad hoc |
 | Append/upsert | Simple | Simple | Native TSZ | Standard | Full rewrite |
 | Deployment complexity | Zero | Zero | Docker / process | Server + config | Zero |
 | Python integration | stdlib | `duckdb` pip | REST / influxdb client | `psycopg2` / SQLAlchemy | `pandas` / `polars` |
