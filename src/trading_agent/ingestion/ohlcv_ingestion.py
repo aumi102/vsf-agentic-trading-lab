@@ -65,15 +65,23 @@ def run_ohlcv_ingestion(
         return base_result
     if mode == "live":
         if not allow_network:
-            base_result["caveats"] = [
+            caveats = [
                 "Live ingestion requires explicit --allow-network. No network request was made."
             ]
         else:
-            base_result["caveats"] = [
+            caveats = [
                 "Live OHLCV ingestion is not implemented in this foundation PR.",
                 "Use the controlled fetch script to create saved payloads, then run cached ingestion.",
             ]
-        return base_result
+        return _record_gated_live_attempt(
+            db_path=db_path,
+            run_id=run_id,
+            source=source,
+            mode=mode,
+            symbols_requested=requested,
+            allow_network=allow_network,
+            caveats=caveats,
+        )
 
     available = discover_gap_chart_payloads(raw_base_dir)
     selected = {symbol: available[symbol] for symbol in requested if symbol in available}
@@ -205,6 +213,53 @@ def run_ohlcv_ingestion(
             "quality": quality,
             "caveats": caveats,
         }
+
+
+def _record_gated_live_attempt(
+    *,
+    db_path: str | Path,
+    run_id: str,
+    source: str,
+    mode: str,
+    symbols_requested: list[str],
+    allow_network: bool,
+    caveats: list[str],
+) -> dict[str, Any]:
+    with connect(db_path) as con:
+        create_schema(con)
+        start_source_run(
+            con,
+            run_id=run_id,
+            source=source,
+            mode=mode,
+            symbols_requested=symbols_requested,
+            allow_network=allow_network,
+            caveats=caveats,
+        )
+        complete_source_run(
+            con,
+            run_id=run_id,
+            status="error",
+            symbols_loaded=[],
+            symbols_failed=symbols_requested,
+            caveats=caveats,
+        )
+        quality = build_ingestion_quality_report(con, symbols=symbols_requested)
+    return {
+        "status": "error",
+        "run_id": run_id,
+        "source": source,
+        "mode": mode,
+        "symbols_requested": symbols_requested,
+        "symbols_loaded": [],
+        "symbols_failed": symbols_requested,
+        "raw_payloads": [],
+        "canonical_rows": {},
+        "feature_rows": 0,
+        "signal_rows": 0,
+        "quality": quality,
+        "caveats": caveats,
+    }
 
 
 def _parse_cached_payload(

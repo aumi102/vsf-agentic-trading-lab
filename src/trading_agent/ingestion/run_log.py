@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from datetime import datetime, timezone
 
 
@@ -17,7 +18,7 @@ def make_run_id(source: str, mode: str, started_at: str | None = None) -> str:
         .replace("+00:00", "Z")
         .replace(".", "")
     )
-    return f"{source}:{mode}:{compact}"
+    return f"{source}:{mode}:{compact}:{uuid.uuid4().hex[:8]}"
 
 
 def start_source_run(

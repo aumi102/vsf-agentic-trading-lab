@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = "mvp_db_tool_demo_v1"
+SCHEMA_VERSION = "mvp_db_tool_demo_v2"
 
 SECURITIES_COLUMNS = [
     "security_id",

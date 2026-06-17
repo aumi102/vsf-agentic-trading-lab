@@ -24,7 +24,7 @@ This document describes what is implemented and running, plus the blocked future
                      ▼
            build_mvp_db.py OR run_ohlcv_ingestion.py
            │  -- OHLCV parse + quality checks
-           │  -- source run / raw payload metadata for ingestion path
+           │  -- source run / per-run raw payload metadata for ingestion path
            │  -- feature computation (MA20, MA50, returns, volatility)
            │  -- momentum signal evaluation (BUY/SELL/HOLD)
                      │
@@ -132,7 +132,7 @@ Each tool returns a dict with `status`, `quality_status`, and `caveats`. The orc
 | Module | Path | Role |
 |---|---|---|
 | DB builder | `src/trading_agent/db/build_mvp_store.py` | Deterministic full rebuild from cached payloads |
-| OHLCV ingestion | `src/trading_agent/ingestion/ohlcv_ingestion.py` | Cached incremental source-run/raw-payload/canonical refresh |
+| OHLCV ingestion | `src/trading_agent/ingestion/ohlcv_ingestion.py` | Cached ingestion foundation with symbol-scoped canonical/features/signals refresh |
 | Ingestion CLI | `scripts/run_ohlcv_ingestion.py` | Offline cached ingestion and gated live-mode interface |
 | Market data tool | `src/trading_agent/tools/market_data_tool.py` | Latest OHLCV read |
 | Feature tool | `src/trading_agent/tools/feature_tool.py` | Latest features read |
@@ -150,6 +150,6 @@ Each tool returns a dict with `status`, `quality_status`, and `caveats`. The orc
 
 - **Adjustment status:** Unknown on all rows — every row carries `quality_status: warn`.
 - **Latest data date:** 2026-06-05 (no realtime update).
-- **Live ingestion:** Interface is present, but live network mode is gated and not implemented until mentor confirms source/DB direction.
+- **Live ingestion:** Interface is present and live-gated attempts are logged in `source_runs`, but live network mode is not implemented until mentor confirms source/DB direction.
 - **No LLM:** All answers are deterministic rule-based outputs.
 - **Not financial advice:** All outputs carry `not_financial_advice=True`.
