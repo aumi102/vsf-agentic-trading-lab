@@ -29,6 +29,9 @@ No production DB write, no backtest, no broker execution.
 | Agent demo readiness | Scenario runner with `market_brief`, `risk_check`, `compare`. Structured result dict with tool-call trace, Vietnamese answer, caveats, `not_financial_advice=True`. CLI: `scripts/run_agent_demo.py`. |
 | Mentor demo package | Runbook (`docs/demo/mentor_demo_runbook.md`), demo report (`docs/reports/mentor_demo_report.md`), and suite runner (`scripts/run_mentor_demo_suite.py`). All scenarios validated. Production DB/backtest still blocked. |
 | Post-demo acceptance | Mentor review checklist (`docs/demo/mentor_review_checklist.md`), post-demo technical roadmap (`docs/plans/post_demo_technical_roadmap.md`), current demo architecture (`docs/architecture/current_demo_architecture.md`). Awaiting mentor feedback on store, backtest, LLM timeline. |
+| Data store decision | Decision matrix (`docs/plans/data_store_decision_matrix.md`); ADR-0001 (`docs/decisions/0001_local_sqlite_mvp_store.md`). Recommendation: keep SQLite for now; DuckDB when backtest needs columnar queries; QuestDB deferred until schema stable. |
+| Backtest MVP spec | Scope, required inputs/outputs, validation gates, and demo scenario at `docs/plans/backtest_mvp_spec.md`. Implementation blocked pending mentor decision on store and symbol universe. |
+| Mentor feedback capture | Template at `docs/demo/mentor_feedback_capture.md` — fill in after mentor session. |
 | Test suite | **788 tests pass** |
 | Production DB write | **Blocked** |
 | Backtest | **Blocked** |
@@ -85,8 +88,9 @@ No production DB write, no backtest, no broker execution.
 5. ~~Use the SQLite MVP tools and orchestrator CLI to demo agent-style answers from cached data.~~ — Scenario runner (`market_brief`, `risk_check`, `compare`) added in phase/agent-demo-readiness.
 6. Decide production DB path: extend SQLite contracts, design QuestDB, or add another durable store.
 7. ~~Present mentor-facing demo and collect feedback before adding LLM reasoning layer.~~ — Demo package complete. Send `docs/demo/mentor_demo_runbook.md` + `docs/demo/mentor_review_checklist.md` to mentor. Wait for feedback.
-8. Execute `docs/plans/post_demo_technical_roadmap.md` phases based on mentor answers (store decision → backtest → LLM).
-9. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
+8. ~~Execute `docs/plans/post_demo_technical_roadmap.md` phases based on mentor answers.~~ — Decision pack created: store matrix, backtest spec, ADR-0001, and feedback capture template ready. Awaiting mentor session to unlock next phase.
+9. Implement backtest MVP (`mvp_ma20_ma50_momentum` strategy over FPT/VNM/VCB) after mentor confirms store choice and symbol universe.
+10. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
 
 ---
 
