@@ -189,12 +189,26 @@ def test_live_mode_without_allow_network_returns_clear_error(tmp_path: Path) -> 
     assert raw_count == 0
 
 
-def test_live_mode_with_allow_network_is_not_implemented_without_traceback(tmp_path: Path) -> None:
+def test_live_mode_with_allow_network_adapter_error_is_structured(tmp_path: Path, monkeypatch) -> None:
     db_path = tmp_path / "demo.sqlite"
+
+    def fake_fetch(symbols, **kwargs):
+        return {
+            "status": "error",
+            "source": "vietcap_iq_gap_chart",
+            "mode": "live",
+            "symbols_requested": symbols,
+            "symbols_loaded": [],
+            "symbols_failed": symbols,
+            "payloads": [],
+            "caveats": ["fake adapter error"],
+        }
+
+    monkeypatch.setattr("trading_agent.ingestion.ohlcv_ingestion.fetch_vietcap_iq_gap_chart_live", fake_fetch)
     result = run_ohlcv_ingestion(["FPT"], db_path=db_path, mode="live", allow_network=True)
 
     assert result["status"] == "error"
-    assert any("not implemented" in caveat for caveat in result["caveats"])
+    assert "fake adapter error" in result["caveats"]
     with sqlite3.connect(db_path) as con:
         run = con.execute(
             "SELECT mode, status, allow_network, symbols_failed_json FROM source_runs WHERE run_id = ?",
@@ -203,6 +217,101 @@ def test_live_mode_with_allow_network_is_not_implemented_without_traceback(tmp_p
         raw_count = con.execute("SELECT COUNT(*) FROM raw_source_payloads").fetchone()[0]
     assert run == ("live", "error", 1, '["FPT"]')
     assert raw_count == 0
+
+
+def test_live_mode_with_fake_success_ingests_canonical_rows(tmp_path: Path, monkeypatch) -> None:
+    raw_base = _write_gap_chart_fixture(tmp_path, "FPT", closes=[float(10 + i) for i in range(60)])
+    raw_path, metadata_path = _latest_fixture_paths(raw_base, "FPT")
+    db_path = tmp_path / "demo.sqlite"
+
+    def fake_fetch(symbols, **kwargs):
+        assert kwargs["allow_network"] is True
+        return {
+            "status": "ok",
+            "source": "vietcap_iq_gap_chart",
+            "mode": "live",
+            "symbols_requested": symbols,
+            "symbols_loaded": ["FPT"],
+            "symbols_failed": [],
+            "payloads": [
+                {
+                    "symbol": "FPT",
+                    "raw_path": str(raw_path),
+                    "metadata_path": str(metadata_path),
+                    "content_hash": hashlib.sha256(raw_path.read_bytes()).hexdigest(),
+                    "row_count": 60,
+                    "status": "success",
+                }
+            ],
+            "caveats": [],
+        }
+
+    monkeypatch.setattr("trading_agent.ingestion.ohlcv_ingestion.fetch_vietcap_iq_gap_chart_live", fake_fetch)
+    result = run_ohlcv_ingestion(["FPT"], db_path=db_path, mode="live", allow_network=True)
+
+    assert result["status"] == "ok"
+    assert result["feature_rows"] == 60
+    assert result["signal_rows"] == 60
+    with sqlite3.connect(db_path) as con:
+        assert con.execute("SELECT allow_network FROM source_runs WHERE run_id = ?", (result["run_id"],)).fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM raw_source_payloads WHERE run_id = ?", (result["run_id"],)).fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM daily_prices WHERE symbol = 'FPT'").fetchone()[0] == 60
+        watermark = con.execute("SELECT last_run_id FROM ingestion_watermarks WHERE symbol = 'FPT'").fetchone()[0]
+    assert watermark == result["run_id"]
+
+
+def test_live_mode_with_fake_partial_payload_returns_partial_ok(tmp_path: Path, monkeypatch) -> None:
+    raw_base = _write_gap_chart_fixture(tmp_path, "FPT", closes=[float(10 + i) for i in range(60)])
+    raw_path, metadata_path = _latest_fixture_paths(raw_base, "FPT")
+
+    def fake_fetch(symbols, **kwargs):
+        return {
+            "status": "partial_ok",
+            "source": "vietcap_iq_gap_chart",
+            "mode": "live",
+            "symbols_requested": symbols,
+            "symbols_loaded": ["FPT"],
+            "symbols_failed": ["HPG"],
+            "payloads": [
+                {
+                    "symbol": "FPT",
+                    "raw_path": str(raw_path),
+                    "metadata_path": str(metadata_path),
+                    "content_hash": hashlib.sha256(raw_path.read_bytes()).hexdigest(),
+                    "row_count": 60,
+                    "status": "success",
+                }
+            ],
+            "caveats": ["HPG fetch status: error."],
+        }
+
+    monkeypatch.setattr("trading_agent.ingestion.ohlcv_ingestion.fetch_vietcap_iq_gap_chart_live", fake_fetch)
+    result = run_ohlcv_ingestion(["FPT", "HPG"], db_path=tmp_path / "demo.sqlite", mode="live", allow_network=True)
+
+    assert result["status"] == "partial_ok"
+    assert result["symbols_loaded"] == ["FPT"]
+    assert result["symbols_failed"] == ["HPG"]
+    assert "HPG fetch status: error." in result["caveats"]
+
+
+def test_live_mode_rejects_more_than_three_symbols_without_adapter_call(tmp_path: Path, monkeypatch) -> None:
+    calls = []
+
+    def fake_fetch(symbols, **kwargs):
+        calls.append(symbols)
+        raise AssertionError("max-symbol guard should run before adapter")
+
+    monkeypatch.setattr("trading_agent.ingestion.ohlcv_ingestion.fetch_vietcap_iq_gap_chart_live", fake_fetch)
+    result = run_ohlcv_ingestion(
+        ["FPT", "VNM", "VCB", "MSN"],
+        db_path=tmp_path / "demo.sqlite",
+        mode="live",
+        allow_network=True,
+    )
+
+    assert result["status"] == "error"
+    assert calls == []
+    assert "at most 3 symbols" in result["caveats"][0]
 
 
 def test_schema_version_is_bumped_for_ingestion_audit_tables() -> None:
@@ -388,3 +497,8 @@ def _write_gap_chart_fixture(
         encoding="utf-8",
     )
     return raw_base
+
+
+def _latest_fixture_paths(raw_base: Path, symbol: str) -> tuple[Path, Path]:
+    metadata_path = next(raw_base.glob(f"*/vietcap_iq_gap_chart_{symbol.lower()}_countback_5000/metadata.json"))
+    return metadata_path.parent / "payload.json", metadata_path

@@ -65,7 +65,7 @@ python scripts/run_ohlcv_ingestion.py --symbols FPT,VNM,VCB --mode cached
 python scripts/run_ohlcv_ingestion.py --symbols FPT,VNM,VCB --mode cached --refresh-features --refresh-signals
 ```
 
-Live mode is gated, auditable, and not implemented in this foundation PR:
+Live mode is gated, auditable, and now wired to the controlled adapter:
 
 ```bash
 python scripts/run_ohlcv_ingestion.py --symbols FPT --mode live
@@ -74,9 +74,12 @@ python scripts/run_ohlcv_ingestion.py --symbols FPT --mode live --allow-network
 
 Without `--allow-network`, live mode creates the schema, writes a `source_runs`
 row with `allow_network=0`, returns a clear error, and makes no network request.
-With `--allow-network`, it writes a `source_runs` row with `allow_network=1`,
-records no raw payload rows, and returns a clear not-implemented error until the
-mentor confirms the live source and production DB path.
+With `--allow-network`, it calls the controlled gap-chart adapter for at most
+three explicit symbols, saves raw payloads first, records `raw_source_payloads`,
+and then reuses the same parser/canonical/features/signals refresh path.
+
+See `docs/data_platform/live_ohlcv_adapter_foundation.md` for the adapter
+contract and guardrails.
 
 ## Boundaries
 
