@@ -8,9 +8,9 @@ toc_max_heading_level: 3
 
 ## Tin nhắn gửi mentor
 
-Thầy/cô xem giúp em bản demo hiện tại của VSF agentic trading lab. Repo đang private. Em đã hoàn tất luồng demo cục bộ gồm SQLite MVP store, tool calls, deterministic orchestrator, scenario runner, Backtest MVP, và mentor demo suite. Bản này chỉ dùng dữ liệu cache/local, không có live trading, broker execution, QuestDB, LLM reasoning, hay network crawl. Kết quả chỉ để review kỹ thuật, không phải khuyến nghị đầu tư.
+Dạ anh Khánh, anh xem giúp em bản demo hiện tại của VSF agentic trading lab. Repo đang private. Em đã hoàn tất luồng demo cục bộ gồm SQLite MVP store, tool calls, deterministic orchestrator, scenario runner, Backtest MVP, và mentor demo suite. Bản này chỉ dùng dữ liệu cache/local, không có live trading, broker execution, QuestDB, LLM reasoning, hay network crawl. Kết quả chỉ để review kỹ thuật, không phải khuyến nghị đầu tư.
 
-Em cần thầy/cô xác nhận các giả định backtest và hướng đi tiếp theo trước khi mở rộng universe hoặc làm QuestDB/LLM.
+Em cần anh xác nhận các giả định backtest và hướng đi tiếp theo trước khi mở rộng universe hoặc làm QuestDB/LLM.
 
 ---
 
