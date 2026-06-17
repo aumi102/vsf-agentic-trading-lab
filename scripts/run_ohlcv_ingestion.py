@@ -25,6 +25,10 @@ def main() -> int:
     parser.add_argument("--allow-network", action="store_true", help="Required before any future live network mode can run.")
     parser.add_argument("--refresh-features", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--refresh-signals", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--count-back", type=int, default=5000)
+    parser.add_argument("--live-output-dir", default=str(DEFAULT_RAW_BASE_DIR))
+    parser.add_argument("--timeout-seconds", type=int, default=20)
+    parser.add_argument("--max-live-symbols", type=int, default=3)
     args = parser.parse_args()
 
     result = run_ohlcv_ingestion(
@@ -36,6 +40,10 @@ def main() -> int:
         refresh_features=args.refresh_features,
         refresh_signals=args.refresh_signals,
         raw_base_dir=args.raw_base_dir,
+        count_back=args.count_back,
+        live_output_dir=args.live_output_dir,
+        timeout_seconds=args.timeout_seconds,
+        max_live_symbols=args.max_live_symbols,
     )
     print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
     _print_quality_table(result)

@@ -24,10 +24,12 @@ from trading_agent.ingestion.parsers.vietcap_iq_gap_chart_parser import parse_vi
 from trading_agent.ingestion.quality_report import build_ingestion_quality_report
 from trading_agent.ingestion.raw_store import build_raw_payload_record, record_raw_payload
 from trading_agent.ingestion.run_log import complete_source_run, make_run_id, start_source_run, utc_now_iso
+from trading_agent.ingestion.sources.vietcap_iq_gap_chart import fetch_vietcap_iq_gap_chart_live
 from trading_agent.signals.mvp_momentum import SIGNAL_VERSION, STRATEGY_ID, generate_signals
 
 
 DEFAULT_SOURCE = "vietcap_iq_gap_chart"
+DEFAULT_MAX_LIVE_SYMBOLS = 3
 
 
 def run_ohlcv_ingestion(
@@ -39,6 +41,10 @@ def run_ohlcv_ingestion(
     refresh_features: bool = True,
     refresh_signals: bool = True,
     raw_base_dir: str | Path = DEFAULT_RAW_BASE_DIR,
+    count_back: int = 5000,
+    live_output_dir: str | Path | None = None,
+    timeout_seconds: int = 20,
+    max_live_symbols: int = DEFAULT_MAX_LIVE_SYMBOLS,
 ) -> dict[str, Any]:
     requested = _normalize_symbols(symbols)
     run_id = make_run_id(source, mode)
@@ -63,16 +69,20 @@ def run_ohlcv_ingestion(
     if mode not in {"cached", "live"}:
         base_result["caveats"] = [f"Unsupported ingestion mode: {mode}."]
         return base_result
-    if mode == "live":
-        if not allow_network:
+    if mode == "live" and not allow_network:
             caveats = [
                 "Live ingestion requires explicit --allow-network. No network request was made."
             ]
-        else:
-            caveats = [
-                "Live OHLCV ingestion is not implemented in this foundation PR.",
-                "Use the controlled fetch script to create saved payloads, then run cached ingestion.",
-            ]
+            return _record_gated_live_attempt(
+                db_path=db_path,
+                run_id=run_id,
+                source=source,
+                mode=mode,
+                symbols_requested=requested,
+                allow_network=allow_network,
+                caveats=caveats,
+            )
+    if mode == "live" and len(requested) > max_live_symbols:
         return _record_gated_live_attempt(
             db_path=db_path,
             run_id=run_id,
@@ -80,21 +90,30 @@ def run_ohlcv_ingestion(
             mode=mode,
             symbols_requested=requested,
             allow_network=allow_network,
-            caveats=caveats,
+            caveats=[f"Live ingestion supports at most {max_live_symbols} symbols per run."],
         )
-
-    available = discover_gap_chart_payloads(raw_base_dir)
-    selected = {symbol: available[symbol] for symbol in requested if symbol in available}
-    missing = [symbol for symbol in requested if symbol not in available]
-    caveats = [
-        "Cached mode reads saved local payloads only; no network request was made.",
-        "Adjustment/corporate-action handling remains source-reported and not production-hardened.",
-    ]
-    if missing:
-        caveats.append(f"No cached gap-chart payload found for: {', '.join(missing)}.")
 
     with connect(db_path) as con:
         create_schema(con)
+        if mode == "cached":
+            available = discover_gap_chart_payloads(raw_base_dir)
+            selected = {symbol: available[symbol] for symbol in requested if symbol in available}
+            failed_symbols = [symbol for symbol in requested if symbol not in available]
+            caveats = [
+                "Cached mode reads saved local payloads only; no network request was made.",
+                "Adjustment/corporate-action handling remains source-reported and not production-hardened.",
+            ]
+            if failed_symbols:
+                caveats.append(f"No cached gap-chart payload found for: {', '.join(failed_symbols)}.")
+        else:
+            caveats = [
+                "Live mode is explicitly enabled with --allow-network.",
+                "Controlled live adapter is limited to a small explicit symbol list.",
+                "Adjustment/corporate-action handling remains source-reported and not production-hardened.",
+            ]
+            selected = {}
+            failed_symbols = []
+
         start_source_run(
             con,
             run_id=run_id,
@@ -104,23 +123,40 @@ def run_ohlcv_ingestion(
             allow_network=allow_network,
             caveats=caveats,
         )
+        if mode == "live":
+            fetch_result = fetch_vietcap_iq_gap_chart_live(
+                requested,
+                output_base_dir=live_output_dir or raw_base_dir,
+                count_back=count_back,
+                allow_network=allow_network,
+                timeout_seconds=timeout_seconds,
+                max_symbols=max_live_symbols,
+                run_id=run_id,
+            )
+            caveats.extend(str(item) for item in fetch_result.get("caveats", []))
+            failed_symbols = list(fetch_result.get("symbols_failed", []))
+            selected = {
+                str(item["symbol"]): (Path(str(item["raw_path"])), Path(str(item["metadata_path"])))
+                for item in fetch_result.get("payloads", [])
+                if item.get("status") == "success" and item.get("raw_path") and item.get("metadata_path")
+            }
         if not selected:
             complete_source_run(
                 con,
                 run_id=run_id,
                 status="error",
                 symbols_loaded=[],
-                symbols_failed=missing,
+                symbols_failed=failed_symbols or requested,
                 caveats=caveats,
             )
             base_result["caveats"] = caveats
             base_result["quality"] = build_ingestion_quality_report(con, symbols=requested)
+            base_result["symbols_failed"] = failed_symbols or requested
             return base_result
 
         securities_rows: list[dict[str, object]] = []
         daily_frames: list[pd.DataFrame] = []
         raw_payloads: list[dict[str, object]] = []
-        failed_symbols: list[str] = list(missing)
 
         for symbol, (raw_path, metadata_path) in selected.items():
             try:
