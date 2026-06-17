@@ -109,6 +109,11 @@ def run_backtest(
                 f"found={','.join(found_symbols)}; missing={','.join(missing_symbols)}",
             )
         )
+        symbol_caveats = []
+        if missing_symbols:
+            symbol_caveats.append(
+                f"Some requested symbols were not found in the MVP store: {','.join(missing_symbols)}."
+            )
 
         allocation = float(initial_capital) / len(found_symbols)
         symbol_results: dict[str, dict[str, Any]] = {}
@@ -116,12 +121,17 @@ def run_backtest(
         total_fail_rows = 0
         lineage_missing = 0
         lookback_failures: list[str] = []
+        no_usable_rows: list[str] = []
 
         for symbol in found_symbols:
             rows = _load_symbol_rows(con, symbol, strategy_id, start_date, end_date)
             fail_rows = [row for row in rows if row["price_quality_status"] == "fail"]
             usable_rows = [row for row in rows if row["price_quality_status"] != "fail"]
             total_fail_rows += len(fail_rows)
+            if not usable_rows:
+                no_usable_rows.append(symbol)
+                symbol_results[symbol] = _run_symbol(symbol, usable_rows, allocation, transaction_cost, slippage)
+                continue
             lineage_missing += sum(1 for row in usable_rows if not row["source_id"] or not row["raw_path"])
             all_price_bases.update(str(row["price_basis"]) for row in usable_rows if row["price_basis"])
             max_lookback = max([int(row["lookback_coverage"] or 0) for row in usable_rows] or [0])
@@ -130,6 +140,13 @@ def run_backtest(
             symbol_results[symbol] = _run_symbol(symbol, usable_rows, allocation, transaction_cost, slippage)
 
     assumptions["price_basis"] = sorted(all_price_bases) if all_price_bases else None
+    validation_gates.append(
+        _gate(
+            "usable_rows_exist",
+            "pass" if not no_usable_rows else "fail",
+            "usable rows available" if not no_usable_rows else f"missing_usable_rows={','.join(no_usable_rows)}",
+        )
+    )
     validation_gates.append(
         _gate(
             "daily_prices_have_source_id_raw_path",
@@ -152,13 +169,29 @@ def run_backtest(
         )
     )
 
+    if no_usable_rows and len(no_usable_rows) == len(found_symbols):
+        return _empty_result(
+            status="not_found",
+            symbols=requested,
+            symbols_found=found_symbols,
+            symbols_missing=missing_symbols,
+            strategy_id=strategy_id,
+            assumptions=assumptions,
+            caveats=caveats
+            + symbol_caveats
+            + ["No usable price rows were found for the requested symbols and date range."],
+            validation_gates=validation_gates,
+        )
+
     if lineage_missing or lookback_failures:
         return _empty_result(
             status="quality_fail",
             symbols=requested,
+            symbols_found=found_symbols,
+            symbols_missing=missing_symbols,
             strategy_id=strategy_id,
             assumptions=assumptions,
-            caveats=caveats + ["One or more blocking validation gates failed."],
+            caveats=caveats + symbol_caveats + ["One or more blocking validation gates failed."],
             validation_gates=validation_gates,
         )
 
@@ -201,7 +234,7 @@ def run_backtest(
         "trades": trades,
         "equity_curve": portfolio_curve,
         "validation_gates": validation_gates,
-        "caveats": caveats + metric_caveats,
+        "caveats": caveats + symbol_caveats + metric_caveats,
         "not_financial_advice": True,
     }
 

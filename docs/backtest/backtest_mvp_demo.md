@@ -60,10 +60,12 @@ Rows with `quality_status=fail` are excluded. The output reports whether source 
 ```bash
 python scripts/run_backtest_demo.py --symbols FPT,VNM,VCB --strategy-id mvp_ma20_ma50_momentum
 python scripts/run_backtest_demo.py --symbols FPT --start-date 2020-01-01 --end-date 2026-06-05
+python scripts/run_backtest_demo.py --symbols FPT,HPG --strategy-id mvp_ma20_ma50_momentum
+python scripts/run_backtest_demo.py --symbols FPT --start-date 2030-01-01 --end-date 2030-12-31
 python scripts/run_backtest_demo.py --symbols HPG --strategy-id mvp_ma20_ma50_momentum
 ```
 
-The CLI prints a JSON summary, a compact metrics table, and caveats. Missing DB and all-missing-symbol paths return nonzero status without a traceback.
+The CLI prints a JSON summary, a compact metrics table, and caveats. If some requested symbols are missing, the run returns `ok` for the found symbols and reports `symbols_missing` plus a warning gate. Missing DB, no usable rows in the requested date range, and all-missing-symbol paths return nonzero status without a traceback.
 
 ---
 

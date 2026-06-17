@@ -78,6 +78,73 @@ def test_valid_multi_symbol_backtest_returns_ok(tmp_path: Path) -> None:
     assert set(result["metrics"]["by_symbol"]) == {"FPT", "VNM", "VCB"}
 
 
+def test_partial_missing_symbols_returns_ok_with_warning_and_caveat(tmp_path: Path) -> None:
+    db_path = _write_backtest_db(tmp_path, ["FPT"])
+
+    result = run_backtest(symbols=["FPT", "HPG"], db_path=db_path)
+
+    gates = {gate["name"]: gate for gate in result["validation_gates"]}
+    assert result["status"] == "ok"
+    assert result["symbols_found"] == ["FPT"]
+    assert result["symbols_missing"] == ["HPG"]
+    assert gates["symbols_exist"]["status"] == "warn"
+    assert "Some requested symbols were not found" in " ".join(result["caveats"])
+
+
+def test_date_range_with_no_usable_rows_returns_not_found(tmp_path: Path) -> None:
+    db_path = _write_backtest_db(tmp_path, ["FPT"])
+
+    result = run_backtest(
+        symbols=["FPT"],
+        db_path=db_path,
+        start_date="2030-01-01",
+        end_date="2030-12-31",
+    )
+
+    gates = {gate["name"]: gate for gate in result["validation_gates"]}
+    assert result["status"] == "not_found"
+    assert result["symbols_found"] == ["FPT"]
+    assert result["symbols_missing"] == []
+    assert gates["usable_rows_exist"]["status"] == "fail"
+    assert "No usable price rows" in " ".join(result["caveats"])
+
+
+def test_invalid_unsupported_strategy_id_is_deterministic(tmp_path: Path) -> None:
+    db_path = _write_backtest_db(tmp_path, ["FPT"])
+
+    result = run_backtest(symbols=["FPT"], db_path=db_path, strategy_id="other")
+
+    assert result["status"] == "invalid_assumptions"
+    assert "Unsupported strategy_id=other" in " ".join(result["caveats"])
+
+
+def test_invalid_initial_capital_zero_is_deterministic(tmp_path: Path) -> None:
+    db_path = _write_backtest_db(tmp_path, ["FPT"])
+
+    result = run_backtest(symbols=["FPT"], db_path=db_path, initial_capital=0)
+
+    assert result["status"] == "invalid_assumptions"
+    assert "initial_capital must be greater than zero" in " ".join(result["caveats"])
+
+
+def test_invalid_negative_transaction_cost_is_deterministic(tmp_path: Path) -> None:
+    db_path = _write_backtest_db(tmp_path, ["FPT"])
+
+    result = run_backtest(symbols=["FPT"], db_path=db_path, transaction_cost=-0.1)
+
+    assert result["status"] == "invalid_assumptions"
+    assert "transaction_cost must be non-negative" in " ".join(result["caveats"])
+
+
+def test_invalid_negative_slippage_is_deterministic(tmp_path: Path) -> None:
+    db_path = _write_backtest_db(tmp_path, ["FPT"])
+
+    result = run_backtest(symbols=["FPT"], db_path=db_path, slippage=-0.1)
+
+    assert result["status"] == "invalid_assumptions"
+    assert "slippage must be non-negative" in " ".join(result["caveats"])
+
+
 def test_trades_include_cost_and_slippage_assumptions(tmp_path: Path) -> None:
     db_path = _write_backtest_db(tmp_path, ["FPT"])
 
@@ -95,6 +162,16 @@ def test_validation_gates_include_source_lineage_check(tmp_path: Path) -> None:
 
     gates = {gate["name"]: gate for gate in result["validation_gates"]}
     assert gates["daily_prices_have_source_id_raw_path"]["status"] == "pass"
+
+
+def test_validation_gates_include_execution_and_adjustment_caveats(tmp_path: Path) -> None:
+    db_path = _write_backtest_db(tmp_path, ["FPT"])
+
+    result = run_backtest(symbols=["FPT"], db_path=db_path)
+
+    gates = {gate["name"]: gate for gate in result["validation_gates"]}
+    assert gates["adjustment_corporate_action_warning"]["status"] == "warn"
+    assert gates["no_future_leakage_caveat"]["status"] == "warn"
 
 
 def test_fail_ohlc_rows_are_excluded(tmp_path: Path) -> None:
@@ -143,6 +220,67 @@ def test_cli_unknown_symbol_no_traceback(tmp_path: Path) -> None:
     assert completed.returncode == 1
     assert '"status": "not_found"' in completed.stdout
     assert "Traceback" not in completed.stderr
+
+
+def test_cli_invalid_assumption_exits_2_without_traceback(tmp_path: Path) -> None:
+    db_path = _write_backtest_db(tmp_path, ["FPT"])
+
+    completed = _run_cli("--symbols", "FPT", "--db-path", str(db_path), "--initial-capital", "0")
+
+    assert completed.returncode == 2
+    assert '"status": "invalid_assumptions"' in completed.stdout
+    assert "Traceback" not in completed.stderr
+
+
+def test_cli_partial_missing_symbols_prints_missing_list(tmp_path: Path) -> None:
+    db_path = _write_backtest_db(tmp_path, ["FPT"])
+
+    completed = _run_cli("--symbols", "FPT,HPG", "--db-path", str(db_path))
+
+    assert completed.returncode == 0
+    assert '"symbols_missing": [' in completed.stdout
+    assert '"HPG"' in completed.stdout
+
+
+def test_cli_date_range_no_data_no_traceback(tmp_path: Path) -> None:
+    db_path = _write_backtest_db(tmp_path, ["FPT"])
+
+    completed = _run_cli(
+        "--symbols",
+        "FPT",
+        "--db-path",
+        str(db_path),
+        "--start-date",
+        "2030-01-01",
+        "--end-date",
+        "2030-12-31",
+    )
+
+    assert completed.returncode == 1
+    assert '"status": "not_found"' in completed.stdout
+    assert "No usable price rows" in completed.stdout
+    assert "Traceback" not in completed.stderr
+
+
+def test_metric_none_caveat_when_no_closed_trades_or_losses(tmp_path: Path) -> None:
+    db_path = _write_backtest_db(tmp_path, ["FPT"])
+
+    result = run_backtest(symbols=["FPT"], db_path=db_path)
+
+    assert result["metrics"]["profit_factor"] is None
+    assert "Metric profit_factor could not be computed reliably" in " ".join(result["caveats"])
+
+
+def test_symbols_found_and_missing_present_for_ok_and_not_found(tmp_path: Path) -> None:
+    db_path = _write_backtest_db(tmp_path, ["FPT"])
+
+    ok_result = run_backtest(symbols=["FPT"], db_path=db_path)
+    missing_result = run_backtest(symbols=["HPG"], db_path=db_path)
+
+    assert ok_result["symbols_found"] == ["FPT"]
+    assert ok_result["symbols_missing"] == []
+    assert missing_result["symbols_found"] == []
+    assert missing_result["symbols_missing"] == ["HPG"]
 
 
 def test_not_financial_advice_wording_present(tmp_path: Path) -> None:

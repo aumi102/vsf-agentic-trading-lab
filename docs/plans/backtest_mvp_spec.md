@@ -65,19 +65,20 @@ Metrics that cannot be computed reliably return `None` with a caveat.
 
 ## Validation Gates
 
-The backtest emits validation gates and returns `quality_fail` if a blocking gate fails:
+The backtest emits validation gates and returns a structured non-OK status if a blocking gate fails:
 
 1. The SQLite store exists.
 2. Requested symbols exist in the store.
-3. Rows with `quality_status=fail` are excluded.
-4. `source_id` and `raw_path` are present on rows used.
-5. At least 50-day lookback is available for the requested window.
-6. Cost and slippage assumptions are explicitly stated in output.
-7. Price basis is reported in the assumptions.
-8. `adjustment_status` is carried through with an explicit corporate-action caveat.
-9. Same-day close execution is labeled as an MVP leakage caveat; production must use a stricter next-bar convention.
+3. Usable rows exist in the requested date range.
+4. Rows with `quality_status=fail` are excluded.
+5. `source_id` and `raw_path` are present on rows used.
+6. At least 50-day lookback is available for the requested window.
+7. Cost and slippage assumptions are explicitly stated in output.
+8. Price basis is reported in the assumptions.
+9. `adjustment_status` is carried through with an explicit corporate-action caveat.
+10. Same-day close execution is labeled as an MVP leakage caveat; production must use a stricter next-bar convention.
 
-Gate failure emits a structured dict with `status=quality_fail`, not a Python exception.
+If only some requested symbols are missing, the run returns `status=ok` for the found symbols, reports `symbols_missing`, and marks `symbols_exist` as `warn`. If a requested date range has no usable rows, the run returns `status=not_found`, not a Python exception.
 
 ---
 

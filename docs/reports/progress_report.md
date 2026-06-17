@@ -7,7 +7,7 @@ toc_max_heading_level: 3
 # Progress Report — Autonomous Trading Agent
 
 **Phase:** Source discovery plus local MVP DB/tool demo foundation.
-No production DB write, no backtest, no broker execution.
+No production DB write, no production backtest, no broker execution.
 
 ---
 
@@ -32,7 +32,7 @@ No production DB write, no backtest, no broker execution.
 | Data store decision | Decision matrix (`docs/plans/data_store_decision_matrix.md`); ADR-0001 (`docs/decisions/0001_local_sqlite_mvp_store.md`). Recommendation: keep SQLite for now; DuckDB when backtest needs columnar queries; QuestDB deferred until schema stable. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; CLI `scripts/run_backtest_demo.py`; docs at `docs/backtest/backtest_mvp_demo.md` and `docs/plans/backtest_mvp_spec.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | Template at `docs/demo/mentor_feedback_capture.md` — fill in after mentor session. |
-| Test suite | **803 tests pass** |
+| Test suite | **815 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -66,7 +66,7 @@ No production DB write, no backtest, no broker execution.
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 803 |
+| Total tests passing | 815 |
 
 ---
 
@@ -74,7 +74,7 @@ No production DB write, no backtest, no broker execution.
 
 - Product: **agent/tool product** — not just a backtest pipeline.
 - Full doc: `docs/architecture/02_trading_agent_architecture_overview.md`.
-- Backtest is one module/tool; current state is pre-DB, pre-backtest, pre-production.
+- Backtest is one module/tool; current state is local exploratory scaffold, pre-production.
 - Online questions (e.g. "HPG hôm nay thế nào?") should read cache/store, not trigger heavy fetches.
 
 ---
