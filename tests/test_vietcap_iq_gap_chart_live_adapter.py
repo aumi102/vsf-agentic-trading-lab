@@ -61,6 +61,9 @@ def test_live_adapter_success_writes_payload_and_metadata(tmp_path: Path) -> Non
     assert metadata["status"] == "success"
     assert metadata["content_hash"] == item["content_hash"]
     assert metadata["caveats"]
+    metadata_text = metadata_path.read_text(encoding="utf-8")
+    forbidden = ["Cookie", "Authorization", "Bearer", "token", "secret"]
+    assert not any(value in metadata_text for value in forbidden)
 
 
 def test_live_adapter_partial_response_is_structured(tmp_path: Path) -> None:
@@ -108,14 +111,42 @@ def test_live_adapter_error_response_has_no_traceback(tmp_path: Path) -> None:
 
 
 def test_live_adapter_rejects_more_than_three_symbols(tmp_path: Path) -> None:
+    calls = []
+
+    def fake_post(url, body_json, headers, timeout_seconds):
+        calls.append(body_json)
+        raise AssertionError("max-symbol guard must run before http_post")
+
     result = fetch_vietcap_iq_gap_chart_live(
         ["FPT", "VNM", "VCB", "MSN"],
         output_base_dir=tmp_path / "raw",
         allow_network=True,
+        http_post=fake_post,
     )
 
     assert result["status"] == "error"
+    assert calls == []
     assert "at most 3 symbols" in result["caveats"][0]
+
+
+def test_live_adapter_non_json_body_returns_structured_failure(tmp_path: Path) -> None:
+    def fake_post(url, body_json, headers, timeout_seconds):
+        return HttpResponse(200, "text/html", b"<html>blocked</html>")
+
+    result = fetch_vietcap_iq_gap_chart_live(
+        ["FPT"],
+        output_base_dir=tmp_path / "raw",
+        allow_network=True,
+        http_post=fake_post,
+        run_id="run4",
+    )
+
+    assert result["status"] == "error"
+    assert result["symbols_failed"] == ["FPT"]
+    assert result["payloads"][0]["status"] == "rejected_response"
+    metadata = json.loads(Path(result["payloads"][0]["metadata_path"]).read_text(encoding="utf-8"))
+    assert metadata["status"] == "rejected_response"
+    assert metadata["raw_path"].endswith("payload.json")
 
 
 def _payload(symbol: str, *, bars: int) -> dict[str, object]:

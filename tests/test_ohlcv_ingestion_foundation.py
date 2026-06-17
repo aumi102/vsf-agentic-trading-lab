@@ -254,7 +254,15 @@ def test_live_mode_with_fake_success_ingests_canonical_rows(tmp_path: Path, monk
     assert result["signal_rows"] == 60
     with sqlite3.connect(db_path) as con:
         assert con.execute("SELECT allow_network FROM source_runs WHERE run_id = ?", (result["run_id"],)).fetchone()[0] == 1
-        assert con.execute("SELECT COUNT(*) FROM raw_source_payloads WHERE run_id = ?", (result["run_id"],)).fetchone()[0] == 1
+        raw_row = con.execute(
+            """
+            SELECT COUNT(*) AS rows, MIN(LENGTH(content_hash)) AS hash_len
+            FROM raw_source_payloads
+            WHERE run_id = ?
+            """,
+            (result["run_id"],),
+        ).fetchone()
+        assert raw_row == (1, 64)
         assert con.execute("SELECT COUNT(*) FROM daily_prices WHERE symbol = 'FPT'").fetchone()[0] == 60
         watermark = con.execute("SELECT last_run_id FROM ingestion_watermarks WHERE symbol = 'FPT'").fetchone()[0]
     assert watermark == result["run_id"]
@@ -286,12 +294,15 @@ def test_live_mode_with_fake_partial_payload_returns_partial_ok(tmp_path: Path, 
         }
 
     monkeypatch.setattr("trading_agent.ingestion.ohlcv_ingestion.fetch_vietcap_iq_gap_chart_live", fake_fetch)
-    result = run_ohlcv_ingestion(["FPT", "HPG"], db_path=tmp_path / "demo.sqlite", mode="live", allow_network=True)
+    db_path = tmp_path / "demo.sqlite"
+    result = run_ohlcv_ingestion(["FPT", "HPG"], db_path=db_path, mode="live", allow_network=True)
 
     assert result["status"] == "partial_ok"
     assert result["symbols_loaded"] == ["FPT"]
     assert result["symbols_failed"] == ["HPG"]
     assert "HPG fetch status: error." in result["caveats"]
+    with sqlite3.connect(db_path) as con:
+        assert con.execute("SELECT COUNT(*) FROM raw_source_payloads WHERE run_id = ?", (result["run_id"],)).fetchone()[0] == 1
 
 
 def test_live_mode_rejects_more_than_three_symbols_without_adapter_call(tmp_path: Path, monkeypatch) -> None:
@@ -440,6 +451,32 @@ def test_cli_live_mode_without_allow_network_has_no_traceback(tmp_path: Path) ->
 
     assert completed.returncode == 1
     assert '"status": "error"' in completed.stdout
+    assert "Traceback" not in completed.stderr
+
+
+def test_cli_live_mode_rejects_too_many_symbols_without_traceback(tmp_path: Path) -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_ohlcv_ingestion.py",
+            "--symbols",
+            "FPT,VNM,VCB,MSN",
+            "--mode",
+            "live",
+            "--allow-network",
+            "--db-path",
+            str(tmp_path / "cli.sqlite"),
+        ],
+        cwd=ROOT,
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 1
+    assert '"status": "error"' in completed.stdout
+    assert "at most 3 symbols" in completed.stdout
     assert "Traceback" not in completed.stderr
 
 
