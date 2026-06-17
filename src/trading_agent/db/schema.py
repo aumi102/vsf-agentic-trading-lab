@@ -63,6 +63,43 @@ SIGNALS_COLUMNS = [
     "quality_status",
 ]
 
+SOURCE_RUNS_COLUMNS = [
+    "run_id",
+    "source",
+    "mode",
+    "status",
+    "started_at",
+    "completed_at",
+    "symbols_requested_json",
+    "symbols_loaded_json",
+    "symbols_failed_json",
+    "allow_network",
+    "caveats_json",
+]
+
+RAW_SOURCE_PAYLOADS_COLUMNS = [
+    "payload_id",
+    "run_id",
+    "source",
+    "symbol",
+    "observed_at",
+    "content_hash",
+    "raw_path",
+    "metadata_path",
+    "logical_path",
+    "row_count",
+    "status",
+]
+
+INGESTION_WATERMARKS_COLUMNS = [
+    "source",
+    "symbol",
+    "last_trade_date",
+    "last_run_id",
+    "updated_at",
+    "row_count",
+]
+
 
 def connect(db_path: str | Path) -> sqlite3.Connection:
     path = Path(db_path)
@@ -133,6 +170,45 @@ def create_schema(con: sqlite3.Connection) -> None:
             signal_version TEXT NOT NULL,
             quality_status TEXT NOT NULL,
             PRIMARY KEY (security_id, as_of_date, strategy_id, signal_version)
+        );
+
+        CREATE TABLE IF NOT EXISTS source_runs (
+            run_id TEXT PRIMARY KEY,
+            source TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            status TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            symbols_requested_json TEXT NOT NULL,
+            symbols_loaded_json TEXT NOT NULL,
+            symbols_failed_json TEXT NOT NULL,
+            allow_network INTEGER NOT NULL,
+            caveats_json TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS raw_source_payloads (
+            payload_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            source TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            observed_at TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            raw_path TEXT NOT NULL,
+            metadata_path TEXT NOT NULL,
+            logical_path TEXT NOT NULL,
+            row_count INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            FOREIGN KEY (run_id) REFERENCES source_runs(run_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS ingestion_watermarks (
+            source TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            last_trade_date TEXT,
+            last_run_id TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            row_count INTEGER NOT NULL,
+            PRIMARY KEY (source, symbol)
         );
         """
     )

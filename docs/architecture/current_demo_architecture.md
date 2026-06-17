@@ -6,7 +6,7 @@ toc_max_heading_level: 3
 
 # Current Demo Architecture
 
-**State as of 2026-06-16** — merged PRs #16, #17, #18, #19.
+**State as of 2026-06-17** — merged PRs #16 through #24, plus the current ingestion foundation branch.
 
 This document describes what is implemented and running, plus the blocked future layers. No production trading, realtime, or LLM is active.
 
@@ -22,17 +22,19 @@ This document describes what is implemented and running, plus the blocked future
 └────────────────────┬────────────────────────────────────┘
                      │
                      ▼
-           build_mvp_db.py
-           (scripts/build_mvp_db.py)
+           build_mvp_db.py OR run_ohlcv_ingestion.py
            │  -- OHLCV parse + quality checks
+           │  -- source run / raw payload metadata for ingestion path
            │  -- feature computation (MA20, MA50, returns, volatility)
            │  -- momentum signal evaluation (BUY/SELL/HOLD)
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────┐
 │  SQLite MVP store (data/demo/mvp_trading_agent.sqlite)  │
-│  Tables: securities, daily_prices,                      │
-│          feature_snapshots, signals                     │
+│  Canonical: securities, daily_prices,                   │
+│             feature_snapshots, signals                  │
+│  Ingestion: source_runs, raw_source_payloads,           │
+│             ingestion_watermarks                        │
 │  14,079 price rows; 14,071 features/signals; 3 symbols  │
 └────────────────────┬────────────────────────────────────┘
                      │
@@ -107,8 +109,8 @@ Each tool returns a dict with `status`, `quality_status`, and `caveats`. The orc
 │  └─────────────────────┘   └────────────────────────┘   │
 │                                                          │
 │  ┌─────────────────────┐   ┌────────────────────────┐   │
-│  │  Realtime feed      │   │  Backtest engine       │   │
-│  │  (websocket / API)  │   │  (Sharpe, Drawdown)    │   │
+│  │  Realtime feed      │   │  Production backtest   │   │
+│  │  (websocket / API)  │   │  hardening             │   │
 │  └─────────────────────┘   └────────────────────────┘   │
 │                                                          │
 │  ┌─────────────────────┐   ┌────────────────────────┐   │
@@ -129,7 +131,9 @@ Each tool returns a dict with `status`, `quality_status`, and `caveats`. The orc
 
 | Module | Path | Role |
 |---|---|---|
-| DB builder | `src/trading_agent/db/build_mvp_store.py` | Parses raw payloads, writes SQLite |
+| DB builder | `src/trading_agent/db/build_mvp_store.py` | Deterministic full rebuild from cached payloads |
+| OHLCV ingestion | `src/trading_agent/ingestion/ohlcv_ingestion.py` | Cached incremental source-run/raw-payload/canonical refresh |
+| Ingestion CLI | `scripts/run_ohlcv_ingestion.py` | Offline cached ingestion and gated live-mode interface |
 | Market data tool | `src/trading_agent/tools/market_data_tool.py` | Latest OHLCV read |
 | Feature tool | `src/trading_agent/tools/feature_tool.py` | Latest features read |
 | Signal tool | `src/trading_agent/tools/signal_tool.py` | Latest signal read |
@@ -146,5 +150,6 @@ Each tool returns a dict with `status`, `quality_status`, and `caveats`. The orc
 
 - **Adjustment status:** Unknown on all rows — every row carries `quality_status: warn`.
 - **Latest data date:** 2026-06-05 (no realtime update).
+- **Live ingestion:** Interface is present, but live network mode is gated and not implemented until mentor confirms source/DB direction.
 - **No LLM:** All answers are deterministic rule-based outputs.
 - **Not financial advice:** All outputs carry `not_financial_advice=True`.

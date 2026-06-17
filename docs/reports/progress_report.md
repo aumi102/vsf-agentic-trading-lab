@@ -31,9 +31,10 @@ No production DB write, no production backtest, no broker execution.
 | Final mentor handoff | Handoff note at `docs/demo/mentor_handoff_message.md`; awaiting mentor feedback before QuestDB/LLM/backtest hardening. |
 | Post-demo acceptance | Mentor review checklist (`docs/demo/mentor_review_checklist.md`), post-demo technical roadmap (`docs/plans/post_demo_technical_roadmap.md`), current demo architecture (`docs/architecture/current_demo_architecture.md`). Awaiting mentor feedback on store, backtest, LLM timeline. |
 | Data store decision | Decision matrix (`docs/plans/data_store_decision_matrix.md`); ADR-0001 (`docs/decisions/0001_local_sqlite_mvp_store.md`). Recommendation: keep SQLite for now; DuckDB when backtest needs columnar queries; QuestDB deferred until schema stable. |
+| OHLCV ingestion foundation | Cached incremental ingestion path records `source_runs`, `raw_source_payloads`, and `ingestion_watermarks`; refreshes canonical prices/features/signals; live mode remains gated/not implemented pending mentor source/DB decision. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | Template at `docs/demo/mentor_feedback_capture.md` — fill in after mentor session. |
-| Test suite | **819 tests pass** |
+| Test suite | **832 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -64,10 +65,11 @@ No production DB write, no production backtest, no broker execution.
 | MVP DB/tool demo | 3 demo securities; 14,079 daily price rows; 14,071 feature snapshots/signals; 8 OHLC fail rows excluded from features |
 | Agent orchestrator demo | Exact tool sequence: market_data -> features -> signal -> risk -> report; missing DB and unknown-symbol paths return clear non-traceback statuses |
 | Agent/backtest demo runner | market_brief, risk_check, compare, and Backtest MVP suite rows; expected nonzero edge cases display as OK when status matches |
+| OHLCV ingestion foundation tests | 13 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 819 |
+| Total tests passing | 832 |
 
 ---
 
