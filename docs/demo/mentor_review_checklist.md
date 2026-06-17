@@ -6,11 +6,11 @@ toc_max_heading_level: 3
 
 # Mentor Review Checklist
 
-Use this checklist during and after the demo session to confirm the current state and decide next engineering steps. No market knowledge is required — focus on tool flow, output quality, and product direction.
+Use this checklist during and after the demo session to confirm the current state and decide next engineering steps. Focus on tool flow, output quality, backtest assumptions, and product direction.
 
 ---
 
-## What to Run
+## What To Run
 
 ### One-time build
 
@@ -20,115 +20,60 @@ python scripts/build_mvp_db.py --symbols FPT,VNM,VCB
 
 Expected: prints `symbols_loaded=FPT,VCB,VNM`, row counts, and DB path. No network calls.
 
-### Demo scenarios
-
-```bash
-python scripts/run_agent_demo.py --scenario market_brief --symbol FPT
-python scripts/run_agent_demo.py --scenario market_brief --query "FPT hôm nay thế nào?"
-python scripts/run_agent_demo.py --scenario risk_check --symbol VCB
-python scripts/run_agent_demo.py --scenario compare --symbols FPT,VNM,VCB
-python scripts/run_agent_demo.py --scenario compare --symbols FPT,HPG
-```
-
-### Full suite at once
+### Full suite
 
 ```bash
 python scripts/run_mentor_demo_suite.py
 ```
 
-Expected: prints a status table with OK for all scenarios. HPG,XYZ appears as expected-nonzero (labeled OK in the suite).
+Expected: status table with OK for market brief, risk check, compare, and Backtest MVP rows. Expected nonzero edge cases are labeled OK when status matches.
+
+### Backtest MVP focus commands
+
+```bash
+python scripts/run_backtest_demo.py --symbols FPT,VNM,VCB --strategy-id mvp_ma20_ma50_momentum
+python scripts/run_backtest_demo.py --symbols FPT,HPG --strategy-id mvp_ma20_ma50_momentum
+python scripts/run_backtest_demo.py --symbols FPT --start-date 2030-01-01 --end-date 2030-12-31
+```
 
 ---
 
-## What to Inspect
+## What To Inspect
 
 | Item | What to look for |
 |---|---|
-| FPT market brief | Latest date; signal (HOLD/BUY/SELL); risk flag; caveat about adjustment_status |
-| VCB risk check | Risk flags; `thin_recent_volume` caveat; quality_status=warn |
-| Compare table | 3 rows; FPT/VNM/VCB signals differ; table prints in input order |
-| FPT vs HPG compare | FPT ok row; HPG `not_found` row with N/A values; no traceback |
-| Tool-call trace | 5 entries per symbol: market_data → features → signal → risk → report |
-| `not_financial_advice` | Always `true` in JSON output |
-| Disclaimer | Vietnamese text ends with: _Đây là demo công cụ nội bộ, không phải khuyến nghị đầu tư_ |
+| FPT market brief | Latest date, signal, risk flag, adjustment caveat |
+| VCB risk check | Risk flags, `thin_recent_volume`, quality status |
+| Compare table | FPT/VNM/VCB rows in input order |
+| FPT vs HPG compare | FPT ok; HPG `not_found`; no traceback |
+| Backtest base run | `status=ok`; metrics present; gates pass/warn |
+| Backtest FPT,HPG | `symbols_missing=["HPG"]`; still `status=ok` |
+| Backtest 2030 date range | `status=not_found`; no usable rows; no traceback |
+| `not_financial_advice` | Always `true` |
 
 ---
 
-## Expected Output Summary
+## Questions For Mentor
 
-| Command | Exit | Status | Signal (FPT) | Risk (VCB) |
-|---|---:|---|---|---|
-| `market_brief --symbol FPT` | 0 | ok | HOLD | — |
-| `risk_check --symbol VCB` | 0 | ok | — | normal_20d_volatility, thin_recent_volume |
-| `compare --symbols FPT,VNM,VCB` | 0 | ok | FPT HOLD, VNM SELL, VCB HOLD | — |
-| `compare --symbols FPT,HPG` | 0 | ok | HPG not_found, no traceback | — |
-
----
-
-## Questions for Mentor
-
-Please answer these so we can plan the next sprint:
-
-### 1. Demo readiness
-
-> Is the current SQLite MVP demo sufficient to show at the next stakeholder meeting?
-> Or does it need additional symbols, improved wording, or a different output format?
-
-### 2. Production data store
-
-> Which store should we move to next?
->
-> - **Keep SQLite** temporarily — simple, no infra, good for < 10 symbols
-> - **DuckDB** — columnar, fast analytics, no server, easy migration from SQLite
-> - **QuestDB** — time-series native, websocket support, needs Docker
-> - **Postgres / TimescaleDB** — familiar, production-grade, more ops overhead
-
-### 3. Symbol universe
-
-> Which symbols should be prioritized next?
-> Current demo: FPT, VNM, VCB (+ REE, SAM available locally)
-> HOSE/HNX universe: 2,080 symbols (full fetch not yet approved)
-
-### 4. Signal/answer wording
-
-> The current signal is rule-based: BUY / SELL / HOLD.
-> Should the answer surface this wording to non-technical stakeholders?
-> Or should it stay as an internal signal value with the Vietnamese caveat only?
-
-### 5. Minimum backtest requirement
-
-> When does a backtest need to exist?
-> - Never (demo only)?
-> - Before production DB is approved?
-> - Before an LLM agent is added?
-> What strategy should the first backtest cover (e.g., the existing MA20/MA50 momentum rule)?
-
-### 6. LLM integration timeline
-
-> The current agent is fully deterministic (no LLM).
-> When should an LLM layer be added?
-> - Immediately (to write better Vietnamese answers)?
-> - After backtest is validated?
-> - After production DB is stable?
-
-### 7. Stakeholder visibility
-
-> Which parts of the output should be private (not shown to non-technical stakeholders)?
-> - Raw risk flags?
-> - Quality_status: warn?
-> - Caveats about adjustment_status?
-> - The tool-call trace JSON?
+1. Is the current SQLite MVP demo sufficient for the next stakeholder meeting, or does it need additional symbols, improved wording, or a different output format?
+2. Is same-day close acceptable for exploratory demo, or should next-bar execution be required immediately?
+3. Are flat transaction cost and slippage assumptions acceptable for MVP?
+4. Which symbols or universe should the first real backtest cover?
+5. Should the next implementation step be backtest hardening, DuckDB/QuestDB migration, or LLM tool-selection?
+6. Which store should we move to next: keep SQLite temporarily, migrate to DuckDB, implement QuestDB, or use Postgres/TimescaleDB?
+7. Should BUY/SELL/HOLD be shown to non-technical stakeholders, or kept as internal signal values with caveats?
+8. Which output details should remain private: raw risk flags, `quality_status=warn`, adjustment caveats, or tool-call trace JSON?
 
 ---
 
-## After the Demo Session
+## After The Demo Session
 
-Record answers to the questions above and update `docs/plans/post_demo_technical_roadmap.md` with the agreed next phase.
+Record answers in `docs/demo/mentor_feedback_capture.md` and update `docs/plans/post_demo_technical_roadmap.md` with the agreed next phase.
 
-The current blockers remain:
+Current blockers:
 
 - Production DB write: blocked until store decision is made.
+- Production backtest hardening: blocked until execution convention, assumptions, and universe are confirmed.
 - Full-history FA fetch: blocked on mapping, PIT, and schema gates.
-- Backtest: blocked on DB write.
 - LLM reasoning: blocked until backtest is validated or explicitly deferred.
-- Real-time feed: blocked until data contracts are stable.
+- Realtime feed: blocked until data contracts are stable.

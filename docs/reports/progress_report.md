@@ -27,12 +27,12 @@ No production DB write, no production backtest, no broker execution.
 | MVP DB/tool demo | SQLite local store from saved gap-chart payloads; tools return latest market data, features, signal, risk, and Vietnamese answer. Demo symbols: FPT, VNM, VCB. |
 | Agent tool orchestrator demo | Deterministic wrapper resolves a symbol, calls market/features/signal/risk/report tools, and returns a Vietnamese answer. No LLM, fetch, broker execution, or backtest. |
 | Agent demo readiness | Scenario runner with `market_brief`, `risk_check`, `compare`. Structured result dict with tool-call trace, Vietnamese answer, caveats, `not_financial_advice=True`. CLI: `scripts/run_agent_demo.py`. |
-| Mentor demo package | Runbook (`docs/demo/mentor_demo_runbook.md`), demo report (`docs/reports/mentor_demo_report.md`), and suite runner (`scripts/run_mentor_demo_suite.py`). All scenarios validated. Production DB/backtest still blocked. |
+| Mentor demo package | Runbook (`docs/demo/mentor_demo_runbook.md`), demo reports (`docs/reports/mentor_demo_report.md`, `docs/reports/backtest_mvp_demo_report.md`), and suite runner (`scripts/run_mentor_demo_suite.py`). Agent and Backtest MVP scenarios are included. Production hardening still blocked. |
 | Post-demo acceptance | Mentor review checklist (`docs/demo/mentor_review_checklist.md`), post-demo technical roadmap (`docs/plans/post_demo_technical_roadmap.md`), current demo architecture (`docs/architecture/current_demo_architecture.md`). Awaiting mentor feedback on store, backtest, LLM timeline. |
 | Data store decision | Decision matrix (`docs/plans/data_store_decision_matrix.md`); ADR-0001 (`docs/decisions/0001_local_sqlite_mvp_store.md`). Recommendation: keep SQLite for now; DuckDB when backtest needs columnar queries; QuestDB deferred until schema stable. |
-| Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; CLI `scripts/run_backtest_demo.py`; docs at `docs/backtest/backtest_mvp_demo.md` and `docs/plans/backtest_mvp_spec.md`. No LLM, broker execution, live trading, or network fetch. |
+| Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | Template at `docs/demo/mentor_feedback_capture.md` — fill in after mentor session. |
-| Test suite | **815 tests pass** |
+| Test suite | **819 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -62,11 +62,11 @@ No production DB write, no production backtest, no broker execution.
 | FA `publicDate` PIT sample | 8 rows; 4 unique official disclosure events; 2 issuers; 2 exact_match, 4 near_match, 2 vietcap_after_official; 0 red flags |
 | MVP DB/tool demo | 3 demo securities; 14,079 daily price rows; 14,071 feature snapshots/signals; 8 OHLC fail rows excluded from features |
 | Agent orchestrator demo | Exact tool sequence: market_data -> features -> signal -> risk -> report; missing DB and unknown-symbol paths return clear non-traceback statuses |
-| Agent demo runner | 3 scenarios (market_brief, risk_check, compare); 17 targeted tests + 7 suite tests; FPT ok, HPG not_found, all-missing exits nonzero, compare table in input order |
+| Agent/backtest demo runner | market_brief, risk_check, compare, and Backtest MVP suite rows; expected nonzero edge cases display as OK when status matches |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 815 |
+| Total tests passing | 819 |
 
 ---
 
@@ -90,7 +90,7 @@ No production DB write, no production backtest, no broker execution.
 7. ~~Present mentor-facing demo and collect feedback before adding LLM reasoning layer.~~ — Demo package complete. Send `docs/demo/mentor_demo_runbook.md` + `docs/demo/mentor_review_checklist.md` to mentor. Wait for feedback.
 8. ~~Execute `docs/plans/post_demo_technical_roadmap.md` phases based on mentor answers.~~ — Decision pack created: store matrix, backtest spec, ADR-0001, and feedback capture template ready. Awaiting mentor session to unlock next phase.
 9. ~~Implement exploratory backtest MVP (`mvp_ma20_ma50_momentum` strategy over FPT/VNM/VCB).~~ - Scaffold added over cached SQLite data with explicit caveats and validation gates.
-10. Get mentor review of backtest assumptions and store decision before expanding universe or adding QuestDB/LLM.
+10. Run mentor demo session and capture answers before QuestDB/LLM/backtest hardening.
 11. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
 
 ---

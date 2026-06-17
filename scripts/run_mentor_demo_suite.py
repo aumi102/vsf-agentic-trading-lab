@@ -15,43 +15,78 @@ from trading_agent.tools._store import DEFAULT_DB_PATH
 
 BUILD_SCRIPT = "scripts/build_mvp_db.py"
 BUILD_ARGS = ["--symbols", "FPT,VNM,VCB"]
+AGENT_SCRIPT = "scripts/run_agent_demo.py"
+BACKTEST_SCRIPT = "scripts/run_backtest_demo.py"
 
 DEMO_SCENARIOS = [
     {
         "label": "market_brief --symbol FPT",
+        "script": AGENT_SCRIPT,
         "args": ["--scenario", "market_brief", "--symbol", "FPT"],
         "expect_exit": 0,
+        "expect_status": "ok",
     },
     {
-        "label": 'market_brief --query "FPT hôm nay thế nào?"',
-        "args": ["--scenario", "market_brief", "--query", "FPT hôm nay thế nào?"],
+        "label": 'market_brief --query ASCII fallback "FPT hom nay the nao?"',
+        "script": AGENT_SCRIPT,
+        "args": ["--scenario", "market_brief", "--query", "FPT hom nay the nao?"],
         "expect_exit": 0,
+        "expect_status": "ok",
     },
     {
         "label": "risk_check --symbol VCB",
+        "script": AGENT_SCRIPT,
         "args": ["--scenario", "risk_check", "--symbol", "VCB"],
         "expect_exit": 0,
+        "expect_status": "ok",
     },
     {
         "label": "compare --symbols FPT,VNM,VCB",
+        "script": AGENT_SCRIPT,
         "args": ["--scenario", "compare", "--symbols", "FPT,VNM,VCB"],
         "expect_exit": 0,
+        "expect_status": "ok",
     },
     {
         "label": "compare --symbols FPT,HPG",
+        "script": AGENT_SCRIPT,
         "args": ["--scenario", "compare", "--symbols", "FPT,HPG"],
         "expect_exit": 0,
+        "expect_status": "ok",
     },
     {
         "label": "compare --symbols HPG,XYZ",
+        "script": AGENT_SCRIPT,
         "args": ["--scenario", "compare", "--symbols", "HPG,XYZ"],
         "expect_exit": 1,
+        "expect_status": "not_found",
+    },
+    {
+        "label": "backtest --symbols FPT,VNM,VCB",
+        "script": BACKTEST_SCRIPT,
+        "args": ["--symbols", "FPT,VNM,VCB", "--strategy-id", "mvp_ma20_ma50_momentum"],
+        "expect_exit": 0,
+        "expect_status": "ok",
+    },
+    {
+        "label": "backtest --symbols FPT,HPG",
+        "script": BACKTEST_SCRIPT,
+        "args": ["--symbols", "FPT,HPG", "--strategy-id", "mvp_ma20_ma50_momentum"],
+        "expect_exit": 0,
+        "expect_status": "ok",
+    },
+    {
+        "label": "backtest --symbols FPT --start-date 2030-01-01 --end-date 2030-12-31",
+        "script": BACKTEST_SCRIPT,
+        "args": ["--symbols", "FPT", "--start-date", "2030-01-01", "--end-date", "2030-12-31"],
+        "expect_exit": 1,
+        "expect_status": "not_found",
     },
 ]
 
 
-def _run(args: list[str], *, db_path: str | None = None) -> subprocess.CompletedProcess[str]:
-    cmd = [sys.executable, "scripts/run_agent_demo.py", *args]
+def _run(script: str, args: list[str], *, db_path: str | None = None) -> subprocess.CompletedProcess[str]:
+    cmd = [sys.executable, script, *args]
     if db_path:
         cmd += ["--db-path", db_path]
     return subprocess.run(
@@ -92,44 +127,66 @@ def main(db_path: str | None = None, skip_build: bool = False) -> int:
             return 1
         print()
 
-    col_w = 45
+    col_w = 60
     print(f"## Demo suite  ({'custom db' if db_path else DEFAULT_DB_PATH})")
-    print(f"{'Command':<{col_w}}  {'Exit':>4}  {'Expected':>8}  {'Pass?':>5}  Status")
-    print("-" * (col_w + 35))
+    print(f"{'Command':<{col_w}}  {'Exit':>4}  {'Expected':>8}  {'Status':<10}  {'Pass?':>5}  Key result")
+    print("-" * (col_w + 60))
 
     any_fail = False
     for scenario in DEMO_SCENARIOS:
-        args = scenario["args"]
-        if db_path:
-            extra = ["--db-path", db_path]
-        else:
-            extra = []
-        result = _run(args + extra)
+        result = _run(scenario["script"], scenario["args"], db_path=db_path)
         got_exit = result.returncode
         want_exit = scenario["expect_exit"]
-        passed = got_exit == want_exit
-
-        status_str = ""
-        try:
-            for line in result.stdout.splitlines():
-                if line.strip().startswith('"status"'):
-                    status_str = line.strip()
-                    break
-        except Exception:
-            pass
+        summary = _extract_summary(result.stdout)
+        status = str(summary.get("status") or "unknown")
+        want_status = scenario.get("expect_status")
+        passed = got_exit == want_exit and (want_status is None or status == want_status)
+        key_result = _key_result(scenario["script"], summary)
 
         mark = "OK  " if passed else "FAIL"
-        label = scenario["label"][:col_w]
-        print(f"{label:<{col_w}}  {got_exit:>4}  {want_exit:>8}  {mark:>5}  {status_str}")
+        label = str(scenario["label"])[:col_w]
+        print(f"{label:<{col_w}}  {got_exit:>4}  {want_exit:>8}  {status:<10}  {mark:>5}  {key_result}")
         if not passed:
             any_fail = True
 
     print()
     if any_fail:
-        print("[FAIL] one or more scenarios did not exit as expected")
+        print("[FAIL] one or more scenarios did not exit/status as expected")
         return 1
-    print("[OK] all scenarios exited as expected")
+    print("[OK] all scenarios exited/statused as expected")
     return 0
+
+
+def _extract_summary(stdout: str) -> dict[str, object]:
+    start = stdout.find("{")
+    if start < 0:
+        return {}
+    try:
+        summary, _ = json.JSONDecoder().raw_decode(stdout[start:])
+    except json.JSONDecodeError:
+        return {}
+    return summary if isinstance(summary, dict) else {}
+
+
+def _key_result(script: str, summary: dict[str, object]) -> str:
+    if script == BACKTEST_SCRIPT:
+        missing = summary.get("symbols_missing")
+        if isinstance(missing, list) and missing:
+            return "missing=" + ",".join(str(item) for item in missing)
+        gates = summary.get("validation_gates")
+        if isinstance(gates, list):
+            for gate in gates:
+                if isinstance(gate, dict) and gate.get("name") == "usable_rows_exist" and gate.get("status") == "fail":
+                    return "no usable rows"
+        metrics = summary.get("metrics")
+        if isinstance(metrics, dict) and metrics:
+            return f"metrics present; trades={metrics.get('number_of_trades')}"
+        return "no traceback"
+
+    scenario = summary.get("scenario")
+    trace = summary.get("tool_call_trace")
+    trace_count = len(trace) if isinstance(trace, list) else 0
+    return f"{scenario or 'scenario'}; tool_trace={trace_count}"
 
 
 if __name__ == "__main__":

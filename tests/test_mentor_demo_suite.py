@@ -15,7 +15,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from trading_agent.db.build_mvp_store import build_mvp_store
-from scripts.run_mentor_demo_suite import DEMO_SCENARIOS, BUILD_ARGS, BUILD_SCRIPT, _build, _run
+from scripts.run_mentor_demo_suite import BACKTEST_SCRIPT, DEMO_SCENARIOS, BUILD_ARGS, BUILD_SCRIPT
 
 
 # ---------------------------------------------------------------------------
@@ -82,12 +82,34 @@ def test_demo_scenarios_list_has_expected_scenarios() -> None:
     assert any("market_brief" in lbl for lbl in labels)
     assert any("risk_check" in lbl for lbl in labels)
     assert any("compare" in lbl for lbl in labels)
+    assert any("backtest" in lbl for lbl in labels)
+    assert any("ASCII fallback" in lbl for lbl in labels)
+
+
+def test_backtest_commands_are_included_in_suite_scenarios() -> None:
+    backtests = [s for s in DEMO_SCENARIOS if s["script"] == BACKTEST_SCRIPT]
+    labels = [s["label"] for s in backtests]
+    assert "backtest --symbols FPT,VNM,VCB" in labels
+    assert "backtest --symbols FPT,HPG" in labels
+    assert any("2030-01-01" in label for label in labels)
 
 
 def test_demo_scenarios_specify_exit_codes() -> None:
     for scenario in DEMO_SCENARIOS:
         assert "expect_exit" in scenario
         assert scenario["expect_exit"] in (0, 1)
+        assert scenario["expect_status"] in ("ok", "not_found")
+
+
+def test_backtest_expected_success_and_edge_case_statuses() -> None:
+    by_label = {scenario["label"]: scenario for scenario in DEMO_SCENARIOS}
+    assert by_label["backtest --symbols FPT,VNM,VCB"]["expect_exit"] == 0
+    assert by_label["backtest --symbols FPT,VNM,VCB"]["expect_status"] == "ok"
+    assert by_label["backtest --symbols FPT,HPG"]["expect_exit"] == 0
+    assert by_label["backtest --symbols FPT,HPG"]["expect_status"] == "ok"
+    no_data = by_label["backtest --symbols FPT --start-date 2030-01-01 --end-date 2030-12-31"]
+    assert no_data["expect_exit"] == 1
+    assert no_data["expect_status"] == "not_found"
 
 
 def test_demo_scenarios_contain_no_network_args() -> None:
@@ -96,6 +118,8 @@ def test_demo_scenarios_contain_no_network_args() -> None:
             assert "http" not in arg.lower()
             assert "curl" not in arg.lower()
             assert "fetch" not in arg.lower()
+            assert "crawl" not in arg.lower()
+            assert "network" not in arg.lower()
 
 
 def test_build_cmd_does_not_contain_network_flags() -> None:
@@ -134,6 +158,26 @@ def test_suite_cli_shows_status_for_each_scenario(tmp_path: Path) -> None:
     assert "market_brief" in result.stdout
     assert "risk_check" in result.stdout
     assert "compare" in result.stdout
+    assert "backtest" in result.stdout
+    assert "Key result" in result.stdout
+
+
+def test_suite_cli_includes_backtest_status_rows(tmp_path: Path) -> None:
+    db_path = _build_multi_fixture_db(tmp_path, ["FPT", "VNM", "VCB"])
+    result = _run_suite_cli("--db-path", str(db_path), "--skip-build")
+    assert "backtest --symbols FPT,VNM,VCB" in result.stdout
+    assert "backtest --symbols FPT,HPG" in result.stdout
+    assert "no usable rows" in result.stdout
+    assert "missing=HPG" in result.stdout
+
+
+def test_suite_cli_expected_nonzero_backtest_edge_case_keeps_suite_green(tmp_path: Path) -> None:
+    db_path = _build_multi_fixture_db(tmp_path, ["FPT", "VNM", "VCB"])
+    result = _run_suite_cli("--db-path", str(db_path), "--skip-build")
+    assert result.returncode == 0
+    assert "backtest --symbols FPT --start-date 2030-01-01 --end-da" in result.stdout
+    assert "not_found" in result.stdout
+    assert "[OK] all scenarios exited/statused as expected" in result.stdout
 
 
 def test_suite_cli_no_traceback_on_missing_symbols(tmp_path: Path) -> None:
