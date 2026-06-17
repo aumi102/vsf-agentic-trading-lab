@@ -1,0 +1,13 @@
+{
+  "policy_name": "controlled_live_ohlcv_mvp",
+  "max_symbols_per_batch": 3,
+  "min_seconds_between_requests": 2,
+  "max_batches_per_manual_run": 1,
+  "scheduler_enabled": false,
+  "raw_retention_days": 30,
+  "requires_manual_allow_network": true,
+  "notes": [
+    "Manual dry-run planning policy only.",
+    "Scheduler/full-universe ingestion remains blocked pending mentor approval."
+  ]
+}
