@@ -8,154 +8,104 @@ toc_max_heading_level: 3
 
 ## Purpose
 
-This runbook lets a mentor walk through the current agent demo in under five minutes. It demonstrates the DB/tool/agent flow built across PRs #16–#18:
+This runbook lets a mentor walk through the current local demo. It covers the DB/tool/agent/backtest flow built across PRs #16-#22:
 
-- **PR #16:** MVP SQLite store, OHLCV ingestion, features, signals, tools.
-- **PR #17:** Deterministic orchestrator — symbol resolution, fixed tool sequence, Vietnamese answer.
-- **PR #18:** Scenario runner — `market_brief`, `risk_check`, `compare` with structured output and CLI.
+- PR #16: MVP SQLite store, OHLCV ingestion, features, signals, tools.
+- PR #17: Deterministic orchestrator: symbol resolution, fixed tool sequence, Vietnamese answer.
+- PR #18: Scenario runner: `market_brief`, `risk_check`, `compare`.
+- PR #22: Exploratory Backtest MVP over cached SQLite data.
 
-This is not production trading. It is not financial advice. No LLM reasoning is present yet; all answers come from deterministic rule-based tools reading saved local data.
+This is not production trading and not financial advice. No LLM reasoning is present; all outputs come from deterministic rule-based tools reading saved local data.
 
 ---
 
-## Step 1 — One-Time Build
-
-Build the local SQLite store from saved gap-chart payloads:
+## Step 1 - One-Time Build
 
 ```bash
 python scripts/build_mvp_db.py --symbols FPT,VNM,VCB
 ```
 
-Expected output:
-```
-available_symbols=FPT,REE,SAM,VCB,VNM
-symbols_loaded=FPT,VCB,VNM
-storage=sqlite
-db_path=data/demo/mvp_trading_agent.sqlite
-row_counts={"daily_prices": 14079, "feature_snapshots": 14071, ...}
-```
+Expected: `symbols_loaded=FPT,VCB,VNM`, row counts, and `db_path=data/demo/mvp_trading_agent.sqlite`.
 
-The SQLite file lives at `data/demo/mvp_trading_agent.sqlite` and is gitignored. Run this once per environment. No network call is made during build or demo.
+The SQLite file is gitignored. No network call is made during build or demo.
 
 ---
 
-## Step 2 — Demo Commands
-
-### Market brief — direct symbol
+## Step 2 - Agent Demo Commands
 
 ```bash
 python scripts/run_agent_demo.py --scenario market_brief --symbol FPT
-```
-
-Resolves FPT, calls the full tool sequence, returns a Vietnamese summary.
-
-### Market brief — natural-language query
-
-```bash
-python scripts/run_agent_demo.py --scenario market_brief --query "FPT hôm nay thế nào?"
-```
-
-The orchestrator extracts FPT from the query without an LLM.
-
-### Risk check
-
-```bash
+python scripts/run_agent_demo.py --scenario market_brief --query "FPT hom nay the nao?"
 python scripts/run_agent_demo.py --scenario risk_check --symbol VCB
-```
-
-Returns risk flags, quality status, and caveats for VCB.
-
-### Compare — three known symbols
-
-```bash
 python scripts/run_agent_demo.py --scenario compare --symbols FPT,VNM,VCB
-```
-
-Produces a Markdown comparison table with signal, risk flags, and quality for each symbol. Row order matches input order.
-
-### Compare — one missing symbol
-
-```bash
 python scripts/run_agent_demo.py --scenario compare --symbols FPT,HPG
-```
-
-FPT is found; HPG is not in the demo store. HPG appears in the table with `status=not_found`. No traceback.
-
-### Compare — all symbols missing
-
-```bash
 python scripts/run_agent_demo.py --scenario compare --symbols HPG,XYZ
 ```
 
-Neither symbol is in the store. Overall `status=not_found`, exit code 1. No traceback.
-
----
-
-## Step 3 — Expected Behavior
+Expected behavior:
 
 | Command | Exit | Status | Key result |
 |---|---:|---|---|
-| `market_brief --symbol FPT` | 0 | ok | HOLD, close 75000, 5-tool trace |
-| `market_brief --query "FPT hôm nay thế nào?"` | 0 | ok | FPT resolved without LLM |
-| `risk_check --symbol VCB` | 0 | ok | `normal_20d_volatility`, `thin_recent_volume` |
+| `market_brief --symbol FPT` | 0 | ok | tool trace and Vietnamese answer |
+| `market_brief --query "FPT hom nay the nao?"` | 0 | ok | FPT resolved without LLM |
+| `risk_check --symbol VCB` | 0 | ok | risk flags and caveats |
 | `compare --symbols FPT,VNM,VCB` | 0 | ok | 3 rows in input order |
 | `compare --symbols FPT,HPG` | 0 | ok | FPT ok, HPG not_found |
 | `compare --symbols HPG,XYZ` | 1 | not_found | all rows missing, no traceback |
-| missing DB | 1 | missing_store | build instruction printed, no traceback |
 
 ---
 
-## Step 4 — Reading the Output
+## Step 3 - Backtest MVP Commands
 
-Each scenario prints a compact JSON summary followed by `## final_answer` and a Vietnamese Markdown answer.
+```bash
+python scripts/run_backtest_demo.py --symbols FPT,VNM,VCB --strategy-id mvp_ma20_ma50_momentum
+python scripts/run_backtest_demo.py --symbols FPT,HPG --strategy-id mvp_ma20_ma50_momentum
+python scripts/run_backtest_demo.py --symbols FPT --start-date 2030-01-01 --end-date 2030-12-31
+```
 
-**JSON summary fields:**
+Expected behavior:
+
+| Command | Exit | Status | Key result |
+|---|---:|---|---|
+| `backtest --symbols FPT,VNM,VCB` | 0 | ok | metrics present; gates pass/warn |
+| `backtest --symbols FPT,HPG` | 0 | ok | FPT runs; HPG in `symbols_missing` |
+| `backtest --symbols FPT --start-date 2030-01-01 --end-date 2030-12-31` | 1 | not_found | no usable rows; no traceback |
+
+---
+
+## Step 4 - Full Suite
+
+```bash
+python scripts/run_mentor_demo_suite.py
+```
+
+Expected: status table with OK for all expected outcomes. The suite treats documented nonzero edge cases as pass when exit code and status match.
+
+---
+
+## Reading The Output
+
+Agent commands print a JSON summary plus `## final_answer`. Backtest commands print a JSON summary, compact metrics table, and caveats.
+
+Key fields:
 
 | Field | Meaning |
 |---|---|
-| `status` | `ok`, `not_found`, `missing_store`, `needs_symbol` |
-| `scenario` | which demo scenario was run |
-| `tool_call_trace` | list of `{tool_name, symbol, status, quality_status}` entries |
-| `caveats` | warnings from tools (e.g. adjustment status unknown) |
+| `status` | `ok`, `not_found`, `missing_store`, `invalid_assumptions` |
+| `tool_call_trace` | deterministic agent tool sequence |
+| `symbols_found`, `symbols_missing` | backtest symbol coverage |
+| `validation_gates` | backtest data and assumption checks |
+| `caveats` | adjustment, data, or execution-convention warnings |
 | `not_financial_advice` | always `true` |
-
----
-
-## Step 5 — Tool-Call Trace
-
-The `tool_call_trace` makes the agent flow transparent. For `market_brief` and `risk_check`, the sequence is:
-
-```
-market_data → features → signal → risk → report
-```
-
-For `compare` (per symbol):
-
-```
-market_data → features → signal → risk
-```
-
-Each trace entry:
-
-```json
-{
-  "tool_name": "market_data",
-  "symbol": "FPT",
-  "status": "ok",
-  "quality_status": "warn"
-}
-```
-
-`quality_status: warn` is expected on all market data rows because `adjustment_status` is unknown for all saved payloads.
 
 ---
 
 ## Limitations
 
-- **Saved local data only.** Source is Vietcap IQ gap-chart payloads saved to `data/raw/`. No fresh official exchange feed.
-- **No real-time data.** Latest date in demo store is 2026-06-05.
-- **No corporate-action adjustment engine.** All rows have `adjustment_status=unknown`; this is flagged in every caveat.
-- **No backtest.** Feature/signal logic is correct but not validated against a historical backtest.
-- **No broker execution.** This is a read-only demo layer.
-- **No LLM reasoning yet.** Symbol resolution and answers are deterministic. No prompt engineering or model calls.
-- **Not financial advice.** All outputs carry `not_financial_advice=True` and an explicit Vietnamese disclaimer.
+- Saved local data only; no fresh exchange feed.
+- Latest observation in demo store is 2026-06-05.
+- Corporate-action adjustment status is unknown.
+- Backtest is exploratory only; same-day close is an MVP caveat.
+- Flat cost/slippage assumptions are placeholders.
+- No broker execution, live trading, shorting, QuestDB, network crawl, or LLM reasoning.
+- Not financial advice.
