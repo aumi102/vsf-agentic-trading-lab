@@ -110,6 +110,27 @@ def test_live_adapter_error_response_has_no_traceback(tmp_path: Path) -> None:
     assert "offline" in result["caveats"][0]
 
 
+def test_live_adapter_error_with_colon_run_id_writes_metadata(tmp_path: Path) -> None:
+    def fake_post(url, body_json, headers, timeout_seconds):
+        raise RuntimeError("socket blocked")
+
+    run_id = "vietcap_iq_gap_chart:live:20260617T000000+0000:abc123"
+    result = fetch_vietcap_iq_gap_chart_live(
+        ["FPT"],
+        output_base_dir=tmp_path / "raw",
+        allow_network=True,
+        http_post=fake_post,
+        run_id=run_id,
+    )
+
+    metadata_path = Path(result["payloads"][0]["metadata_path"])
+    assert result["status"] == "error"
+    assert metadata_path.exists()
+    assert ":" not in metadata_path.relative_to(tmp_path / "raw").parts[0]
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert metadata["run_id"] == run_id
+
+
 def test_live_adapter_rejects_more_than_three_symbols(tmp_path: Path) -> None:
     calls = []
 

@@ -39,13 +39,23 @@ python scripts/run_ohlcv_ingestion.py --symbols FPT --mode live --allow-network 
 | Offline tests | pass |
 | Cached ingestion | pass |
 | Live without allow-network | pass / blocked as expected |
-| Live with allow-network FPT countBack=100 | not run |
+| Live with allow-network FPT countBack=100 | pass |
 | Raw artifacts committed | no |
-| Traceback | no |
+| Traceback | no after fix |
 
-The optional live smoke was not run in this closeout; offline monkeypatched
-tests cover adapter behavior, raw payload metadata, ingestion wiring, partial
-success, network error handling, and the max-symbol guard.
+The first sandboxed attempt was denied socket access with `WinError 10013` and
+exposed a Windows path issue because the audit `run_id` contains `:` characters.
+The adapter now sanitizes only the filesystem directory component while
+preserving the original `run_id` in metadata and database audit rows. After that
+fix, the approved one-symbol live smoke succeeded:
+
+- command: `python scripts/run_ohlcv_ingestion.py --symbols FPT --mode live --allow-network --count-back 100`
+- status: `ok`
+- rows: 100 canonical `daily_prices`, 100 feature rows, 100 signal rows
+- source run recorded: yes
+- raw payload recorded: yes, under ignored `data/raw/...`
+- latest trade date in payload: `2026-06-17`
+- traceback: no
 
 ## Raw Path Behavior
 

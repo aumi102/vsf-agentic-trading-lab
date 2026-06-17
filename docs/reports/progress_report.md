@@ -35,7 +35,7 @@ No production DB write, no production backtest, no broker execution.
 | Controlled live OHLCV adapter | Vietcap IQ gap-chart adapter can run only with `--mode live --allow-network`, is capped at 3 explicit symbols, saves raw payloads before parsing, and reuses ingestion refresh. Docs: `docs/data_platform/live_ohlcv_adapter_foundation.md`, `docs/data_platform/live_ohlcv_smoke_report.md`, `docs/data_platform/live_ingestion_readiness_checklist.md`. No scheduler/full-universe crawl/QuestDB. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | Template at `docs/demo/mentor_feedback_capture.md` — fill in after mentor session. |
-| Test suite | **849 tests pass** |
+| Test suite | **850 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -66,11 +66,11 @@ No production DB write, no production backtest, no broker execution.
 | MVP DB/tool demo | 3 demo securities; 14,079 daily price rows; 14,071 feature snapshots/signals; 8 OHLC fail rows excluded from features |
 | Agent orchestrator demo | Exact tool sequence: market_data -> features -> signal -> risk -> report; missing DB and unknown-symbol paths return clear non-traceback statuses |
 | Agent/backtest demo runner | market_brief, risk_check, compare, and Backtest MVP suite rows; expected nonzero edge cases display as OK when status matches |
-| OHLCV ingestion/live adapter tests | 37 targeted tests |
+| OHLCV ingestion/live adapter tests | 38 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 849 |
+| Total tests passing | 850 |
 
 ---
 

@@ -70,7 +70,7 @@ def fetch_vietcap_iq_gap_chart_live(
 
     adapter_run_id = run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     to_epoch = int(to_epoch_seconds) if to_epoch_seconds is not None else int(datetime.now(timezone.utc).timestamp())
-    output_dir = Path(output_base_dir) / adapter_run_id
+    output_dir = Path(output_base_dir) / _safe_path_part(adapter_run_id)
     post = http_post or _post_json
     payloads: list[dict[str, object]] = []
     loaded: list[str] = []
@@ -293,6 +293,10 @@ def _row_count(payload: Any | None) -> int:
 
 def _dataset_name(*, symbol: str, count_back: int) -> str:
     return f"vietcap_iq_gap_chart_{symbol.lower()}_countback_{int(count_back)}"
+
+
+def _safe_path_part(value: str) -> str:
+    return "".join(char if char.isalnum() or char in {"-", "_", "."} else "_" for char in value)
 
 
 def _metadata_caveats(status: str) -> list[str]:
