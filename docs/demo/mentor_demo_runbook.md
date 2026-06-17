@@ -31,7 +31,19 @@ The SQLite file is gitignored. No network call is made during build or demo.
 
 ---
 
-## Step 2 - Agent Demo Commands
+## Step 2 - DB/Ingestion Status
+
+```bash
+python scripts/run_ingestion_status.py --symbols FPT,VNM,VCB
+```
+
+Expected: `status=ok`, table counts, source lineage, freshness, and tool
+readiness. A DB built by `build_mvp_db.py` may show no `source_runs`; a DB
+updated by `run_ohlcv_ingestion.py` should show source runs and watermarks.
+
+---
+
+## Step 3 - Agent Demo Commands
 
 ```bash
 python scripts/run_agent_demo.py --scenario market_brief --symbol FPT
@@ -57,7 +69,7 @@ Expected behavior:
 
 ---
 
-## Step 3 - Backtest MVP Commands
+## Step 4 - Backtest MVP Commands
 
 ```bash
 python scripts/run_backtest_demo.py --symbols FPT,VNM,VCB --strategy-id mvp_ma20_ma50_momentum
@@ -75,7 +87,7 @@ Expected behavior:
 
 ---
 
-## Step 4 - Full Suite
+## Step 5 - Full Suite
 
 ```bash
 python scripts/run_mentor_demo_suite.py
@@ -97,6 +109,7 @@ Key fields:
 | `tool_call_trace` | deterministic agent tool sequence |
 | `symbols_found`, `symbols_missing` | backtest symbol coverage |
 | `validation_gates` | backtest data and assumption checks |
+| `tool_readiness` | DB readiness for market data, features, signals, and backtest |
 | `caveats` | adjustment, data, or execution-convention warnings |
 | `not_financial_advice` | always `true` |
 
