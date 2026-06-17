@@ -1,0 +1,12 @@
+{
+  "source": "vietcap_iq_gap_chart",
+  "allowed_symbols": ["FPT", "VNM", "VCB"],
+  "default_symbols": ["FPT", "VNM", "VCB"],
+  "default_count_back": 100,
+  "max_count_back": 5000,
+  "max_symbols_per_batch": 3,
+  "notes": [
+    "MVP allowlist for controlled live OHLCV dry-run planning only.",
+    "No network request is made by scripts/plan_live_ingestion_run.py."
+  ]
+}
