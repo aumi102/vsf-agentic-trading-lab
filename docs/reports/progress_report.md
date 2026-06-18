@@ -39,7 +39,7 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC readiness gate | Read-only API/tool/CLI reports adjusted OHLC coverage, invalid factors, adjusted OHLC consistency, and backtest gate status. Current demo DB is expected `not_ready` until adjusted columns are populated. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **911 tests pass** |
+| Test suite | **915 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -75,11 +75,11 @@ No production DB write, no production backtest, no broker execution.
 | Ingestion status tests | 15 targeted tests |
 | Production ingestion control-plan tests | 17 targeted tests |
 | Adjusted OHLC tests | 13 targeted tests |
-| Adjusted OHLC readiness tests | 12 targeted tests |
+| Adjusted OHLC readiness tests | 16 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 911 |
+| Total tests passing | 915 |
 
 ---
 

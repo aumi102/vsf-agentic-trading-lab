@@ -11,8 +11,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from trading_agent.db.paths import DEFAULT_DB_PATH
 from trading_agent.ingestion.adjusted_readiness import get_adjusted_ohlc_readiness
-from trading_agent.tools._store import DEFAULT_DB_PATH
 
 
 def main() -> int:

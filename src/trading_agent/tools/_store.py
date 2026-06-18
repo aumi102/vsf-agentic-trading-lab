@@ -3,8 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-
-DEFAULT_DB_PATH = Path("data/demo/mvp_trading_agent.sqlite")
+from trading_agent.db.paths import DEFAULT_DB_PATH
 
 
 def connect_readonly(db_path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:

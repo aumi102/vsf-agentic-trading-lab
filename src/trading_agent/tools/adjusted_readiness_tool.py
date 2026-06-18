@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from trading_agent.db.paths import DEFAULT_DB_PATH
 from trading_agent.ingestion.adjusted_readiness import get_adjusted_ohlc_readiness
-from trading_agent.tools._store import DEFAULT_DB_PATH
 
 
 def check_adjusted_ohlc_readiness(

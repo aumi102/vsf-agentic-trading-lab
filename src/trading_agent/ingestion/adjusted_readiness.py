@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from trading_agent.tools._store import DEFAULT_DB_PATH
+from trading_agent.db.paths import DEFAULT_DB_PATH
 
 
 ADJUSTED_COLUMNS = [
@@ -50,6 +50,15 @@ def get_adjusted_ohlc_readiness(
             columns = _column_names(con, "daily_prices")
             total_rows = _count_rows(con, requested, start_date, end_date)
             if total_rows == 0:
+                rows_in_range = _count_rows(con, [], start_date, end_date)
+                if requested and rows_in_range:
+                    return {
+                        **base,
+                        "status": "not_ready",
+                        "symbols": [],
+                        "coverage": _empty_coverage(),
+                        "caveats": _caveats(_empty_coverage(), requested),
+                    }
                 return {
                     **base,
                     "status": "empty_store",

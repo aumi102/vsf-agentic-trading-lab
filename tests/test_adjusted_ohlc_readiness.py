@@ -54,6 +54,39 @@ def test_current_cached_ingestion_shape_is_not_ready_when_adjusted_columns_null(
     assert result["coverage"]["missing_adjusted_rows"] == 1
 
 
+def test_legacy_daily_prices_without_adjusted_columns_is_not_ready(tmp_path: Path) -> None:
+    db_path = tmp_path / "legacy.sqlite"
+    with sqlite3.connect(db_path) as con:
+        con.execute(
+            """
+            CREATE TABLE daily_prices (
+                symbol TEXT NOT NULL,
+                trade_date TEXT NOT NULL,
+                open REAL,
+                high REAL,
+                low REAL,
+                close REAL,
+                quality_status TEXT
+            )
+            """
+        )
+        con.execute(
+            """
+            INSERT INTO daily_prices (symbol, trade_date, open, high, low, close, quality_status)
+            VALUES ('FPT', '2026-01-01', 100.0, 110.0, 90.0, 105.0, 'pass')
+            """
+        )
+        con.commit()
+
+    result = get_adjusted_ohlc_readiness(db_path, symbols=["FPT"])
+
+    assert result["status"] == "not_ready"
+    assert result["backtest_gate"] == "blocked"
+    assert result["coverage"]["total_rows"] == 1
+    assert result["coverage"]["missing_adjusted_rows"] == 1
+    assert "Missing adjusted OHLC columns" in result["caveats"][0]
+
+
 def test_populated_adjusted_rows_are_ready(tmp_path: Path) -> None:
     db_path = tmp_path / "ready.sqlite"
     with sqlite3.connect(db_path) as con:
@@ -107,6 +140,33 @@ def test_symbols_filter_works(tmp_path: Path) -> None:
     assert result["coverage"]["total_rows"] == 1
 
 
+def test_missing_requested_symbol_blocks_readiness(tmp_path: Path) -> None:
+    db_path = tmp_path / "missing_symbol.sqlite"
+    with sqlite3.connect(db_path) as con:
+        create_schema(con)
+        _insert_price(con, "FPT", adjusted=True)
+
+    result = get_adjusted_ohlc_readiness(db_path, symbols=["msn"])
+
+    assert result["status"] == "not_ready"
+    assert result["backtest_gate"] == "blocked"
+    assert result["symbols"] == []
+    assert "MSN" in result["caveats"][0]
+
+
+def test_failed_quality_rows_block_with_quality_warn(tmp_path: Path) -> None:
+    db_path = tmp_path / "quality.sqlite"
+    with sqlite3.connect(db_path) as con:
+        create_schema(con)
+        _insert_price(con, "FPT", adjusted=True, quality_status="fail")
+
+    result = get_adjusted_ohlc_readiness(db_path, symbols=["FPT"])
+
+    assert result["status"] == "quality_warn"
+    assert result["backtest_gate"] == "blocked"
+    assert result["coverage"]["fail_quality_rows"] == 1
+
+
 def test_date_range_filter_works(tmp_path: Path) -> None:
     db_path = tmp_path / "dates.sqlite"
     with sqlite3.connect(db_path) as con:
@@ -152,10 +212,35 @@ def test_cli_ready_exits_0(tmp_path: Path) -> None:
     assert "coverage" in completed.stdout
 
 
+def test_cli_date_filters_and_lowercase_symbols_work(tmp_path: Path) -> None:
+    db_path = tmp_path / "cli_filters.sqlite"
+    with sqlite3.connect(db_path) as con:
+        create_schema(con)
+        _insert_price(con, "FPT", trade_date="2026-01-01", adjusted=False)
+        _insert_price(con, "FPT", trade_date="2026-01-02", adjusted=True)
+
+    completed = _run_cli(
+        db_path,
+        "--symbols",
+        "fpt",
+        "--start-date",
+        "2026-01-02",
+        "--end-date",
+        "2026-01-02",
+    )
+
+    assert completed.returncode == 0
+    assert '"symbols": [' in completed.stdout
+    assert '"FPT"' in completed.stdout
+    assert "2026-01-02" in completed.stdout
+    assert "Traceback" not in completed.stderr
+
+
 def test_readiness_module_has_no_network_imports() -> None:
     text = Path("src/trading_agent/ingestion/adjusted_readiness.py").read_text(encoding="utf-8")
 
     assert all(name not in text for name in ["requests", "httpx", "urllib"])
+    assert "trading_agent.tools" not in text
 
 
 def test_readiness_check_does_not_mutate_db(tmp_path: Path) -> None:
@@ -181,6 +266,7 @@ def _insert_price(
     factor: float = 0.8,
     adjusted_high: float = 88.0,
     adjusted_low: float = 72.0,
+    quality_status: str = "pass",
 ) -> None:
     adjusted_values = {
         "adjustment_factor": factor,
@@ -222,7 +308,7 @@ def _insert_price(
             "unknown",
             f"test:{symbol}",
             "raw.json",
-            "pass",
+            quality_status,
         ),
     )
     con.commit()

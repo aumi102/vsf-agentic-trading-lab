@@ -156,8 +156,9 @@ batch and rate controls.
 
 ## 12. Next Implementation Steps
 
-1. Add adjusted OHLC schema/spec and tests.
-2. Add ETL Docker/scheduler foundation for stable ingestion only.
-3. Add Backtrader research scaffold over a small subset.
-4. Produce VN100 strategy selection report.
-5. Only then consider broader scheduler, QuestDB, or realtime work.
+1. Integrate a trusted adjusted-close or corporate-action factor source.
+2. Populate adjusted OHLC fields through ETL only after source evidence is verified.
+3. Add ETL Docker/scheduler foundation for stable ingestion only.
+4. Add Backtrader research scaffold over a small subset after adjusted readiness passes.
+5. Produce VN100 strategy selection report.
+6. Only then consider broader scheduler, QuestDB, or realtime work.
