@@ -40,7 +40,7 @@ No production DB write, no production backtest, no broker execution.
 | Adjustment factor source foundation | Gap-chart source review records no tracked adjusted-close or corporate-action fields yet; pure factor record helpers require positive factors plus `source_id` and `raw_path`. ETL population is still blocked. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **923 tests pass** |
+| Test suite | **931 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -77,11 +77,11 @@ No production DB write, no production backtest, no broker execution.
 | Production ingestion control-plan tests | 17 targeted tests |
 | Adjusted OHLC tests | 13 targeted tests |
 | Adjusted OHLC readiness tests | 16 targeted tests |
-| Adjustment factor source tests | 8 targeted tests |
+| Adjustment factor source tests | 16 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 923 |
+| Total tests passing | 931 |
 
 ---
 

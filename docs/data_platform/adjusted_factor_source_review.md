@@ -51,7 +51,8 @@ the repo must not pretend raw close is adjusted close.
 
 ## Recommendation
 
-Next implementation should integrate one verified factor source into ETL on a
-small explicit symbol set. The readiness gate should remain blocked until
+Next implementation should run a controlled source probe on a small explicit
+symbol set before ETL integration. After evidence is captured, integrate one
+verified factor source into ETL. The readiness gate should remain blocked until
 adjusted OHLC rows are populated, validated, and traceable to `source_id` and
 `raw_path`. Backtrader/VN100 strategy work should wait for that gate to pass.

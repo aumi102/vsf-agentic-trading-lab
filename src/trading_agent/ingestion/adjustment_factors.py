@@ -108,6 +108,13 @@ def make_adjustment_factor_record(
 ) -> AdjustmentFactorRecord:
     if method not in FACTOR_METHODS:
         raise ValueError(f"Unsupported adjustment factor method: {method}")
+    normalized_symbol = _normalize_symbol(symbol)
+    normalized_trade_date = str(trade_date or "").strip()
+    if not normalized_symbol:
+        raise ValueError("Adjustment factor symbol is required.")
+    if not normalized_trade_date:
+        raise ValueError("Adjustment factor trade_date is required.")
+
     factor_value = _to_float(factor)
     normalized_reasons = _normalize_reasons(reasons)
     if factor_value is not None and factor_value <= 0:
@@ -116,9 +123,23 @@ def make_adjustment_factor_record(
         status = "invalid"
     if status not in STATUS_RANK:
         raise ValueError(f"Unsupported adjustment factor status: {status}")
+    if status == "ok":
+        ok_errors = []
+        if method == "unknown":
+            ok_errors.append("method_cannot_be_unknown")
+        if factor_value is None or factor_value <= 0:
+            ok_errors.append("factor_must_be_positive")
+        if not _clean_optional(source_id):
+            ok_errors.append("source_id_required")
+        if not _clean_optional(raw_path):
+            ok_errors.append("raw_path_required")
+        if normalized_reasons:
+            ok_errors.append("ok_record_cannot_have_reasons")
+        if ok_errors:
+            raise ValueError(f"Invalid ok adjustment factor record: {', '.join(ok_errors)}")
     return AdjustmentFactorRecord(
-        symbol=_normalize_symbol(symbol),
-        trade_date=str(trade_date),
+        symbol=normalized_symbol,
+        trade_date=normalized_trade_date,
         factor=factor_value,
         source_id=_clean_optional(source_id),
         method=method,
