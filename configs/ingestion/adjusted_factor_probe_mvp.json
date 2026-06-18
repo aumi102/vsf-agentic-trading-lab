@@ -1,0 +1,22 @@
+{
+  "candidate_sources": [
+    "vietcap_iq_gap_chart",
+    "vietcap_iq_company_events",
+    "tracked_fixtures"
+  ],
+  "default_symbols": ["FPT", "VNM", "VCB"],
+  "max_symbols_per_probe": 3,
+  "allow_network_default": false,
+  "probe_objectives": [
+    "adjusted close field exists?",
+    "corporate-action/dividend/split fields exist?",
+    "source_id/raw_path available?",
+    "can factor be derived?"
+  ],
+  "notes": [
+    "Dry-run and local fixture inspection only by default.",
+    "vietcap_iq_company_events is a candidate placeholder until an adapter or fixture exists.",
+    "No adjusted OHLC population in this PR.",
+    "No full-universe probe."
+  ]
+}

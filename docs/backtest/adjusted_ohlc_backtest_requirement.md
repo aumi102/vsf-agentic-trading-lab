@@ -69,6 +69,9 @@ empty for gap-chart ingestion.
 evidence. `src/trading_agent/ingestion/adjustment_factors.py` now defines pure
 factor-record helpers, but ETL still does not populate adjusted OHLC until a
 trusted adjusted-close or corporate-action source is integrated.
+`scripts/probe_adjusted_factor_sources.py` can plan no-network source probes and
+inspect local JSON payloads for adjusted-factor evidence. Probe evidence is
+candidate-level only and does not make a source usable without provenance review.
 
 ## Corporate Action Data
 
@@ -99,6 +102,7 @@ Not implemented yet:
 
 - full dividend/split/corporate-action event engine;
 - approved source for adjustment factors;
+- approved source-probe evidence for ETL integration;
 - ETL population of adjusted OHLC fields;
 - Backtrader strategy optimizer;
 - ETL Docker scheduler.
