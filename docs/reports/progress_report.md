@@ -35,9 +35,10 @@ No production DB write, no production backtest, no broker execution.
 | Controlled live OHLCV adapter | Vietcap IQ gap-chart adapter can run only with `--mode live --allow-network`, is capped at 3 explicit symbols, saves raw payloads before parsing, and reuses ingestion refresh. Docs: `docs/data_platform/live_ohlcv_adapter_foundation.md`, `docs/data_platform/live_ohlcv_smoke_report.md`, `docs/data_platform/live_ingestion_readiness_checklist.md`. No scheduler/full-universe crawl/QuestDB. |
 | Ingestion observability status | Read-only status API/tool/CLI reports source runs, raw payloads, watermarks, lineage, freshness, and tool readiness. Docs: `docs/data_platform/ingestion_observability_status.md`. |
 | Production ingestion control plan | Dry-run planner validates live symbol allowlist (non-empty, default subset), batch cap, countBack vs `max_count_back`, retention, scheduler-disabled, and manual-network-required policy before scheduler/full ingestion. No network or DB mutation. Mentor checklist: `docs/demo/mentor_ingestion_decision_checklist.md`. |
+| Adjusted OHLC foundation | Nullable adjusted OHLC columns added to `daily_prices`; pure adjustment-factor/adjusted-OHLC validation helpers added. Current gap-chart ingestion leaves adjusted fields empty until a trusted adjusted close or dividend/split/corporate-action factor source is implemented. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
-| Mentor feedback capture | Template at `docs/demo/mentor_feedback_capture.md` — fill in after mentor session. |
-| Test suite | **883 tests pass** |
+| Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
+| Test suite | **899 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -51,6 +52,7 @@ No production DB write, no production backtest, no broker execution.
 - **Production DB write:** Blocked until all §17 gates met (see `vietcap_iq_fa_ingestion_v2_readiness.md`).
 - **Full-history FA fetch:** Not implemented — blocked on mapping, PIT, and schema gates.
 - **Production backtest hardening:** Blocked on mentor review of store choice, execution convention, cost/slippage assumptions, and data adjustment policy.
+- **Adjusted OHLC hardening:** Schema slots and pure helpers exist, but trusted corporate-action factor sourcing is not implemented. Backtrader VN100 runs remain blocked until adjusted OHLC rows are populated and validated.
 
 ---
 
@@ -68,13 +70,14 @@ No production DB write, no production backtest, no broker execution.
 | MVP DB/tool demo | 3 demo securities; 14,079 daily price rows; 14,071 feature snapshots/signals; 8 OHLC fail rows excluded from features |
 | Agent orchestrator demo | Exact tool sequence: market_data -> features -> signal -> risk -> report; missing DB and unknown-symbol paths return clear non-traceback statuses |
 | Agent/backtest demo runner | market_brief, risk_check, compare, and Backtest MVP suite rows; expected nonzero edge cases display as OK when status matches |
-| OHLCV ingestion/live adapter tests | 38 targeted tests |
+| OHLCV ingestion/live adapter tests | 41 targeted tests |
 | Ingestion status tests | 15 targeted tests |
 | Production ingestion control-plan tests | 17 targeted tests |
+| Adjusted OHLC tests | 13 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 883 |
+| Total tests passing | 899 |
 
 ---
 
@@ -98,8 +101,9 @@ No production DB write, no production backtest, no broker execution.
 7. ~~Present mentor-facing demo and collect feedback before adding LLM reasoning layer.~~ — Demo package complete. Send `docs/demo/mentor_demo_runbook.md` + `docs/demo/mentor_review_checklist.md` to mentor. Wait for feedback.
 8. ~~Execute `docs/plans/post_demo_technical_roadmap.md` phases based on mentor answers.~~ — Decision pack created: store matrix, backtest spec, ADR-0001, and feedback capture template ready. Awaiting mentor session to unlock next phase.
 9. ~~Implement exploratory backtest MVP (`mvp_ma20_ma50_momentum` strategy over FPT/VNM/VCB).~~ - Scaffold added over cached SQLite data with explicit caveats and validation gates.
-10. Run mentor demo session and capture answers before QuestDB/LLM/backtest hardening.
-11. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
+10. ~~Run mentor demo session and capture answers before QuestDB/LLM/backtest hardening.~~ — 2026-06-18 feedback captured; Backtrader, current VN100, adjusted OHLC, FA scan, simple TA templates, and ETL-first Docker direction recorded.
+11. Implement trusted adjusted OHLC factor sourcing from adjusted close or dividend/split/corporate-action events before Backtrader VN100 runs.
+12. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
 
 ---
 

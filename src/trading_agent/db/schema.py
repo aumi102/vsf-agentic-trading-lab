@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = "mvp_db_tool_demo_v2"
+SCHEMA_VERSION = "mvp_db_tool_demo_v3"
 
 SECURITIES_COLUMNS = [
     "security_id",
@@ -25,6 +25,11 @@ DAILY_PRICES_COLUMNS = [
     "high",
     "low",
     "close",
+    "adjustment_factor",
+    "adjusted_open",
+    "adjusted_high",
+    "adjusted_low",
+    "adjusted_close",
     "volume",
     "value",
     "price_basis",
@@ -131,6 +136,11 @@ def create_schema(con: sqlite3.Connection) -> None:
             high REAL NOT NULL,
             low REAL NOT NULL,
             close REAL NOT NULL,
+            adjustment_factor REAL,
+            adjusted_open REAL,
+            adjusted_high REAL,
+            adjusted_low REAL,
+            adjusted_close REAL,
             volume REAL,
             value REAL,
             price_basis TEXT NOT NULL,
@@ -212,7 +222,22 @@ def create_schema(con: sqlite3.Connection) -> None:
         );
         """
     )
+    _ensure_daily_prices_adjusted_columns(con)
     con.commit()
+
+
+def _ensure_daily_prices_adjusted_columns(con: sqlite3.Connection) -> None:
+    existing = {str(row[1]) for row in con.execute("PRAGMA table_info(daily_prices)").fetchall()}
+    additions = {
+        "adjustment_factor": "REAL",
+        "adjusted_open": "REAL",
+        "adjusted_high": "REAL",
+        "adjusted_low": "REAL",
+        "adjusted_close": "REAL",
+    }
+    for column, column_type in additions.items():
+        if column not in existing:
+            con.execute(f"ALTER TABLE daily_prices ADD COLUMN {column} {column_type}")
 
 
 def replace_table(con: sqlite3.Connection, table: str, rows: list[dict[str, object]]) -> None:

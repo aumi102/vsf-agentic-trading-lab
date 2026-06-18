@@ -16,7 +16,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from trading_agent.db.build_mvp_store import build_mvp_store
-from trading_agent.db.schema import SCHEMA_VERSION
+from trading_agent.db.schema import SCHEMA_VERSION, create_schema
 from trading_agent.ingestion.ohlcv_ingestion import run_ohlcv_ingestion
 from trading_agent.tools.feature_tool import compute_latest_features
 from trading_agent.tools.market_data_tool import get_latest_market_data
@@ -326,7 +326,109 @@ def test_live_mode_rejects_more_than_three_symbols_without_adapter_call(tmp_path
 
 
 def test_schema_version_is_bumped_for_ingestion_audit_tables() -> None:
-    assert SCHEMA_VERSION == "mvp_db_tool_demo_v2"
+    assert SCHEMA_VERSION == "mvp_db_tool_demo_v3"
+
+
+def test_daily_prices_schema_has_adjusted_ohlc_columns(tmp_path: Path) -> None:
+    raw_base = _write_gap_chart_fixture(tmp_path, "FPT", closes=[float(10 + i) for i in range(60)])
+    db_path = tmp_path / "demo.sqlite"
+    run_ohlcv_ingestion(["FPT"], db_path=db_path, raw_base_dir=raw_base)
+
+    with sqlite3.connect(db_path) as con:
+        columns = {row[1] for row in con.execute("PRAGMA table_info(daily_prices)").fetchall()}
+        row = con.execute(
+            """
+            SELECT adjustment_factor, adjusted_open, adjusted_high, adjusted_low, adjusted_close,
+                   adjustment_status
+            FROM daily_prices
+            WHERE symbol = 'FPT'
+            LIMIT 1
+            """
+        ).fetchone()
+
+    assert {
+        "adjustment_factor",
+        "adjusted_open",
+        "adjusted_high",
+        "adjusted_low",
+        "adjusted_close",
+    } <= columns
+    assert row[:5] == (None, None, None, None, None)
+    assert row[5] == "unknown"
+
+
+def test_create_schema_migrates_existing_daily_prices_adjusted_columns(tmp_path: Path) -> None:
+    db_path = tmp_path / "legacy.sqlite"
+    with sqlite3.connect(db_path) as con:
+        con.execute(
+            """
+            CREATE TABLE daily_prices (
+                security_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                trade_date TEXT NOT NULL,
+                open REAL NOT NULL,
+                high REAL NOT NULL,
+                low REAL NOT NULL,
+                close REAL NOT NULL,
+                volume REAL,
+                value REAL,
+                price_basis TEXT NOT NULL,
+                adjustment_status TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                raw_path TEXT NOT NULL,
+                quality_status TEXT NOT NULL,
+                PRIMARY KEY (security_id, trade_date, source_id)
+            )
+            """
+        )
+        create_schema(con)
+        columns = {row[1] for row in con.execute("PRAGMA table_info(daily_prices)").fetchall()}
+
+    assert {
+        "adjustment_factor",
+        "adjusted_open",
+        "adjusted_high",
+        "adjusted_low",
+        "adjusted_close",
+    } <= columns
+
+
+def test_create_schema_adjusted_column_migration_is_idempotent(tmp_path: Path) -> None:
+    db_path = tmp_path / "legacy.sqlite"
+    with sqlite3.connect(db_path) as con:
+        con.execute(
+            """
+            CREATE TABLE daily_prices (
+                security_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                trade_date TEXT NOT NULL,
+                open REAL NOT NULL,
+                high REAL NOT NULL,
+                low REAL NOT NULL,
+                close REAL NOT NULL,
+                volume REAL,
+                value REAL,
+                price_basis TEXT NOT NULL,
+                adjustment_status TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                raw_path TEXT NOT NULL,
+                quality_status TEXT NOT NULL,
+                PRIMARY KEY (security_id, trade_date, source_id)
+            )
+            """
+        )
+        create_schema(con)
+        create_schema(con)
+        columns = [row[1] for row in con.execute("PRAGMA table_info(daily_prices)").fetchall()]
+
+    for column in [
+        "adjustment_factor",
+        "adjusted_open",
+        "adjusted_high",
+        "adjusted_low",
+        "adjusted_close",
+    ]:
+        assert columns.count(column) == 1
 
 
 def test_build_mvp_store_creates_ingestion_audit_tables_empty(tmp_path: Path) -> None:
