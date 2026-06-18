@@ -65,6 +65,11 @@ local SQLite store. The current demo DB is expected to return
 `status=not_ready` and `backtest_gate=blocked` because adjusted fields are still
 empty for gap-chart ingestion.
 
+`docs/data_platform/adjusted_factor_source_review.md` records the current source
+evidence. `src/trading_agent/ingestion/adjustment_factors.py` now defines pure
+factor-record helpers, but ETL still does not populate adjusted OHLC until a
+trusted adjusted-close or corporate-action source is integrated.
+
 ## Corporate Action Data
 
 The adjustment factor must come from approved source logic for dividends,
@@ -94,5 +99,6 @@ Not implemented yet:
 
 - full dividend/split/corporate-action event engine;
 - approved source for adjustment factors;
+- ETL population of adjusted OHLC fields;
 - Backtrader strategy optimizer;
 - ETL Docker scheduler.

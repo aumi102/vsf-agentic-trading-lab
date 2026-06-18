@@ -87,7 +87,9 @@ backtest hardening.
 Current implementation status: adjusted OHLC schema slots and a readiness gate
 exist, but the gap-chart demo data is expected to be `not_ready` because
 adjusted columns are still empty. Backtrader VN100 runs remain blocked until
-those fields are populated and validated.
+those fields are populated and validated. A source review and pure adjustment
+factor record interface have been added, but no source has been approved for ETL
+population yet.
 
 ## 6. Proposed Backtrader Pipeline
 
