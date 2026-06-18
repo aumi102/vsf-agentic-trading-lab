@@ -51,8 +51,9 @@ the repo must not pretend raw close is adjusted close.
 
 ## Recommendation
 
-Next implementation should run a controlled source probe on a small explicit
-symbol set before ETL integration. After evidence is captured, integrate one
-verified factor source into ETL. The readiness gate should remain blocked until
-adjusted OHLC rows are populated, validated, and traceable to `source_id` and
-`raw_path`. Backtrader/VN100 strategy work should wait for that gate to pass.
+The controlled dry-run probe is documented in
+`docs/data_platform/adjusted_factor_source_probe_plan.md` and implemented by
+`scripts/probe_adjusted_factor_sources.py`. After evidence is captured, integrate
+one verified factor source into ETL. The readiness gate should remain blocked
+until adjusted OHLC rows are populated, validated, and traceable to `source_id`
+and `raw_path`. Backtrader/VN100 strategy work should wait for that gate to pass.
