@@ -38,10 +38,10 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC foundation | Nullable adjusted OHLC columns added to `daily_prices`; pure adjustment-factor/adjusted-OHLC validation helpers added. Current gap-chart ingestion leaves adjusted fields empty until a trusted adjusted close or dividend/split/corporate-action factor source is implemented. |
 | Adjusted OHLC readiness gate | Read-only API/tool/CLI reports adjusted OHLC coverage, invalid factors, adjusted OHLC consistency, and backtest gate status. Current demo DB is expected `not_ready` until adjusted columns are populated. |
 | Adjustment factor source foundation | Gap-chart source review records no tracked adjusted-close or corporate-action fields yet; pure factor record helpers require positive factors plus `source_id` and `raw_path`. ETL population is still blocked. |
-| Adjusted factor source probe | Dry-run probe planner and local JSON inspector search for adjusted close, factor, and corporate-action evidence on explicit small symbol sets. No network, DB mutation, or adjusted OHLC population by default. |
+| Adjusted factor source probe | Dry-run probe planner and local JSON inspector classify candidate adjusted close, factor, and corporate-action evidence on explicit small symbol sets. No network, DB mutation, or adjusted OHLC population by default. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **943 tests pass** |
+| Test suite | **949 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -79,11 +79,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC tests | 13 targeted tests |
 | Adjusted OHLC readiness tests | 16 targeted tests |
 | Adjustment factor source tests | 16 targeted tests |
-| Adjusted factor source probe tests | 12 targeted tests |
+| Adjusted factor source probe tests | 18 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 943 |
+| Total tests passing | 949 |
 
 ---
 

@@ -22,7 +22,8 @@ the plan is blocked because live probing is not implemented in this PR.
 ## Candidate Sources
 
 - `vietcap_iq_gap_chart`
-- `vietcap_iq_company_events`
+- `vietcap_iq_company_events` (candidate placeholder; no adapter is implemented
+  in this PR)
 - `tracked_fixtures`
 
 The MVP config is `configs/ingestion/adjusted_factor_probe_mvp.json` and limits
@@ -31,10 +32,23 @@ the default symbol set to `FPT,VNM,VCB`.
 ## Evidence Fields
 
 The local payload inspector searches for adjusted close field names
-(`adjusted_close`, `adj_close`, `adjustedClose`, `adjClose`), adjustment factor
-field names (`adjustment_factor`, `adjust_factor`, `factor`), and corporate
-action terms (`dividend`, `split`, `bonus`, `rights`, `ex_date`,
-`record_date`).
+(`adjusted_close`, `adj_close`, `adjustedClose`, `adjClose`, `AdjustedClose`,
+`ADJ_CLOSE`), adjustment factor field names (`adjustment_factor`,
+`adjust_factor`, `factor`), and corporate action terms (`dividend`, `split`,
+`bonus`, `rights`, `ex_date`, `record_date`, `cashDividend`, `stockDividend`,
+`exDate`, `recordDate`, `paymentDate`, `ratio`, `splitRatio`).
+
+Evidence is classified conservatively:
+
+- `none`: no candidate fields found;
+- `candidate_field_only`: weak field such as bare `factor`;
+- `adjusted_close_candidate`: adjusted-close-like field found;
+- `adjustment_factor_candidate`: adjustment-factor-like field found;
+- `corporate_action_candidate`: corporate-action terms found.
+
+These are evidence levels, not proof that the source is usable. Generic `factor`
+fields do not imply an adjustment factor, and corporate-action terms alone do
+not complete factor derivation.
 
 ## Commands
 

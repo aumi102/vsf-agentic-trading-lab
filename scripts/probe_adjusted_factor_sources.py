@@ -30,7 +30,13 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.inspect_payload:
-        payload = json.loads(Path(args.inspect_payload).read_text(encoding="utf-8-sig"))
+        payload_path = Path(args.inspect_payload)
+        try:
+            payload = json.loads(payload_path.read_text(encoding="utf-8-sig"))
+        except FileNotFoundError:
+            return _print_error("missing_payload", f"Payload not found: {payload_path}")
+        except json.JSONDecodeError as exc:
+            return _print_error("invalid_json", f"Invalid JSON payload: {exc}")
         result = inspect_payload_for_adjustment_evidence(payload)
         print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
         return 0
@@ -65,6 +71,24 @@ def _normalize_symbols(values: object) -> list[str]:
             seen.add(text)
             normalized.append(text.upper() if text.isalpha() else text)
     return normalized
+
+
+def _print_error(status: str, message: str) -> int:
+    print(
+        json.dumps(
+            {
+                "status": status,
+                "error": message,
+                "network_request_made": False,
+                "db_mutation_made": False,
+                "adjusted_ohlc_populated": False,
+            },
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+    )
+    return 1
 
 
 if __name__ == "__main__":

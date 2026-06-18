@@ -6,10 +6,23 @@ from typing import Any
 SUPPORTED_CANDIDATE_SOURCES = frozenset(
     {"vietcap_iq_gap_chart", "vietcap_iq_company_events", "tracked_fixtures"}
 )
-ADJUSTED_CLOSE_FIELDS = frozenset({"adjusted_close", "adj_close", "adjustedClose", "adjClose"})
-ADJUSTMENT_FACTOR_FIELDS = frozenset({"adjustment_factor", "adjust_factor", "factor"})
+ADJUSTED_CLOSE_FIELDS = frozenset({"adjustedclose", "adjclose"})
+STRONG_ADJUSTMENT_FACTOR_FIELDS = frozenset({"adjustmentfactor", "adjustfactor"})
+GENERIC_FACTOR_FIELDS = frozenset({"factor"})
 CORPORATE_ACTION_TERMS = frozenset(
-    {"dividend", "split", "bonus", "rights", "ex_date", "record_date"}
+    {
+        "dividend",
+        "cashdividend",
+        "stockdividend",
+        "split",
+        "splitratio",
+        "bonus",
+        "rights",
+        "exdate",
+        "recorddate",
+        "paymentdate",
+        "ratio",
+    }
 )
 
 
@@ -57,16 +70,28 @@ def plan_adjusted_factor_probe(
 
 def inspect_payload_for_adjustment_evidence(payload: Any) -> dict[str, Any]:
     fields = _walk_fields(payload)
-    adjusted_close = sorted(field for field in fields if field in ADJUSTED_CLOSE_FIELDS)
-    factors = sorted(field for field in fields if field in ADJUSTMENT_FACTOR_FIELDS)
-    corporate_terms = sorted(field for field in fields if field.lower() in CORPORATE_ACTION_TERMS)
-    evidence_found = bool(adjusted_close or factors or corporate_terms)
+    adjusted_close = _matches(fields, ADJUSTED_CLOSE_FIELDS)
+    strong_factors = _matches(fields, STRONG_ADJUSTMENT_FACTOR_FIELDS)
+    generic_factors = _matches(fields, GENERIC_FACTOR_FIELDS)
+    corporate_terms = _matches(fields, CORPORATE_ACTION_TERMS)
+    candidate_fields = sorted({*adjusted_close, *strong_factors, *generic_factors, *corporate_terms})
+    evidence_strength = _evidence_strength(
+        adjusted_close=adjusted_close,
+        strong_factors=strong_factors,
+        generic_factors=generic_factors,
+        corporate_terms=corporate_terms,
+    )
+    evidence_found = evidence_strength != "none"
     return {
         "status": "evidence_found" if evidence_found else "no_evidence",
+        "evidence_strength": evidence_strength,
+        "evidence_summary": _evidence_summary(evidence_strength),
+        "candidate_fields": candidate_fields,
         "adjusted_close_fields": adjusted_close,
-        "adjustment_factor_fields": factors,
+        "adjustment_factor_fields": strong_factors,
+        "generic_factor_fields": generic_factors,
         "corporate_action_terms": corporate_terms,
-        "can_derive_factor": bool(adjusted_close or factors),
+        "can_derive_factor": bool(adjusted_close or strong_factors),
         "network_request_made": False,
         "db_mutation_made": False,
         "adjusted_ohlc_populated": False,
@@ -130,6 +155,42 @@ def _walk_fields(payload: Any) -> set[str]:
         for item in payload:
             fields.update(_walk_fields(item))
     return fields
+
+
+def _matches(fields: set[str], aliases: frozenset[str]) -> list[str]:
+    return sorted(field for field in fields if _field_key(field) in aliases)
+
+
+def _field_key(value: str) -> str:
+    return "".join(char for char in str(value).lower() if char.isalnum())
+
+
+def _evidence_strength(
+    *,
+    adjusted_close: list[str],
+    strong_factors: list[str],
+    generic_factors: list[str],
+    corporate_terms: list[str],
+) -> str:
+    if adjusted_close:
+        return "adjusted_close_candidate"
+    if strong_factors:
+        return "adjustment_factor_candidate"
+    if corporate_terms:
+        return "corporate_action_candidate"
+    if generic_factors:
+        return "candidate_field_only"
+    return "none"
+
+
+def _evidence_summary(evidence_strength: str) -> str:
+    return {
+        "none": "No adjusted-factor evidence fields were found.",
+        "candidate_field_only": "Only weak candidate field names were found; this is not usable factor evidence.",
+        "adjusted_close_candidate": "Adjusted-close candidate fields were found; source provenance still must be verified.",
+        "adjustment_factor_candidate": "Adjustment-factor candidate fields were found; source provenance still must be verified.",
+        "corporate_action_candidate": "Corporate-action candidate terms were found; factor derivation is not complete.",
+    }[evidence_strength]
 
 
 def _normalize_symbols(values: list[str]) -> list[str]:

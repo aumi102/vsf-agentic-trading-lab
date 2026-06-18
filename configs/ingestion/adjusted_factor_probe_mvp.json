@@ -15,6 +15,7 @@
   ],
   "notes": [
     "Dry-run and local fixture inspection only by default.",
+    "vietcap_iq_company_events is a candidate placeholder until an adapter or fixture exists.",
     "No adjusted OHLC population in this PR.",
     "No full-universe probe."
   ]
