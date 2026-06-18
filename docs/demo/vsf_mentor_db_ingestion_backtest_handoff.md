@@ -27,6 +27,7 @@ agent/tool demo. Completed pieces are:
 python scripts/build_mvp_db.py --symbols FPT,VNM,VCB
 python scripts/run_ohlcv_ingestion.py --symbols FPT,VNM,VCB --mode cached
 python scripts/run_ingestion_status.py --symbols FPT,VNM,VCB
+python scripts/check_adjusted_ohlc_readiness.py --symbols FPT,VNM,VCB
 python scripts/plan_live_ingestion_run.py --symbols FPT,VNM,VCB
 python scripts/run_mentor_demo_suite.py
 ```
@@ -82,6 +83,11 @@ Raw and adjusted columns must be clearly separated. Backtests must use adjusted
 OHLC. Unadjusted prices may be retained only as raw evidence. If adjusted close
 is unavailable, the factor must be derived from dividend/split events before
 backtest hardening.
+
+Current implementation status: adjusted OHLC schema slots and a readiness gate
+exist, but the gap-chart demo data is expected to be `not_ready` because
+adjusted columns are still empty. Backtrader VN100 runs remain blocked until
+those fields are populated and validated.
 
 ## 6. Proposed Backtrader Pipeline
 

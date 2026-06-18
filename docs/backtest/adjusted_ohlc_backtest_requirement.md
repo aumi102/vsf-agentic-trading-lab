@@ -60,6 +60,11 @@ Pure utility functions in `src/trading_agent/ingestion/adjusted_ohlc.py`
 compute an adjustment factor, scale OHLC values, and validate adjusted OHLC
 consistency without network access or database mutation.
 
+`scripts/check_adjusted_ohlc_readiness.py` reports adjusted OHLC coverage for a
+local SQLite store. The current demo DB is expected to return
+`status=not_ready` and `backtest_gate=blocked` because adjusted fields are still
+empty for gap-chart ingestion.
+
 ## Corporate Action Data
 
 The adjustment factor must come from approved source logic for dividends,
