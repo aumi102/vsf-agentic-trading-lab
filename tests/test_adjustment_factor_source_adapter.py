@@ -94,6 +94,85 @@ def test_parse_dispatches_by_method() -> None:
     assert result.records[0].factor == 0.8
 
 
+def test_unsupported_method_returns_invalid_result() -> None:
+    result = parse_adjustment_factor_payload(
+        [{"symbol": "FPT", "trade_date": "2026-01-02", "close": 100.0, "adjusted_close": 80.0}],
+        source_id="fixture:adjusted_close",
+        raw_path="fixtures/fpt_adjusted.json",
+        method="mystery_method",
+    )
+
+    assert result.status == "invalid"
+    assert result.records == ()
+    assert result.reasons == ("unsupported_factor_source_method:mystery_method",)
+
+
+def test_empty_payload_returns_not_ready_with_reason() -> None:
+    result = build_factor_records_from_adjusted_close_payload(
+        [],
+        source_id="fixture:adjusted_close",
+        raw_path="fixtures/empty.json",
+    )
+
+    assert result.status == "not_ready"
+    assert result.records == ()
+    assert "payload_rows_missing" in result.reasons
+
+
+def test_dict_payload_with_data_list_is_parsed() -> None:
+    result = build_factor_records_from_adjusted_close_payload(
+        {"data": [{"symbol": "FPT", "trade_date": "2026-01-02", "close": 100.0, "adjusted_close": 80.0}]},
+        source_id="fixture:adjusted_close",
+        raw_path="fixtures/fpt_adjusted.json",
+    )
+
+    assert result.status == "ok"
+    assert result.records[0].factor == 0.8
+
+
+def test_non_dict_rows_are_ignored() -> None:
+    result = build_factor_records_from_adjusted_close_payload(
+        [
+            "not-a-row",
+            42,
+            {"symbol": "FPT", "trade_date": "2026-01-02", "close": 100.0, "adjusted_close": 80.0},
+        ],
+        source_id="fixture:adjusted_close",
+        raw_path="fixtures/fpt_adjusted.json",
+    )
+
+    assert result.status == "ok"
+    assert len(result.records) == 1
+    assert result.records[0].factor == 0.8
+
+
+def test_adjusted_close_with_non_positive_close_is_invalid() -> None:
+    result = build_factor_records_from_adjusted_close_payload(
+        [{"symbol": "FPT", "trade_date": "2026-01-02", "close": 0.0, "adjusted_close": 80.0}],
+        source_id="fixture:adjusted_close",
+        raw_path="fixtures/fpt_adjusted.json",
+    )
+
+    assert result.status == "not_ready"
+    record = result.records[0]
+    assert record.status == "invalid"
+    assert record.factor is None
+    assert "raw_close_must_be_positive" in record.reasons
+
+
+def test_corporate_action_payload_missing_factor_is_not_ready() -> None:
+    result = build_factor_records_from_corporate_action_payload(
+        [{"symbol": "FPT", "trade_date": "2026-01-02"}],
+        source_id="fixture:corporate_action",
+        raw_path="fixtures/fpt_corporate_action.json",
+    )
+
+    assert result.status == "not_ready"
+    record = result.records[0]
+    assert record.status == "missing"
+    assert "factor_missing_or_non_finite" in record.reasons
+
+
 def test_adapter_records_can_feed_local_factor_application_and_readiness(tmp_path: Path) -> None:
     db_path = _make_db(tmp_path)
     payload_path = FIXTURE_DIR / "adjusted_close_payload.json"

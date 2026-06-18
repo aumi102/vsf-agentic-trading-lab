@@ -44,7 +44,7 @@ No production DB write, no production backtest, no broker execution.
 | Adjustment factor source adapter | Fixture-only parser interface converts synthetic adjusted-close or corporate-action payloads into provenance-backed factor records compatible with local factor application. No live source approved, no network, and no DB mutation. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **994 tests pass** |
+| Test suite | **1000 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -85,11 +85,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted factor source probe tests | 18 targeted tests |
 | Adjusted factor evidence capture tests | 18 targeted tests |
 | Local adjustment factor application tests | 18 targeted tests |
-| Adjustment factor source adapter tests | 8 targeted tests |
+| Adjustment factor source adapter tests | 14 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 994 |
+| Total tests passing | 1000 |
 
 ---
 
