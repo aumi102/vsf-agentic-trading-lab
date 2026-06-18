@@ -393,6 +393,44 @@ def test_create_schema_migrates_existing_daily_prices_adjusted_columns(tmp_path:
     } <= columns
 
 
+def test_create_schema_adjusted_column_migration_is_idempotent(tmp_path: Path) -> None:
+    db_path = tmp_path / "legacy.sqlite"
+    with sqlite3.connect(db_path) as con:
+        con.execute(
+            """
+            CREATE TABLE daily_prices (
+                security_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                trade_date TEXT NOT NULL,
+                open REAL NOT NULL,
+                high REAL NOT NULL,
+                low REAL NOT NULL,
+                close REAL NOT NULL,
+                volume REAL,
+                value REAL,
+                price_basis TEXT NOT NULL,
+                adjustment_status TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                raw_path TEXT NOT NULL,
+                quality_status TEXT NOT NULL,
+                PRIMARY KEY (security_id, trade_date, source_id)
+            )
+            """
+        )
+        create_schema(con)
+        create_schema(con)
+        columns = [row[1] for row in con.execute("PRAGMA table_info(daily_prices)").fetchall()]
+
+    for column in [
+        "adjustment_factor",
+        "adjusted_open",
+        "adjusted_high",
+        "adjusted_low",
+        "adjusted_close",
+    ]:
+        assert columns.count(column) == 1
+
+
 def test_build_mvp_store_creates_ingestion_audit_tables_empty(tmp_path: Path) -> None:
     raw_base = _write_gap_chart_fixture(tmp_path, "FPT", closes=[float(10 + i) for i in range(60)])
     db_path = tmp_path / "builder.sqlite"

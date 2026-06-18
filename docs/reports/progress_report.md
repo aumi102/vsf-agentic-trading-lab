@@ -38,7 +38,7 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC foundation | Nullable adjusted OHLC columns added to `daily_prices`; pure adjustment-factor/adjusted-OHLC validation helpers added. Current gap-chart ingestion leaves adjusted fields empty until a trusted adjusted close or dividend/split/corporate-action factor source is implemented. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **895 tests pass** |
+| Test suite | **899 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -70,14 +70,14 @@ No production DB write, no production backtest, no broker execution.
 | MVP DB/tool demo | 3 demo securities; 14,079 daily price rows; 14,071 feature snapshots/signals; 8 OHLC fail rows excluded from features |
 | Agent orchestrator demo | Exact tool sequence: market_data -> features -> signal -> risk -> report; missing DB and unknown-symbol paths return clear non-traceback statuses |
 | Agent/backtest demo runner | market_brief, risk_check, compare, and Backtest MVP suite rows; expected nonzero edge cases display as OK when status matches |
-| OHLCV ingestion/live adapter tests | 40 targeted tests |
+| OHLCV ingestion/live adapter tests | 41 targeted tests |
 | Ingestion status tests | 15 targeted tests |
 | Production ingestion control-plan tests | 17 targeted tests |
-| Adjusted OHLC tests | 10 targeted tests |
+| Adjusted OHLC tests | 13 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 895 |
+| Total tests passing | 899 |
 
 ---
 
