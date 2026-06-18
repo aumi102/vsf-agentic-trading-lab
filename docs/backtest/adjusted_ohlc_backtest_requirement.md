@@ -47,6 +47,19 @@ Required policy:
 - adjusted open/high/low/close: used by Backtrader;
 - missing factor: block hardened backtest use for that row or symbol.
 
+## Current Implementation
+
+The local SQLite `daily_prices` table now has nullable adjusted OHLC fields:
+`adjustment_factor`, `adjusted_open`, `adjusted_high`, `adjusted_low`, and
+`adjusted_close`. Current Vietcap IQ gap-chart ingestion keeps these fields
+empty because the source path does not yet provide a trusted adjusted close or
+corporate-action factor. This is intentional: the system records the schema
+slot without claiming raw prices are adjusted.
+
+Pure utility functions in `src/trading_agent/ingestion/adjusted_ohlc.py`
+compute an adjustment factor, scale OHLC values, and validate adjusted OHLC
+consistency without network access or database mutation.
+
 ## Corporate Action Data
 
 The adjustment factor must come from approved source logic for dividends,
@@ -71,3 +84,10 @@ Before a row enters a hardened backtest feed:
 Current demo data can still carry `adjustment_status=unknown`. That is acceptable
 for the local demo only. VN100 Backtrader work should wait until adjusted OHLC
 schema, factor provenance, and validation tests are in place.
+
+Not implemented yet:
+
+- full dividend/split/corporate-action event engine;
+- approved source for adjustment factors;
+- Backtrader strategy optimizer;
+- ETL Docker scheduler.
