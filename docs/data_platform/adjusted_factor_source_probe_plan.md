@@ -66,3 +66,8 @@ not a traceback.
 This probe captures planning and local evidence only. Adjusted OHLC population,
 Backtrader/VN100 research, Docker scheduling, and live/full-universe probing
 remain out of scope.
+
+Follow-up local evidence capture is documented in
+`docs/data_platform/adjusted_factor_evidence_capture.md`. It records payload
+hashes and candidate evidence summaries, but still does not populate adjusted
+OHLC.

@@ -72,6 +72,9 @@ trusted adjusted-close or corporate-action source is integrated.
 `scripts/probe_adjusted_factor_sources.py` can plan no-network source probes and
 inspect local JSON payloads for adjusted-factor evidence. Probe evidence is
 candidate-level only and does not make a source usable without provenance review.
+`scripts/capture_adjusted_factor_evidence.py` can record local payload evidence
+with a content hash for review, but it still does not populate adjusted OHLC or
+unblock Backtrader by itself.
 
 ## Corporate Action Data
 
@@ -102,7 +105,7 @@ Not implemented yet:
 
 - full dividend/split/corporate-action event engine;
 - approved source for adjustment factors;
-- approved source-probe evidence for ETL integration;
+- reviewed source-probe evidence for ETL integration;
 - ETL population of adjusted OHLC fields;
 - Backtrader strategy optimizer;
 - ETL Docker scheduler.
