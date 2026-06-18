@@ -84,7 +84,7 @@ def test_legacy_daily_prices_without_adjusted_columns_is_not_ready(tmp_path: Pat
     assert result["backtest_gate"] == "blocked"
     assert result["coverage"]["total_rows"] == 1
     assert result["coverage"]["missing_adjusted_rows"] == 1
-    assert "Missing adjusted OHLC columns" in result["caveats"][0]
+    assert "Missing adjusted OHLC/provenance columns" in result["caveats"][0]
 
 
 def test_populated_adjusted_rows_are_ready(tmp_path: Path) -> None:
@@ -112,6 +112,20 @@ def test_invalid_factor_blocks_readiness(tmp_path: Path) -> None:
     assert result["status"] == "not_ready"
     assert result["coverage"]["invalid_factor_rows"] == 1
     assert result["backtest_gate"] == "blocked"
+
+
+def test_adjusted_rows_without_factor_provenance_block_readiness(tmp_path: Path) -> None:
+    db_path = tmp_path / "missing_provenance.sqlite"
+    with sqlite3.connect(db_path) as con:
+        create_schema(con)
+        _insert_price(con, "FPT", adjusted=True, with_provenance=False)
+
+    result = get_adjusted_ohlc_readiness(db_path, symbols=["FPT"])
+
+    assert result["status"] == "not_ready"
+    assert result["backtest_gate"] == "blocked"
+    assert result["coverage"]["missing_provenance_rows"] == 1
+    assert "missing adjustment-factor provenance" in result["caveats"][0]
 
 
 def test_inconsistent_adjusted_ohlc_blocks_readiness(tmp_path: Path) -> None:
@@ -267,6 +281,7 @@ def _insert_price(
     adjusted_high: float = 88.0,
     adjusted_low: float = 72.0,
     quality_status: str = "pass",
+    with_provenance: bool = True,
 ) -> None:
     adjusted_values = {
         "adjustment_factor": factor,
@@ -274,20 +289,27 @@ def _insert_price(
         "adjusted_high": adjusted_high,
         "adjusted_low": adjusted_low,
         "adjusted_close": 84.0,
+        "adjustment_source_id": "fixture:adjusted_close" if with_provenance else None,
+        "adjustment_raw_path": "fixtures/fpt_adjusted.json" if with_provenance else None,
+        "adjustment_method": "adjusted_close_ratio" if with_provenance else None,
     } if adjusted else {
         "adjustment_factor": None,
         "adjusted_open": None,
         "adjusted_high": None,
         "adjusted_low": None,
         "adjusted_close": None,
+        "adjustment_source_id": None,
+        "adjustment_raw_path": None,
+        "adjustment_method": None,
     }
     con.execute(
         """
         INSERT INTO daily_prices (
             security_id, symbol, trade_date, open, high, low, close,
             adjustment_factor, adjusted_open, adjusted_high, adjusted_low, adjusted_close,
+            adjustment_source_id, adjustment_raw_path, adjustment_method,
             volume, value, price_basis, adjustment_status, source_id, raw_path, quality_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             f"vietcap_iq:HOSE:{symbol}",
@@ -302,6 +324,9 @@ def _insert_price(
             adjusted_values["adjusted_high"],
             adjusted_values["adjusted_low"],
             adjusted_values["adjusted_close"],
+            adjusted_values["adjustment_source_id"],
+            adjusted_values["adjustment_raw_path"],
+            adjusted_values["adjustment_method"],
             1000.0,
             100000.0,
             "source_reported",

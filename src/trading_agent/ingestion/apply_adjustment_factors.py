@@ -54,7 +54,7 @@ def apply_adjustment_factors_to_rows(
     rows: list[dict[str, Any]],
     factors: list[AdjustmentFactorRecord],
 ) -> dict[str, Any]:
-    factor_map = _usable_factor_map(factors)
+    factor_map, duplicate_factor_records = _usable_factor_map(factors)
     invalid_factor_records = [record for record in factors if not _is_usable_factor(record)]
     results = []
     rows_with_usable_factor = 0
@@ -113,6 +113,7 @@ def apply_adjustment_factors_to_rows(
                 "factor": factor.factor,
                 "factor_source_id": factor.source_id,
                 "factor_raw_path": factor.raw_path,
+                "factor_method": factor.method,
                 "reasons": [],
                 "adjusted_open": adjusted["adjusted_open"],
                 "adjusted_high": adjusted["adjusted_high"],
@@ -130,6 +131,7 @@ def apply_adjustment_factors_to_rows(
         "rows_missing_factor": rows_missing_factor,
         "rows_invalid": rows_invalid,
         "invalid_factor_records": len(invalid_factor_records),
+        "duplicate_factor_records": duplicate_factor_records,
         "results": results,
         "caveats": [
             "Local verified factor records only.",
@@ -210,6 +212,9 @@ def _update_adjusted_columns(con: sqlite3.Connection, results: Iterable[dict[str
                 adjusted_high = ?,
                 adjusted_low = ?,
                 adjusted_close = ?,
+                adjustment_source_id = ?,
+                adjustment_raw_path = ?,
+                adjustment_method = ?,
                 adjustment_status = ?
             WHERE security_id = ? AND symbol = ? AND trade_date = ? AND source_id = ?
             """,
@@ -219,6 +224,9 @@ def _update_adjusted_columns(con: sqlite3.Connection, results: Iterable[dict[str
                 item["adjusted_high"],
                 item["adjusted_low"],
                 item["adjusted_close"],
+                item["factor_source_id"],
+                item["factor_raw_path"],
+                item["factor_method"],
                 "adjusted",
                 item["security_id"],
                 item["symbol"],
@@ -230,13 +238,15 @@ def _update_adjusted_columns(con: sqlite3.Connection, results: Iterable[dict[str
     return updated
 
 
-def _usable_factor_map(records: list[AdjustmentFactorRecord]) -> dict[tuple[str, str], AdjustmentFactorRecord]:
-    usable: dict[tuple[str, str], AdjustmentFactorRecord] = {}
+def _usable_factor_map(records: list[AdjustmentFactorRecord]) -> tuple[dict[tuple[str, str], AdjustmentFactorRecord], int]:
+    grouped: dict[tuple[str, str], list[AdjustmentFactorRecord]] = {}
     for record in records:
         if not _is_usable_factor(record):
             continue
-        usable[(record.symbol, record.trade_date)] = record
-    return usable
+        grouped.setdefault((record.symbol, record.trade_date), []).append(record)
+    usable = {key: values[0] for key, values in grouped.items() if len(values) == 1}
+    duplicate_count = sum(len(values) for values in grouped.values() if len(values) > 1)
+    return usable, duplicate_count
 
 
 def _is_usable_factor(record: AdjustmentFactorRecord) -> bool:
@@ -248,6 +258,8 @@ def _is_usable_factor(record: AdjustmentFactorRecord) -> bool:
         and bool(record.raw_path)
         and bool(record.symbol)
         and bool(record.trade_date)
+        and record.method != "unknown"
+        and not record.reasons
     )
 
 
@@ -260,6 +272,7 @@ def _error_summary(status: str, reason: str, symbols: list[str], dry_run: bool) 
         "rows_missing_factor": 0,
         "rows_invalid": 0,
         "invalid_factor_records": 0,
+        "duplicate_factor_records": 0,
         "rows_updated": 0,
         "dry_run": bool(dry_run),
         "db_mutation_made": False,

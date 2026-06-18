@@ -34,6 +34,11 @@ The factor input is a local JSON list. Each usable record must have:
 No `factor=1` fallback is created. A row without a matching usable factor stays
 unadjusted and is reported.
 
+Factor provenance is separate from raw OHLC provenance. `daily_prices.source_id`
+and `daily_prices.raw_path` continue to identify the raw OHLC source, while
+`adjustment_source_id`, `adjustment_raw_path`, and `adjustment_method` identify
+the adjustment factor source.
+
 ## Commands
 
 ```bash
@@ -52,6 +57,9 @@ Execute mode updates only:
 - `adjusted_high`;
 - `adjusted_low`;
 - `adjusted_close`;
+- `adjustment_source_id`;
+- `adjustment_raw_path`;
+- `adjustment_method`;
 - `adjustment_status`.
 
 Raw OHLCV columns are never modified.
@@ -59,6 +67,7 @@ Raw OHLCV columns are never modified.
 ## Guardrails
 
 - Explicit symbols are required.
+- Rows with adjusted OHLC but missing factor provenance fail readiness.
 - No network request.
 - No full-universe mutation.
 - No factor discovery.

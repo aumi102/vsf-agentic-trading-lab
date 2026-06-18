@@ -95,7 +95,8 @@ is candidate-level only and does not yet make a source usable. Local evidence
 capture can record payload hashes for review, but still does not approve ETL
 population. A local factor-application foundation can apply reviewed factor
 records to explicit demo DB symbols and run readiness validation; it still does
-not discover factors or fetch live data.
+not discover factors or fetch live data. Adjustment factor provenance is stored
+separately from raw OHLC source lineage.
 
 ## 6. Proposed Backtrader Pipeline
 

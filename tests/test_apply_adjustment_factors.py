@@ -27,6 +27,9 @@ def test_dry_run_summarizes_without_db_mutation(tmp_path: Path) -> None:
     row = _daily_row(db_path)
     assert row["adjustment_factor"] is None
     assert row["adjusted_open"] is None
+    assert row["adjustment_source_id"] is None
+    assert row["adjustment_raw_path"] is None
+    assert row["adjustment_method"] is None
 
 
 def test_execute_mode_updates_adjusted_columns(tmp_path: Path) -> None:
@@ -44,6 +47,9 @@ def test_execute_mode_updates_adjusted_columns(tmp_path: Path) -> None:
     assert row["adjusted_low"] == 7.2
     assert row["adjusted_close"] == 8.4
     assert row["adjustment_status"] == "adjusted"
+    assert row["adjustment_source_id"] == "fixture:adjusted_close"
+    assert row["adjustment_raw_path"] == "fixtures/fpt_adjusted.json"
+    assert row["adjustment_method"] == "adjusted_close_ratio"
 
 
 def test_raw_ohlc_columns_remain_unchanged(tmp_path: Path) -> None:
@@ -57,6 +63,8 @@ def test_raw_ohlc_columns_remain_unchanged(tmp_path: Path) -> None:
     assert row["high"] == 11.0
     assert row["low"] == 9.0
     assert row["close"] == 10.5
+    assert row["source_id"] == "fixture:daily_prices"
+    assert row["raw_path"] == "fixtures/fpt_2026-01-02.json"
 
 
 def test_missing_factor_leaves_row_unadjusted_and_reported(tmp_path: Path) -> None:
@@ -125,6 +133,48 @@ def test_factor_without_source_id_or_raw_path_is_rejected(tmp_path: Path) -> Non
     result = apply_adjustment_factors_to_db(db_path, factor_path, symbols=["FPT"], dry_run=False)
 
     assert result["invalid_factor_records"] == 1
+    assert result["rows_missing_factor"] == 1
+    assert result["rows_updated"] == 0
+
+
+def test_method_unknown_factor_record_is_rejected(tmp_path: Path) -> None:
+    db_path = _make_db(tmp_path, [{"symbol": "FPT", "trade_date": "2026-01-02"}])
+    factor_path = _write_raw_factors(
+        tmp_path,
+        [
+            {
+                "symbol": "FPT",
+                "trade_date": "2026-01-02",
+                "factor": 0.8,
+                "source_id": "fixture:adjusted_close",
+                "method": "unknown",
+                "raw_path": "fixtures/fpt_adjusted.json",
+                "status": "ok",
+                "reasons": [],
+            }
+        ],
+    )
+
+    result = apply_adjustment_factors_to_db(db_path, factor_path, symbols=["FPT"], dry_run=False)
+
+    assert result["invalid_factor_records"] == 1
+    assert result["rows_missing_factor"] == 1
+    assert result["rows_updated"] == 0
+
+
+def test_duplicate_factor_records_are_reported_and_not_applied(tmp_path: Path) -> None:
+    db_path = _make_db(tmp_path, [{"symbol": "FPT", "trade_date": "2026-01-02"}])
+    factor_path = _write_raw_factors(
+        tmp_path,
+        [
+            _factor_record("FPT", "2026-01-02", 0.8, raw_path="fixtures/a.json"),
+            _factor_record("FPT", "2026-01-02", 0.7, raw_path="fixtures/b.json"),
+        ],
+    )
+
+    result = apply_adjustment_factors_to_db(db_path, factor_path, symbols=["FPT"], dry_run=False)
+
+    assert result["duplicate_factor_records"] == 2
     assert result["rows_missing_factor"] == 1
     assert result["rows_updated"] == 0
 
@@ -199,6 +249,26 @@ def test_cli_requires_explicit_symbols_to_avoid_broad_mutation(tmp_path: Path) -
     assert _daily_row(db_path)["adjustment_factor"] is None
 
 
+def test_cli_dry_run_and_execute_together_is_invalid_request(tmp_path: Path) -> None:
+    db_path = _make_db(tmp_path, [{"symbol": "FPT", "trade_date": "2026-01-02"}])
+    factor_path = _write_factors(tmp_path, [{"symbol": "FPT", "trade_date": "2026-01-02", "factor": 0.8}])
+
+    completed = _run_cli(
+        "--db-path",
+        str(db_path),
+        "--factors",
+        str(factor_path),
+        "--symbols",
+        "FPT",
+        "--dry-run",
+        "--execute",
+    )
+
+    assert completed.returncode == 1
+    assert '"status": "invalid_request"' in completed.stdout
+    assert _daily_row(db_path)["adjustment_factor"] is None
+
+
 def test_cli_execute_updates_only_with_execute_flag(tmp_path: Path) -> None:
     db_path = _make_db(tmp_path, [{"symbol": "FPT", "trade_date": "2026-01-02"}])
     factor_path = _write_factors(tmp_path, [{"symbol": "FPT", "trade_date": "2026-01-02", "factor": 0.8}])
@@ -211,6 +281,36 @@ def test_cli_execute_updates_only_with_execute_flag(tmp_path: Path) -> None:
     assert execute.returncode == 0
     assert '"db_mutation_made": true' in execute.stdout
     assert _daily_row(db_path)["adjustment_factor"] == 0.8
+
+
+def test_duplicate_daily_price_rows_update_precise_row_identity(tmp_path: Path) -> None:
+    db_path = _make_db(
+        tmp_path,
+        [
+            {
+                "security_id": "vietcap_iq:HOSE:FPT:A",
+                "symbol": "FPT",
+                "trade_date": "2026-01-02",
+                "source_id": "fixture:daily_prices:a",
+            },
+            {
+                "security_id": "vietcap_iq:HOSE:FPT:B",
+                "symbol": "FPT",
+                "trade_date": "2026-01-02",
+                "source_id": "fixture:daily_prices:b",
+            },
+        ],
+    )
+    factor_path = _write_factors(tmp_path, [{"symbol": "FPT", "trade_date": "2026-01-02", "factor": 0.8}])
+
+    result = apply_adjustment_factors_to_db(db_path, factor_path, symbols=["FPT"], dry_run=False)
+
+    assert result["rows_updated"] == 2
+    with sqlite3.connect(db_path) as con:
+        rows = con.execute(
+            "SELECT source_id, adjustment_factor FROM daily_prices ORDER BY source_id"
+        ).fetchall()
+    assert rows == [("fixture:daily_prices:a", 0.8), ("fixture:daily_prices:b", 0.8)]
 
 
 def test_apply_module_has_no_network_imports() -> None:
@@ -247,7 +347,7 @@ def _make_db(tmp_path: Path, rows: list[dict[str, object]]) -> Path:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    symbol,
+                    row.get("security_id", symbol),
                     symbol,
                     trade_date,
                     float(row.get("open", 10.0)),
@@ -258,8 +358,8 @@ def _make_db(tmp_path: Path, rows: list[dict[str, object]]) -> Path:
                     10500.0,
                     "source_reported",
                     "unknown",
-                    "fixture:daily_prices",
-                    f"fixtures/{symbol.lower()}_{trade_date}.json",
+                    row.get("source_id", "fixture:daily_prices"),
+                    row.get("raw_path", f"fixtures/{symbol.lower()}_{trade_date}.json"),
                     "ok",
                 ),
             )
@@ -289,6 +389,19 @@ def _write_raw_factors(tmp_path: Path, records: list[dict[str, object]]) -> Path
     factor_path = tmp_path / "factors.json"
     factor_path.write_text(json.dumps(records, indent=2), encoding="utf-8")
     return factor_path
+
+
+def _factor_record(symbol: str, trade_date: str, factor: float, *, raw_path: str) -> dict[str, object]:
+    return {
+        "symbol": symbol,
+        "trade_date": trade_date,
+        "factor": factor,
+        "source_id": "fixture:adjusted_close",
+        "method": "adjusted_close_ratio",
+        "raw_path": raw_path,
+        "status": "ok",
+        "reasons": [],
+    }
 
 
 def _daily_row(db_path: Path) -> sqlite3.Row:

@@ -339,7 +339,7 @@ def test_daily_prices_schema_has_adjusted_ohlc_columns(tmp_path: Path) -> None:
         row = con.execute(
             """
             SELECT adjustment_factor, adjusted_open, adjusted_high, adjusted_low, adjusted_close,
-                   adjustment_status
+                   adjustment_source_id, adjustment_raw_path, adjustment_method, adjustment_status
             FROM daily_prices
             WHERE symbol = 'FPT'
             LIMIT 1
@@ -352,9 +352,12 @@ def test_daily_prices_schema_has_adjusted_ohlc_columns(tmp_path: Path) -> None:
         "adjusted_high",
         "adjusted_low",
         "adjusted_close",
+        "adjustment_source_id",
+        "adjustment_raw_path",
+        "adjustment_method",
     } <= columns
-    assert row[:5] == (None, None, None, None, None)
-    assert row[5] == "unknown"
+    assert row[:8] == (None, None, None, None, None, None, None, None)
+    assert row[8] == "unknown"
 
 
 def test_create_schema_migrates_existing_daily_prices_adjusted_columns(tmp_path: Path) -> None:
@@ -390,6 +393,9 @@ def test_create_schema_migrates_existing_daily_prices_adjusted_columns(tmp_path:
         "adjusted_high",
         "adjusted_low",
         "adjusted_close",
+        "adjustment_source_id",
+        "adjustment_raw_path",
+        "adjustment_method",
     } <= columns
 
 
@@ -427,6 +433,9 @@ def test_create_schema_adjusted_column_migration_is_idempotent(tmp_path: Path) -
         "adjusted_high",
         "adjusted_low",
         "adjusted_close",
+        "adjustment_source_id",
+        "adjustment_raw_path",
+        "adjustment_method",
     ]:
         assert columns.count(column) == 1
 

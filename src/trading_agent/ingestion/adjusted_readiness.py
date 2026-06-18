@@ -14,6 +14,11 @@ ADJUSTED_COLUMNS = [
     "adjusted_low",
     "adjusted_close",
 ]
+ADJUSTMENT_PROVENANCE_COLUMNS = [
+    "adjustment_source_id",
+    "adjustment_raw_path",
+    "adjustment_method",
+]
 
 
 def get_adjusted_ohlc_readiness(
@@ -66,12 +71,16 @@ def get_adjusted_ohlc_readiness(
                     "caveats": ["No daily_prices rows found for the selected filters."],
                 }
 
-            missing_columns = [column for column in ADJUSTED_COLUMNS if column not in columns]
+            required_columns = [*ADJUSTED_COLUMNS, *ADJUSTMENT_PROVENANCE_COLUMNS]
+            missing_columns = [column for column in required_columns if column not in columns]
             if missing_columns:
                 coverage = {
                     **_empty_coverage(),
                     "total_rows": total_rows,
                     "missing_adjusted_rows": total_rows,
+                    "missing_provenance_rows": total_rows
+                    if any(column in missing_columns for column in ADJUSTMENT_PROVENANCE_COLUMNS)
+                    else 0,
                 }
                 return {
                     **base,
@@ -79,7 +88,7 @@ def get_adjusted_ohlc_readiness(
                     "symbols": _symbols_from_rows(con, requested, start_date, end_date),
                     "coverage": coverage,
                     "by_symbol": _by_symbol_missing_columns(con, requested, start_date, end_date),
-                    "caveats": [f"Missing adjusted OHLC columns: {', '.join(missing_columns)}."],
+                    "caveats": [f"Missing adjusted OHLC/provenance columns: {', '.join(missing_columns)}."],
                 }
 
             coverage = _coverage(con, requested, start_date, end_date)
@@ -146,6 +155,7 @@ def _coverage(
             COUNT(*) AS total_rows,
             SUM(CASE WHEN {_adjusted_present_sql()} THEN 1 ELSE 0 END) AS adjusted_rows,
             SUM(CASE WHEN NOT ({_adjusted_present_sql()}) THEN 1 ELSE 0 END) AS missing_adjusted_rows,
+            SUM(CASE WHEN {_adjusted_present_sql()} AND NOT ({_provenance_present_sql()}) THEN 1 ELSE 0 END) AS missing_provenance_rows,
             SUM(CASE WHEN adjustment_factor IS NOT NULL AND adjustment_factor <= 0 THEN 1 ELSE 0 END) AS invalid_factor_rows,
             SUM(CASE WHEN {_invalid_adjusted_ohlc_sql()} THEN 1 ELSE 0 END) AS invalid_ohlc_rows,
             SUM(CASE WHEN quality_status = 'fail' THEN 1 ELSE 0 END) AS fail_quality_rows
@@ -171,6 +181,7 @@ def _by_symbol(
             COUNT(*) AS total_rows,
             SUM(CASE WHEN {_adjusted_present_sql()} THEN 1 ELSE 0 END) AS adjusted_rows,
             SUM(CASE WHEN NOT ({_adjusted_present_sql()}) THEN 1 ELSE 0 END) AS missing_adjusted_rows,
+            SUM(CASE WHEN {_adjusted_present_sql()} AND NOT ({_provenance_present_sql()}) THEN 1 ELSE 0 END) AS missing_provenance_rows,
             SUM(CASE WHEN adjustment_factor IS NOT NULL AND adjustment_factor <= 0 THEN 1 ELSE 0 END) AS invalid_factor_rows,
             SUM(CASE WHEN {_invalid_adjusted_ohlc_sql()} THEN 1 ELSE 0 END) AS invalid_ohlc_rows,
             SUM(CASE WHEN quality_status = 'fail' THEN 1 ELSE 0 END) AS fail_quality_rows,
@@ -218,6 +229,7 @@ def _by_symbol_missing_columns(
             "total_rows": int(row["total_rows"] or 0),
             "adjusted_rows": 0,
             "missing_adjusted_rows": int(row["total_rows"] or 0),
+            "missing_provenance_rows": int(row["total_rows"] or 0),
             "invalid_factor_rows": 0,
             "invalid_ohlc_rows": 0,
             "fail_quality_rows": 0,
@@ -262,11 +274,24 @@ def _invalid_adjusted_ohlc_sql() -> str:
     """
 
 
+def _provenance_present_sql() -> str:
+    return """
+        adjustment_source_id IS NOT NULL
+        AND TRIM(adjustment_source_id) != ''
+        AND adjustment_raw_path IS NOT NULL
+        AND TRIM(adjustment_raw_path) != ''
+        AND adjustment_method IS NOT NULL
+        AND TRIM(adjustment_method) != ''
+        AND adjustment_method != 'unknown'
+    """
+
+
 def _coverage_from_row(row: sqlite3.Row) -> dict[str, int]:
     return {
         "total_rows": int(row["total_rows"] or 0),
         "adjusted_rows": int(row["adjusted_rows"] or 0),
         "missing_adjusted_rows": int(row["missing_adjusted_rows"] or 0),
+        "missing_provenance_rows": int(row["missing_provenance_rows"] or 0),
         "invalid_factor_rows": int(row["invalid_factor_rows"] or 0),
         "invalid_ohlc_rows": int(row["invalid_ohlc_rows"] or 0),
         "fail_quality_rows": int(row["fail_quality_rows"] or 0),
@@ -276,7 +301,12 @@ def _coverage_from_row(row: sqlite3.Row) -> dict[str, int]:
 def _status(coverage: dict[str, int], missing_symbols: list[str]) -> str:
     if missing_symbols:
         return "not_ready"
-    if coverage["missing_adjusted_rows"] or coverage["invalid_factor_rows"] or coverage["invalid_ohlc_rows"]:
+    if (
+        coverage["missing_adjusted_rows"]
+        or coverage["missing_provenance_rows"]
+        or coverage["invalid_factor_rows"]
+        or coverage["invalid_ohlc_rows"]
+    ):
         return "not_ready"
     if coverage["fail_quality_rows"]:
         return "quality_warn"
@@ -289,6 +319,8 @@ def _caveats(coverage: dict[str, int], missing_symbols: list[str]) -> list[str]:
         caveats.append(f"Requested symbols not found in selected rows: {', '.join(missing_symbols)}.")
     if coverage["missing_adjusted_rows"]:
         caveats.append(f"{coverage['missing_adjusted_rows']} rows are missing adjusted OHLC fields.")
+    if coverage["missing_provenance_rows"]:
+        caveats.append(f"{coverage['missing_provenance_rows']} adjusted rows are missing adjustment-factor provenance.")
     if coverage["invalid_factor_rows"]:
         caveats.append(f"{coverage['invalid_factor_rows']} rows have adjustment_factor <= 0.")
     if coverage["invalid_ohlc_rows"]:
@@ -324,6 +356,7 @@ def _empty_coverage() -> dict[str, int]:
         "total_rows": 0,
         "adjusted_rows": 0,
         "missing_adjusted_rows": 0,
+        "missing_provenance_rows": 0,
         "invalid_factor_rows": 0,
         "invalid_ohlc_rows": 0,
         "fail_quality_rows": 0,

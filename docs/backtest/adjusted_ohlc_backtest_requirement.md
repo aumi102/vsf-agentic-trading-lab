@@ -43,7 +43,7 @@ series are required.
 Required policy:
 
 - raw close/open/high/low: retained as ingested evidence;
-- adjustment factor: recorded with source and method;
+- adjustment factor: recorded with separate factor source, raw path, and method;
 - adjusted open/high/low/close: used by Backtrader;
 - missing factor: block hardened backtest use for that row or symbol.
 
@@ -78,7 +78,9 @@ unblock Backtrader by itself.
 `scripts/apply_adjustment_factors.py` can apply reviewed local factor records to
 explicit symbols in a local SQLite DB. It is dry-run by default, requires
 `--execute` to mutate adjusted columns, and does not discover factors or fetch
-network data.
+network data. Readiness requires adjusted OHLC plus `adjustment_source_id`,
+`adjustment_raw_path`, and `adjustment_method`; raw OHLC `source_id` and
+`raw_path` are not reused as factor provenance.
 
 ## Corporate Action Data
 
@@ -92,6 +94,7 @@ sources, the row should be flagged rather than silently adjusted.
 Before a row enters a hardened backtest feed:
 
 - adjusted OHLC fields are present for every backtest row;
+- adjustment factor provenance fields are present for every adjusted row;
 - no `adjust_factor <= 0`;
 - no missing adjusted close;
 - `adjusted_high >= max(adjusted_open, adjusted_close)`;
