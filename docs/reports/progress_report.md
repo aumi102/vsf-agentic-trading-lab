@@ -41,9 +41,10 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted factor source probe | Dry-run probe planner and local JSON inspector classify candidate adjusted close, factor, and corporate-action evidence on explicit small symbol sets. No network, DB mutation, or adjusted OHLC population by default. |
 | Adjusted factor evidence capture | Local payload evidence capture records symbol/source/path, SHA-256 content hash, candidate evidence fields, and derivability status. No network, DB mutation, or adjusted OHLC population. |
 | Local adjustment factor application | Dry-run-first module/CLI applies reviewed local factor records to adjusted OHLC columns for explicit symbols only. Execute mode mutates adjusted columns and separate factor provenance, not raw OHLC. No network, source discovery, full-universe mutation, or Backtrader. |
+| Adjustment factor source adapter | Fixture-only parser interface converts synthetic adjusted-close or corporate-action payloads into provenance-backed factor records compatible with local factor application. No live source approved, no network, and no DB mutation. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **986 tests pass** |
+| Test suite | **994 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -84,10 +85,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted factor source probe tests | 18 targeted tests |
 | Adjusted factor evidence capture tests | 18 targeted tests |
 | Local adjustment factor application tests | 18 targeted tests |
+| Adjustment factor source adapter tests | 8 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 986 |
+| Total tests passing | 994 |
 
 ---
 
@@ -113,7 +115,7 @@ No production DB write, no production backtest, no broker execution.
 9. ~~Implement exploratory backtest MVP (`mvp_ma20_ma50_momentum` strategy over FPT/VNM/VCB).~~ - Scaffold added over cached SQLite data with explicit caveats and validation gates.
 10. ~~Run mentor demo session and capture answers before QuestDB/LLM/backtest hardening.~~ — 2026-06-18 feedback captured; Backtrader, current VN100, adjusted OHLC, FA scan, simple TA templates, and ETL-first Docker direction recorded.
 11. ~~Add adjusted OHLC readiness gates so Backtrader work is blocked while adjusted columns are missing or invalid.~~ — Read-only API/tool/CLI added; current demo DB returns `not_ready` as expected.
-12. Integrate a verified adjusted-close or corporate-action source adapter for a small explicit symbol set, then use the local factor application path before Backtrader VN100 runs.
+12. Verify an approved adjusted-close or corporate-action source on a small explicit symbol set, then use the local factor application path before Backtrader VN100 runs.
 13. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
 
 ---

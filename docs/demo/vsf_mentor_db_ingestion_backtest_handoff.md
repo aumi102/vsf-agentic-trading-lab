@@ -96,7 +96,10 @@ capture can record payload hashes for review, but still does not approve ETL
 population. A local factor-application foundation can apply reviewed factor
 records to explicit demo DB symbols and run readiness validation; it still does
 not discover factors or fetch live data. Adjustment factor provenance is stored
-separately from raw OHLC source lineage.
+separately from raw OHLC source lineage. A fixture-only source-adapter contract
+now proves that adjusted-close or corporate-action payload parsers can produce
+factor records compatible with local application, but no live source is approved
+yet.
 
 ## 6. Proposed Backtrader Pipeline
 
@@ -166,8 +169,9 @@ batch and rate controls.
 ## 12. Next Implementation Steps
 
 1. Integrate a trusted adjusted-close or corporate-action factor source.
-2. Use the local factor application path to populate adjusted OHLC for a small explicit symbol set.
-3. Add ETL Docker/scheduler foundation for stable ingestion only.
-4. Add Backtrader research scaffold over a small subset after adjusted readiness passes.
-5. Produce VN100 strategy selection report.
-6. Only then consider broader scheduler, QuestDB, or realtime work.
+2. Verify a small approved live/vendor source against the fixture adapter contract.
+3. Use the local factor application path to populate adjusted OHLC for a small explicit symbol set.
+4. Add ETL Docker/scheduler foundation for stable ingestion only.
+5. Add Backtrader research scaffold over a small subset after adjusted readiness passes.
+6. Produce VN100 strategy selection report.
+7. Only then consider broader scheduler, QuestDB, or realtime work.
