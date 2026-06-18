@@ -91,7 +91,9 @@ those fields are populated and validated. A source review and pure adjustment
 factor record interface have been added, but no source has been approved for ETL
 population yet. A dry-run source probe now plans small-symbol evidence checks and
 can inspect local JSON payloads without network or DB mutation. Probe evidence
-is candidate-level only and does not yet make a source usable.
+is candidate-level only and does not yet make a source usable. Local evidence
+capture can record payload hashes for review, but still does not approve ETL
+population.
 
 ## 6. Proposed Backtrader Pipeline
 
