@@ -75,3 +75,5 @@ error and exit 1. Captured evidence and no-evidence records exit 0.
 Use approved local or controlled probe outputs to identify a verified adjusted
 close or corporate-action factor source, then integrate that verified factor
 source into ETL for a small explicit symbol set with readiness-gate validation.
+The local factor application foundation is documented in
+`docs/data_platform/apply_adjustment_factors_plan.md`.

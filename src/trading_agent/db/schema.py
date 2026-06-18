@@ -30,6 +30,9 @@ DAILY_PRICES_COLUMNS = [
     "adjusted_high",
     "adjusted_low",
     "adjusted_close",
+    "adjustment_source_id",
+    "adjustment_raw_path",
+    "adjustment_method",
     "volume",
     "value",
     "price_basis",
@@ -141,6 +144,9 @@ def create_schema(con: sqlite3.Connection) -> None:
             adjusted_high REAL,
             adjusted_low REAL,
             adjusted_close REAL,
+            adjustment_source_id TEXT,
+            adjustment_raw_path TEXT,
+            adjustment_method TEXT,
             volume REAL,
             value REAL,
             price_basis TEXT NOT NULL,
@@ -234,6 +240,9 @@ def _ensure_daily_prices_adjusted_columns(con: sqlite3.Connection) -> None:
         "adjusted_high": "REAL",
         "adjusted_low": "REAL",
         "adjusted_close": "REAL",
+        "adjustment_source_id": "TEXT",
+        "adjustment_raw_path": "TEXT",
+        "adjustment_method": "TEXT",
     }
     for column, column_type in additions.items():
         if column not in existing:

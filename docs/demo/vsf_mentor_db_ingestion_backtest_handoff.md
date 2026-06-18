@@ -93,7 +93,10 @@ population yet. A dry-run source probe now plans small-symbol evidence checks an
 can inspect local JSON payloads without network or DB mutation. Probe evidence
 is candidate-level only and does not yet make a source usable. Local evidence
 capture can record payload hashes for review, but still does not approve ETL
-population.
+population. A local factor-application foundation can apply reviewed factor
+records to explicit demo DB symbols and run readiness validation; it still does
+not discover factors or fetch live data. Adjustment factor provenance is stored
+separately from raw OHLC source lineage.
 
 ## 6. Proposed Backtrader Pipeline
 
@@ -163,7 +166,7 @@ batch and rate controls.
 ## 12. Next Implementation Steps
 
 1. Integrate a trusted adjusted-close or corporate-action factor source.
-2. Populate adjusted OHLC fields through ETL only after source evidence is verified.
+2. Use the local factor application path to populate adjusted OHLC for a small explicit symbol set.
 3. Add ETL Docker/scheduler foundation for stable ingestion only.
 4. Add Backtrader research scaffold over a small subset after adjusted readiness passes.
 5. Produce VN100 strategy selection report.
