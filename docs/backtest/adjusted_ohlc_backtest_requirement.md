@@ -84,7 +84,11 @@ network data. Readiness requires adjusted OHLC plus `adjustment_source_id`,
 `src/trading_agent/ingestion/sources/adjustment_factor_source.py` adds a
 fixture-only adapter interface for converting adjusted-close or
 corporate-action payloads into factor records with provenance. The current
-fixtures are synthetic and are not an approved live source.
+fixtures are synthetic and are not an approved live source. A controlled,
+no-network verification layer
+(`docs/data_platform/controlled_factor_source_verification.md`) reuses that
+adapter to confirm a local payload yields usable factor records on a small
+explicit symbol set before any ETL adjusted-OHLC population.
 
 ## Corporate Action Data
 

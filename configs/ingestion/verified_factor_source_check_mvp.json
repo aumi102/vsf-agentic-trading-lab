@@ -1,0 +1,26 @@
+{
+  "default_symbols": ["FPT", "VNM", "VCB"],
+  "max_symbols_per_check": 3,
+  "allow_network_default": false,
+  "candidate_methods": [
+    "adjusted_close_ratio",
+    "corporate_action_derived"
+  ],
+  "required_provenance": [
+    "source_id",
+    "raw_path",
+    "method"
+  ],
+  "objectives": [
+    "verify adjusted-close or factor payload can produce usable factor records",
+    "verify factor records can be applied by local factor application",
+    "verify adjusted readiness can pass on a tiny local fixture DB",
+    "no full-universe mutation"
+  ],
+  "notes": [
+    "No-network default; plan-only or local payload verification only.",
+    "No approved live/vendor source is wired in this config.",
+    "No adjusted OHLC population from unverified data.",
+    "No full-universe crawl, no Backtrader, no Docker/scheduler."
+  ]
+}

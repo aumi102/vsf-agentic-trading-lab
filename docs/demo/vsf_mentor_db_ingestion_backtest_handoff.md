@@ -99,7 +99,10 @@ not discover factors or fetch live data. Adjustment factor provenance is stored
 separately from raw OHLC source lineage. A fixture-only source-adapter contract
 now proves that adjusted-close or corporate-action payload parsers can produce
 factor records compatible with local application, but no live source is approved
-yet.
+yet. A controlled, no-network verification layer
+(`docs/data_platform/controlled_factor_source_verification.md`) reuses that
+adapter to confirm a local payload yields usable factor records on a small
+explicit symbol set before any ETL adjusted-OHLC population.
 
 ## 6. Proposed Backtrader Pipeline
 
