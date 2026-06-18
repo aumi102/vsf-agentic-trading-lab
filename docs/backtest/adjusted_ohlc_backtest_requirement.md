@@ -75,6 +75,10 @@ candidate-level only and does not make a source usable without provenance review
 `scripts/capture_adjusted_factor_evidence.py` can record local payload evidence
 with a content hash for review, but it still does not populate adjusted OHLC or
 unblock Backtrader by itself.
+`scripts/apply_adjustment_factors.py` can apply reviewed local factor records to
+explicit symbols in a local SQLite DB. It is dry-run by default, requires
+`--execute` to mutate adjusted columns, and does not discover factors or fetch
+network data.
 
 ## Corporate Action Data
 
@@ -106,6 +110,6 @@ Not implemented yet:
 - full dividend/split/corporate-action event engine;
 - approved source for adjustment factors;
 - reviewed source-probe evidence for ETL integration;
-- ETL population of adjusted OHLC fields;
+- ETL population from a real verified source adapter;
 - Backtrader strategy optimizer;
 - ETL Docker scheduler.
