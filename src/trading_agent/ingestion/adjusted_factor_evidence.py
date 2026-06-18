@@ -30,6 +30,7 @@ def build_adjusted_factor_evidence_record(
     inspection = inspect_payload_for_adjustment_evidence(payload)
     content_hash = _hash_payload(payload=payload, payload_bytes=payload_bytes)
     status = _record_status(inspection["evidence_strength"], reasons)
+    can_derive_factor = bool(inspection["can_derive_factor"]) and not reasons
     return {
         "symbol": normalized_symbol,
         "source": normalized_source,
@@ -42,7 +43,7 @@ def build_adjusted_factor_evidence_record(
         "adjustment_factor_fields": inspection["adjustment_factor_fields"],
         "generic_factor_fields": inspection["generic_factor_fields"],
         "corporate_action_terms": inspection["corporate_action_terms"],
-        "can_derive_factor": bool(inspection["can_derive_factor"]),
+        "can_derive_factor": can_derive_factor,
         "status": status,
         "reasons": reasons,
         "network_request_made": False,

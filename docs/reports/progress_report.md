@@ -42,7 +42,7 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted factor evidence capture | Local payload evidence capture records symbol/source/path, SHA-256 content hash, candidate evidence fields, and derivability status. No network, DB mutation, or adjusted OHLC population. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **959 tests pass** |
+| Test suite | **967 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -81,11 +81,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC readiness tests | 16 targeted tests |
 | Adjustment factor source tests | 16 targeted tests |
 | Adjusted factor source probe tests | 18 targeted tests |
-| Adjusted factor evidence capture tests | 10 targeted tests |
+| Adjusted factor evidence capture tests | 18 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 959 |
+| Total tests passing | 967 |
 
 ---
 

@@ -24,6 +24,8 @@ adjusted and does not unblock Backtrader/VN100 work by itself.
 - Record `symbol`, `source`, `payload_path`, and SHA-256 `content_hash`.
 - Print evidence JSON to stdout.
 - Write evidence JSON only when `--output` is explicitly provided.
+- Treat generated evidence JSON as an artifact; do not commit it unless it is
+  intentionally curated as a reviewed fixture.
 - Always report `network_request_made=false`, `db_mutation_made=false`, and
   `adjusted_ohlc_populated=false`.
 
@@ -55,7 +57,8 @@ python scripts/capture_adjusted_factor_evidence.py --source vietcap_iq_gap_chart
 ```
 
 Missing payload files and invalid JSON return clean JSON errors and exit 1.
-Captured evidence and no-evidence records exit 0.
+Invalid metadata, such as an empty symbol or source, also returns a clean JSON
+error and exit 1. Captured evidence and no-evidence records exit 0.
 
 ## Limitations
 

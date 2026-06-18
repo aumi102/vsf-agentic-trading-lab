@@ -14,6 +14,9 @@ if str(SRC) not in sys.path:
 from trading_agent.ingestion.adjusted_factor_evidence import capture_payload_adjustment_evidence
 
 
+ERROR_STATUSES = {"missing_payload", "invalid_json", "invalid"}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Capture adjusted-factor evidence from a local JSON payload.")
     parser.add_argument("--source", required=True, help="Source identifier for the inspected payload.")
@@ -27,13 +30,13 @@ def main() -> int:
         source=args.source,
         payload_path=args.payload,
     )
-    if args.output and result["status"] not in {"missing_payload", "invalid_json"}:
+    if args.output and result["status"] not in ERROR_STATUSES:
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False), encoding="utf-8")
 
     print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
-    return 0 if result["status"] not in {"missing_payload", "invalid_json"} else 1
+    return 0 if result["status"] not in ERROR_STATUSES else 1
 
 
 if __name__ == "__main__":
