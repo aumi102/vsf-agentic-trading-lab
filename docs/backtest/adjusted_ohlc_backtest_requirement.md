@@ -81,6 +81,10 @@ explicit symbols in a local SQLite DB. It is dry-run by default, requires
 network data. Readiness requires adjusted OHLC plus `adjustment_source_id`,
 `adjustment_raw_path`, and `adjustment_method`; raw OHLC `source_id` and
 `raw_path` are not reused as factor provenance.
+`src/trading_agent/ingestion/sources/adjustment_factor_source.py` adds a
+fixture-only adapter interface for converting adjusted-close or
+corporate-action payloads into factor records with provenance. The current
+fixtures are synthetic and are not an approved live source.
 
 ## Corporate Action Data
 
@@ -114,5 +118,6 @@ Not implemented yet:
 - approved source for adjustment factors;
 - reviewed source-probe evidence for ETL integration;
 - ETL population from a real verified source adapter;
+- approved live/vendor source verification for factor records;
 - Backtrader strategy optimizer;
 - ETL Docker scheduler.

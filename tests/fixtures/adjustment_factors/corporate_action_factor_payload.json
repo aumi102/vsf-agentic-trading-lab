@@ -1,0 +1,9 @@
+[
+  {
+    "fixture_note": "Synthetic corporate-action factor fixture, not real market data.",
+    "symbol": "FPT",
+    "trade_date": "2026-01-02",
+    "event_type": "synthetic_split",
+    "factor": 0.8
+  }
+]
