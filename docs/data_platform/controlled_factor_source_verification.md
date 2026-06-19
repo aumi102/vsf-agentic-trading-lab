@@ -15,6 +15,9 @@ usable, provenance-backed factor records before any ETL adjusted-OHLC
 population. It does not perform full-universe crawling and does not populate
 adjusted OHLC from unverified data.
 
+PR #37 created this controlled local verification layer; it did not approve a
+live source or populate adjusted OHLC.
+
 ## Relation To The Source Adapter (PR #36)
 
 PR #36 added the fixture-only adjustment-factor source adapter
@@ -80,6 +83,9 @@ provenance.
 
 ## Next Step
 
-Once an approved source is verified against this contract, integrate it into ETL
-for a small explicit symbol set, then run the local factor application path and
+The next step is mentor approval of a real adjusted-close or corporate-action
+source, tracked in
+`docs/data_platform/adjustment_factor_source_approval_package.md`. Once a source
+is approved and verified against this contract, integrate it into ETL for a
+small explicit symbol set, then run the local factor application path and
 confirm adjusted readiness before any Backtrader VN100 work.
