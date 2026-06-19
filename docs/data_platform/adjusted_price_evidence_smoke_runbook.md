@@ -82,6 +82,9 @@ Expected readiness:
 
 - This is synthetic fixture evidence, not an approved live source payload.
 - It proves the local path works end to end for a small explicit set.
+- The next controlled step is reviewed local evidence intake with source,
+  raw-path, reviewer, review timestamp, evidence-basis metadata, and payload
+  SHA-256 integrity.
 - Production adjusted OHLC remains blocked until reviewed real evidence is used.
 - Backtrader/VN100 remains blocked until adjusted OHLC readiness passes on the
   intended dataset.

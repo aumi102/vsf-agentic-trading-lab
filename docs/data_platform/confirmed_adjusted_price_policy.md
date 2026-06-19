@@ -77,3 +77,8 @@ path for `FPT`, `VNM`, and `VCB`. It verifies local evidence, generates factor
 records, can apply them to a local DB only with explicit execute mode, and
 requires adjusted readiness to pass. Backtrader/VN100 work remains blocked until
 that readiness gate passes.
+
+The synthetic smoke proves the mechanics only. Reviewed local evidence intake
+must require source, raw-path, reviewer, review timestamp, and evidence-basis
+metadata plus payload SHA-256 integrity before using real adjusted-price
+evidence.

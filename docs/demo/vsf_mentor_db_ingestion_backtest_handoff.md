@@ -115,7 +115,9 @@ price evidence pipeline now verifies payload evidence, writes factor records,
 can explicitly apply them to a local DB, and runs readiness for FPT/VNM/VCB.
 A synthetic local smoke/runbook now exercises that path with temporary payload
 and DB artifacts before any reviewed real evidence or production adjusted OHLC
-population.
+population. Reviewed adjusted-price evidence intake now accepts local JSON/CSV
+files only after source, raw path, reviewer, review timestamp, and evidence
+basis metadata are present and the payload SHA-256 matches the manifest.
 
 ## 6. Proposed Backtrader Pipeline
 
@@ -184,9 +186,9 @@ batch and rate controls.
 
 ## 12. Next Implementation Steps
 
-1. Run the adjusted-price evidence smoke/runbook for FPT/VNM/VCB.
+1. Run reviewed adjusted-price evidence intake for FPT/VNM/VCB.
 2. Capture raw evidence and provenance for the verified source path.
-3. Use explicit execute mode only after reviewed local evidence is available.
+3. Use explicit execute mode only after reviewed local evidence passes intake.
 4. Add ETL Docker/scheduler foundation for stable ingestion only.
 5. Add Backtrader research scaffold over a small subset after adjusted readiness passes.
 6. Produce VN100 strategy selection report.

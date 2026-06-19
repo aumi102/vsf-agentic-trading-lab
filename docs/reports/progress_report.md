@@ -46,9 +46,10 @@ No production DB write, no production backtest, no broker execution.
 | Confirmed adjusted price policy | Mentor confirmed: current VN100 list, adjusted price mandatory, full OHLC adjustment, dividend/split factor logic, project-researched transaction cost, and slippage bounded by HSX/HOSE +/-7% and UPCoM +/-15%. |
 | Adjusted price evidence pipeline | Local-first pipeline verifies adjusted-price payload evidence, writes factor records, can explicitly apply to a local DB, and runs adjusted readiness for FPT/VNM/VCB. No live fetch, full universe, or Backtrader. |
 | Adjusted price evidence smoke | Synthetic local smoke/runbook exercises FPT/VNM/VCB dry-run, execute against temporary SQLite, and adjusted readiness. No live fetch, production DB mutation, full universe, or Backtrader. |
+| Reviewed adjusted price evidence intake | Local JSON/CSV intake validates source, raw path, reviewer, review timestamp, evidence basis, payload SHA-256, and price rows before factor generation or optional local execute. No live fetch, full VN100, or Backtrader. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1050 tests pass** |
+| Test suite | **1079 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -93,10 +94,11 @@ No production DB write, no production backtest, no broker execution.
 | Controlled factor source verification tests | 23 targeted tests |
 | Adjusted price evidence pipeline tests | 20 targeted tests |
 | Adjusted price evidence smoke tests | 7 targeted tests |
+| Reviewed adjusted price evidence intake tests | 29 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1050 |
+| Total tests passing | 1079 |
 
 ---
 
@@ -122,7 +124,7 @@ No production DB write, no production backtest, no broker execution.
 9. ~~Implement exploratory backtest MVP (`mvp_ma20_ma50_momentum` strategy over FPT/VNM/VCB).~~ - Scaffold added over cached SQLite data with explicit caveats and validation gates.
 10. ~~Run mentor demo session and capture answers before QuestDB/LLM/backtest hardening.~~ — 2026-06-18 feedback captured; Backtrader, current VN100, adjusted OHLC, FA scan, simple TA templates, and ETL-first Docker direction recorded.
 11. ~~Add adjusted OHLC readiness gates so Backtrader work is blocked while adjusted columns are missing or invalid.~~ — Read-only API/tool/CLI added; current demo DB returns `not_ready` as expected.
-12. Use the adjusted-price evidence smoke/runbook, then run reviewed real adjusted-price evidence through the FPT/VNM/VCB pipeline before any Backtrader VN100 work.
+12. Use reviewed adjusted-price evidence intake for FPT/VNM/VCB, then keep Backtrader VN100 blocked until adjusted readiness passes on reviewed evidence.
 13. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
 
 ---

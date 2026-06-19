@@ -1,0 +1,10 @@
+{
+  "source_id": "fixture:reviewed_adjusted_price",
+  "raw_path": "tests/fixtures/adjustment_factors/reviewed_adjusted_price_payload.json",
+  "reviewer": "fixture-reviewer",
+  "reviewed_at": "2026-06-19",
+  "evidence_basis": "manual_curated_for_dev_only",
+  "payload_sha256": "969871cc73d31814a38117ade313cbb06e462bd2f00a2e18d9663b16b4cc6420",
+  "not_real_market_data": true,
+  "notes": "Synthetic development-only manifest for reviewed adjusted-price evidence intake tests."
+}

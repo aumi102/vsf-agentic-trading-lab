@@ -101,7 +101,11 @@ is implementation verification of adjusted-price or factor evidence for
 `FPT`, `VNM`, and `VCB`.
 `docs/data_platform/adjusted_price_evidence_pipeline.md` adds the local-first
 pipeline for that verification and optional explicit local adjusted-OHLC
-population path.
+population path. `docs/data_platform/adjusted_price_evidence_smoke_runbook.md`
+proves the mechanics with synthetic local data only. Reviewed local evidence
+intake still must require source, raw-path, reviewer, review timestamp, and
+evidence-basis metadata plus payload SHA-256 integrity before real adjusted-price
+evidence is used.
 
 ## Corporate Action Data
 
