@@ -72,7 +72,8 @@ Before Backtrader or VN100 research starts:
 
 ## 8. Next technical PR
 
-The next technical PR should implement adjusted-price/factor evidence
-verification for a small explicit symbol set, capture raw evidence, generate
-factor records, populate adjusted OHLC locally, and require adjusted readiness to
-pass. Backtrader/VN100 work remains blocked until that readiness gate passes.
+The local adjusted-price evidence pipeline now provides the first small-symbol
+path for `FPT`, `VNM`, and `VCB`. It verifies local evidence, generates factor
+records, can apply them to a local DB only with explicit execute mode, and
+requires adjusted readiness to pass. Backtrader/VN100 work remains blocked until
+that readiness gate passes.

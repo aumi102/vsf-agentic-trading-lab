@@ -1,0 +1,22 @@
+{
+  "default_symbols": ["FPT", "VNM", "VCB"],
+  "max_symbols": 3,
+  "allow_network_default": false,
+  "required_price_fields": [
+    "symbol",
+    "trade_date",
+    "close",
+    "adjusted_close"
+  ],
+  "factor_method": "adjusted_close_ratio",
+  "exchange_price_bands": {
+    "HSX/HOSE": 0.07,
+    "UPCoM": 0.15
+  },
+  "caveats": [
+    "Current VN100 list policy is confirmed for later Backtrader work.",
+    "No Backtrader/VN100 run until adjusted OHLC readiness passes.",
+    "Raw close must never be treated as adjusted close.",
+    "No factor=1 fallback."
+  ]
+}

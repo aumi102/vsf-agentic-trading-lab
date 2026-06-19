@@ -99,6 +99,9 @@ The confirmed policy is documented in
 `docs/data_platform/confirmed_adjusted_price_policy.md`. The next required step
 is implementation verification of adjusted-price or factor evidence for
 `FPT`, `VNM`, and `VCB`.
+`docs/data_platform/adjusted_price_evidence_pipeline.md` adds the local-first
+pipeline for that verification and optional explicit local adjusted-OHLC
+population path.
 
 ## Corporate Action Data
 
@@ -135,7 +138,7 @@ Not implemented yet:
 - full dividend/split/corporate-action event engine;
 - verified source evidence for adjustment factors;
 - reviewed source-probe evidence for ETL integration;
-- ETL population from a real verified source adapter;
+- broader ETL population from a real verified source adapter;
 - live/vendor source verification for factor records;
 - Backtrader strategy optimizer;
 - ETL Docker scheduler.

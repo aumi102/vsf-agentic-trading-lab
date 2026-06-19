@@ -92,3 +92,7 @@ UPCoM +/-15%.
 The next step is implementation verification of adjusted-price or factor
 evidence. Verify a small explicit symbol set, then run the local factor
 application path and confirm adjusted readiness before any Backtrader VN100 work.
+
+`docs/data_platform/adjusted_price_evidence_pipeline.md` documents the first
+local adjusted-price evidence pipeline for that path. It remains no-network and
+small-symbol only.
