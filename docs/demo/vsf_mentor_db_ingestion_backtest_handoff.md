@@ -98,14 +98,16 @@ records to explicit demo DB symbols and run readiness validation; it still does
 not discover factors or fetch live data. Adjustment factor provenance is stored
 separately from raw OHLC source lineage. A fixture-only source-adapter contract
 now proves that adjusted-close or corporate-action payload parsers can produce
-factor records compatible with local application, but no live source is approved
+factor records compatible with local application, but no live source is wired
 yet. A controlled, no-network verification layer
 (`docs/data_platform/controlled_factor_source_verification.md`) reuses that
 adapter to confirm a local payload yields usable factor records on a small
 explicit symbol set before any ETL adjusted-OHLC population. PR #37 created
-that controlled local verification layer; the next step is mentor approval of
-the real adjusted-close or corporate-action source. See
-`docs/data_platform/adjustment_factor_source_approval_package.md` and
+that controlled local verification layer. The adjusted-price policy is now
+confirmed: current VN100 list, adjusted price mandatory, full OHLC adjustment,
+dividend/split factor logic, project-researched transaction cost, and slippage
+bounded by HSX/HOSE +/-7% and UPCoM +/-15%. See
+`docs/data_platform/confirmed_adjusted_price_policy.md` and
 `docs/demo/mentor_adjustment_factor_source_questions.md`.
 
 ## 6. Proposed Backtrader Pipeline
@@ -175,8 +177,8 @@ batch and rate controls.
 
 ## 12. Next Implementation Steps
 
-1. Get mentor approval for the trusted adjusted-close or corporate-action factor source.
-2. Verify the approved source against the controlled local payload contract on FPT/VNM/VCB.
+1. Verify adjusted-price/factor evidence against the controlled local payload contract on FPT/VNM/VCB.
+2. Capture raw evidence and provenance for the verified source path.
 3. Use the local factor application path to populate adjusted OHLC for a small explicit symbol set.
 4. Add ETL Docker/scheduler foundation for stable ingestion only.
 5. Add Backtrader research scaffold over a small subset after adjusted readiness passes.
