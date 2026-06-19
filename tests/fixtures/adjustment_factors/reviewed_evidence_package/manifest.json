@@ -1,6 +1,6 @@
 {
   "source_id": "fixture:reviewed_evidence_package",
-  "raw_path": "tests/fixtures/adjustment_factors/reviewed_evidence_package/payload.json",
+  "raw_path": "payload.json",
   "reviewer": "fixture-reviewer",
   "reviewed_at": "2026-06-19",
   "evidence_basis": "manual_curated_for_dev_only",

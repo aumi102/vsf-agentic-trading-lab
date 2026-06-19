@@ -19,7 +19,7 @@ def test_default_package_smoke_exits_zero() -> None:
     assert "Traceback" not in completed.stderr
     payload = json.loads(completed.stdout)
     assert payload["status"] == "ok"
-    assert payload["package_dir"] == str(PACKAGE)
+    assert payload["package_dir"] == str((ROOT / PACKAGE).resolve())
 
 
 def test_json_and_csv_dry_runs_both_ok() -> None:
@@ -68,6 +68,58 @@ def test_hash_mismatch_package_exits_one_cleanly(tmp_path: Path) -> None:
     assert "payload_sha256_mismatch" in payload["json_dry_run"]["reasons"]
 
 
+def test_copied_package_with_relative_raw_path_still_passes(tmp_path: Path) -> None:
+    package = tmp_path / "package"
+    shutil.copytree(PACKAGE, package)
+
+    completed = _run_package_smoke("--package-dir", str(package))
+
+    assert completed.returncode == 0
+    assert "Traceback" not in completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "ok"
+    assert payload["json_dry_run"]["manifest_integrity"]["raw_path"] == "payload.json"
+    assert payload["csv_dry_run"]["manifest_integrity"]["raw_path"] == "payload.csv"
+
+
+def test_manifest_raw_path_outside_package_exits_one_cleanly(tmp_path: Path) -> None:
+    package = tmp_path / "package"
+    shutil.copytree(PACKAGE, package)
+    manifest_path = package / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["raw_path"] = "../payload.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    completed = _run_package_smoke("--package-dir", str(package))
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "invalid_request"
+    assert payload["reasons"] == ["manifest_raw_path_outside_package"]
+
+
+def test_missing_payload_csv_exits_one_cleanly(tmp_path: Path) -> None:
+    package = tmp_path / "package"
+    shutil.copytree(PACKAGE, package)
+    (package / "payload.csv").unlink()
+
+    completed = _run_package_smoke("--package-dir", str(package))
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "invalid_request"
+    assert "missing_package_files:payload.csv" in payload["reasons"]
+
+
+def test_manifest_hash_matches_payload_json() -> None:
+    manifest = json.loads((PACKAGE / "manifest.json").read_text(encoding="utf-8"))
+    payload_hash = _sha256(PACKAGE / "payload.json")
+
+    assert manifest["payload_sha256"] == payload_hash
+
+
 def test_package_script_has_no_network_imports() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
 
@@ -106,3 +158,11 @@ def _run_package_smoke(*args: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         check=False,
     )
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    h.update(path.read_bytes())
+    return h.hexdigest()

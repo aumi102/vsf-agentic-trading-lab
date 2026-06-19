@@ -25,8 +25,9 @@ tests/fixtures/adjustment_factors/reviewed_evidence_package/
 
 The package is marked `manual_curated_for_dev_only` and
 `not_real_market_data=true`. `manifest.json` carries the SHA-256 for
-`payload.json`; the QA script computes the CSV payload hash and creates a
-temporary CSV manifest for parity validation.
+`payload.json`; `raw_path` is package-relative so the fixture can be copied and
+validated as a self-contained package. The QA script computes the CSV payload
+hash and creates a temporary CSV manifest for parity validation.
 
 ## Command
 
