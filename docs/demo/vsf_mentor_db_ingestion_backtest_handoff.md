@@ -118,6 +118,9 @@ and DB artifacts before any reviewed real evidence or production adjusted OHLC
 population. Reviewed adjusted-price evidence intake now accepts local JSON/CSV
 files only after source, raw path, reviewer, review timestamp, and evidence
 basis metadata are present and the payload SHA-256 matches the manifest.
+Reviewed evidence package QA now checks a full synthetic package shape with
+JSON, CSV, temporary execute, and readiness before real reviewed evidence is
+used.
 
 ## 6. Proposed Backtrader Pipeline
 
@@ -186,8 +189,8 @@ batch and rate controls.
 
 ## 12. Next Implementation Steps
 
-1. Run reviewed adjusted-price evidence intake for FPT/VNM/VCB.
-2. Capture raw evidence and provenance for the verified source path.
+1. Run reviewed adjusted-price evidence package QA for FPT/VNM/VCB.
+2. Replace the dev fixture package with real reviewed source evidence.
 3. Use explicit execute mode only after reviewed local evidence passes intake.
 4. Add ETL Docker/scheduler foundation for stable ingestion only.
 5. Add Backtrader research scaffold over a small subset after adjusted readiness passes.

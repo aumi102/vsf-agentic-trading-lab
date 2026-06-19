@@ -1,0 +1,4 @@
+symbol,trade_date,close,adjusted_close,not_real_market_data
+FPT,2026-01-02,100.0,80.0,true
+VNM,2026-01-02,200.0,180.0,true
+VCB,2026-01-02,50.0,45.0,true

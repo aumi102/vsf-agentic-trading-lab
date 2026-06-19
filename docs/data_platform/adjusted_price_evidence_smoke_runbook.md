@@ -85,6 +85,8 @@ Expected readiness:
 - The next controlled step is reviewed local evidence intake with source,
   raw-path, reviewer, review timestamp, evidence-basis metadata, and payload
   SHA-256 integrity.
+- Package QA then checks the full reviewed evidence package shape with JSON,
+  CSV, temporary execute, and readiness.
 - Production adjusted OHLC remains blocked until reviewed real evidence is used.
 - Backtrader/VN100 remains blocked until adjusted OHLC readiness passes on the
   intended dataset.
