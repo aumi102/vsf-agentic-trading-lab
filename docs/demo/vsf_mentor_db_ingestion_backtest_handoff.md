@@ -117,7 +117,7 @@ A synthetic local smoke/runbook now exercises that path with temporary payload
 and DB artifacts before any reviewed real evidence or production adjusted OHLC
 population. Reviewed adjusted-price evidence intake now accepts local JSON/CSV
 files only after source, raw path, reviewer, review timestamp, and evidence
-basis metadata are present.
+basis metadata are present and the payload SHA-256 matches the manifest.
 
 ## 6. Proposed Backtrader Pipeline
 

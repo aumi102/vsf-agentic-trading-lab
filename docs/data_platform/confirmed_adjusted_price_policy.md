@@ -80,4 +80,5 @@ that readiness gate passes.
 
 The synthetic smoke proves the mechanics only. Reviewed local evidence intake
 must require source, raw-path, reviewer, review timestamp, and evidence-basis
-metadata before using real adjusted-price evidence.
+metadata plus payload SHA-256 integrity before using real adjusted-price
+evidence.

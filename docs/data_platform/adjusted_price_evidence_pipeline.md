@@ -79,7 +79,8 @@ without live fetch, full-universe mutation, or Backtrader.
 Use `docs/data_platform/reviewed_adjusted_price_evidence_intake.md` after the
 synthetic smoke. That layer accepts reviewed local JSON/CSV evidence with
 source, raw path, reviewer, review timestamp, and evidence-basis metadata before
-factor generation or optional local DB execute.
+factor generation or optional local DB execute. It also requires
+`payload_sha256` to match the exact local payload file bytes.
 
 ## Boundaries
 

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from trading_agent.db.schema import create_schema
 from trading_agent.ingestion.reviewed_adjusted_price_evidence import (
+    compute_file_sha256,
     run_reviewed_adjusted_price_evidence_intake,
 )
 
@@ -72,30 +73,91 @@ def test_missing_payload_clean_error(tmp_path: Path) -> None:
 
 
 def test_missing_reviewer_rejected(tmp_path: Path) -> None:
-    manifest = _manifest(tmp_path, reviewer="")
+    payload = _payload(tmp_path)
+    manifest = _manifest(tmp_path, payload, reviewer="")
 
-    result = _run_intake(manifest_path=manifest, payload_path=_payload(tmp_path), symbols=["FPT"])
+    result = _run_intake(manifest_path=manifest, payload_path=payload, symbols=["FPT"])
 
     assert result["status"] == "invalid_manifest"
     assert "reviewer_required" in result["reasons"]
 
 
 def test_missing_reviewed_at_rejected(tmp_path: Path) -> None:
-    manifest = _manifest(tmp_path, reviewed_at="")
+    payload = _payload(tmp_path)
+    manifest = _manifest(tmp_path, payload, reviewed_at="")
 
-    result = _run_intake(manifest_path=manifest, payload_path=_payload(tmp_path), symbols=["FPT"])
+    result = _run_intake(manifest_path=manifest, payload_path=payload, symbols=["FPT"])
 
     assert result["status"] == "invalid_manifest"
     assert "reviewed_at_required" in result["reasons"]
 
 
 def test_invalid_evidence_basis_rejected(tmp_path: Path) -> None:
-    manifest = _manifest(tmp_path, evidence_basis="raw_close_as_adjusted_close")
+    payload = _payload(tmp_path)
+    manifest = _manifest(tmp_path, payload, evidence_basis="raw_close_as_adjusted_close")
 
-    result = _run_intake(manifest_path=manifest, payload_path=_payload(tmp_path), symbols=["FPT"])
+    result = _run_intake(manifest_path=manifest, payload_path=payload, symbols=["FPT"])
 
     assert result["status"] == "invalid_manifest"
     assert "unsupported_evidence_basis:raw_close_as_adjusted_close" in result["reasons"]
+
+
+def test_missing_payload_sha256_rejected(tmp_path: Path) -> None:
+    payload = _payload(tmp_path)
+    manifest = _manifest(tmp_path, payload, payload_sha256="")
+
+    result = _run_intake(manifest_path=manifest, payload_path=payload, symbols=["FPT"])
+
+    assert result["status"] == "invalid_manifest"
+    assert "payload_sha256_required" in result["reasons"]
+
+
+def test_invalid_payload_sha256_format_rejected(tmp_path: Path) -> None:
+    payload = _payload(tmp_path)
+    manifest = _manifest(tmp_path, payload, payload_sha256="not-a-sha")
+
+    result = _run_intake(manifest_path=manifest, payload_path=payload, symbols=["FPT"])
+
+    assert result["status"] == "invalid_manifest"
+    assert "payload_sha256_invalid" in result["reasons"]
+
+
+def test_payload_sha256_mismatch_rejected_without_factor_output(tmp_path: Path) -> None:
+    payload = _payload(tmp_path)
+    manifest = _manifest(tmp_path, payload, payload_sha256="0" * 64)
+    factor_output = tmp_path / "factors.json"
+
+    result = _run_intake(
+        manifest_path=manifest,
+        payload_path=payload,
+        symbols=["FPT"],
+        factor_output_path=factor_output,
+    )
+
+    assert result["status"] == "invalid_payload_hash"
+    assert "payload_sha256_mismatch" in result["reasons"]
+    assert result["manifest_integrity"]["payload_sha256_match"] is False
+    assert not factor_output.exists()
+
+
+def test_invalid_reviewed_at_rejected(tmp_path: Path) -> None:
+    payload = _payload(tmp_path)
+    manifest = _manifest(tmp_path, payload, reviewed_at="2026-6-19")
+
+    result = _run_intake(manifest_path=manifest, payload_path=payload, symbols=["FPT"])
+
+    assert result["status"] == "invalid_manifest"
+    assert "reviewed_at_must_be_iso_date" in result["reasons"]
+
+
+def test_manual_curated_requires_not_real_market_data(tmp_path: Path) -> None:
+    payload = _payload(tmp_path)
+    manifest = _manifest(tmp_path, payload, not_real_market_data=False)
+
+    result = _run_intake(manifest_path=manifest, payload_path=payload, symbols=["FPT"])
+
+    assert result["status"] == "invalid_manifest"
+    assert "not_real_market_data_required_for_dev_only" in result["reasons"]
 
 
 def test_more_than_three_symbols_blocked(tmp_path: Path) -> None:
@@ -157,6 +219,25 @@ def test_validation_report_written_when_requested(tmp_path: Path) -> None:
     assert json.loads(report.read_text(encoding="utf-8"))["status"] == "ok"
 
 
+def test_validation_report_includes_manifest_integrity(tmp_path: Path) -> None:
+    payload = _payload(tmp_path)
+    report = tmp_path / "validation.json"
+
+    result = _run_intake(payload_path=payload, symbols=["FPT"], validation_output_path=report)
+    saved = json.loads(report.read_text(encoding="utf-8"))
+
+    assert result["status"] == "ok"
+    assert saved["manifest_integrity"]["source_id"] == "fixture:reviewed_adjusted_price"
+    assert saved["manifest_integrity"]["raw_path"] == str(payload)
+    assert saved["manifest_integrity"]["reviewer"] == "fixture-reviewer"
+    assert saved["manifest_integrity"]["reviewed_at"] == "2026-06-19"
+    assert saved["manifest_integrity"]["evidence_basis"] == "manual_curated_for_dev_only"
+    assert saved["manifest_integrity"]["payload_sha256"] == compute_file_sha256(payload)
+    assert saved["manifest_integrity"]["computed_payload_sha256"] == compute_file_sha256(payload)
+    assert saved["manifest_integrity"]["payload_sha256_match"] is True
+    assert saved["manifest_integrity"]["not_real_market_data"] is True
+
+
 def test_factor_output_written_when_requested(tmp_path: Path) -> None:
     factor_output = tmp_path / "factors.json"
 
@@ -211,11 +292,13 @@ def test_execute_partial_coverage_returns_not_ready_readiness_blocked(tmp_path: 
 
 
 def test_cli_success_exits_zero(tmp_path: Path) -> None:
+    payload = _payload(tmp_path)
+    manifest = _manifest(tmp_path, payload)
     completed = _run_cli(
         "--manifest",
-        str(MANIFEST),
+        str(manifest),
         "--payload",
-        str(_payload(tmp_path)),
+        str(payload),
         "--symbols",
         "FPT",
         "--factor-output",
@@ -241,6 +324,24 @@ def test_cli_expected_errors_exit_one_without_traceback(tmp_path: Path) -> None:
     assert "Traceback" not in completed.stderr
 
 
+def test_cli_allow_network_exits_one_without_traceback(tmp_path: Path) -> None:
+    payload = _payload(tmp_path)
+    manifest = _manifest(tmp_path, payload)
+    completed = _run_cli(
+        "--manifest",
+        str(manifest),
+        "--payload",
+        str(payload),
+        "--symbols",
+        "FPT",
+        "--allow-network",
+    )
+
+    assert completed.returncode == 1
+    assert '"network_not_implemented"' in completed.stdout
+    assert "Traceback" not in completed.stderr
+
+
 def test_no_network_imports() -> None:
     text = Path("src/trading_agent/ingestion/reviewed_adjusted_price_evidence.py").read_text(encoding="utf-8")
     cli = Path("scripts/run_reviewed_adjusted_price_evidence_intake.py").read_text(encoding="utf-8")
@@ -262,13 +363,15 @@ def _run_intake(
     *,
     payload_path: Path,
     symbols: list[str],
-    manifest_path: Path = MANIFEST,
+    manifest_path: Path | None = None,
     validation_output_path: Path | None = None,
     factor_output_path: Path | None = None,
     db_path: Path | None = None,
     dry_run: bool = True,
     execute: bool = False,
 ) -> dict[str, object]:
+    if manifest_path is None:
+        manifest_path = _manifest(payload_path.parent, payload_path)
     return run_reviewed_adjusted_price_evidence_intake(
         manifest_path=manifest_path,
         payload_path=payload_path,
@@ -306,8 +409,10 @@ def _payload(
     return path
 
 
-def _manifest(tmp_path: Path, **overrides: object) -> Path:
+def _manifest(tmp_path: Path, payload_path: Path, **overrides: object) -> Path:
     payload = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    payload["raw_path"] = str(payload_path)
+    payload["payload_sha256"] = compute_file_sha256(payload_path)
     payload.update(overrides)
     path = tmp_path / "manifest.json"
     path.write_text(json.dumps(payload), encoding="utf-8")

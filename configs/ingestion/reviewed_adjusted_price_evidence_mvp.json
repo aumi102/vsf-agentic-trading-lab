@@ -4,7 +4,7 @@
   "allow_network_default": false,
   "input_formats": ["json", "csv"],
   "required_fields": ["symbol", "trade_date", "close", "adjusted_close"],
-  "required_metadata": ["source_id", "raw_path", "reviewer", "reviewed_at", "evidence_basis"],
+  "required_metadata": ["source_id", "raw_path", "reviewer", "reviewed_at", "evidence_basis", "payload_sha256"],
   "accepted_evidence_basis": [
     "adjusted_price_vendor_export",
     "corporate_action_derived",
@@ -13,6 +13,7 @@
   "blocked": [
     "factor_1_fallback",
     "raw_close_as_adjusted_close",
+    "payload_sha256_mismatch",
     "missing_provenance",
     "missing_reviewer",
     "more_than_3_symbols",

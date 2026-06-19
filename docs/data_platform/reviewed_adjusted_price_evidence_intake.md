@@ -28,10 +28,14 @@ Each reviewed manifest must include:
 - `raw_path`;
 - `reviewer`;
 - `reviewed_at`;
-- `evidence_basis`.
+- `evidence_basis`;
+- `payload_sha256`.
 
 Accepted evidence basis values are `adjusted_price_vendor_export`,
 `corporate_action_derived`, and `manual_curated_for_dev_only`.
+`reviewed_at` must be ISO date `YYYY-MM-DD`. If `evidence_basis` is
+`manual_curated_for_dev_only`, the manifest must also include
+`not_real_market_data=true`.
 
 ## Payload Rules
 
@@ -39,9 +43,13 @@ Payload rows must include `symbol`, `trade_date`, `close`, and
 `adjusted_close`. The intake supports JSON list/object-with-`data` and CSV with
 headers.
 
-The intake rejects missing/non-positive prices, missing reviewed metadata, more
-than three symbols, unsupported evidence basis, and raw-close-as-adjusted-close
-rows. It does not create a `factor=1` fallback.
+The intake computes SHA-256 from the exact local payload bytes and compares it
+with `manifest.payload_sha256` before factor generation. Hash mismatches fail
+cleanly and do not write factor output or mutate a DB.
+
+The intake rejects missing/non-positive prices, missing reviewed metadata,
+invalid payload hashes, more than three symbols, unsupported evidence basis, and
+raw-close-as-adjusted-close rows. It does not create a `factor=1` fallback.
 
 ## Command
 
@@ -57,6 +65,10 @@ python scripts/run_reviewed_adjusted_price_evidence_intake.py --manifest path/to
 
 Execute mode is successful only when adjusted readiness returns `status=ok` and
 `backtest_gate=pass`.
+
+The validation report includes a `manifest_integrity` object with source ID,
+raw path, reviewer, review date, evidence basis, expected/computed payload
+SHA-256, hash-match status, and `not_real_market_data` when present.
 
 ## Boundaries
 

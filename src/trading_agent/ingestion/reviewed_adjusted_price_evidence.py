@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import tempfile
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -25,9 +27,10 @@ ERROR_STATUSES = {
     "missing_payload",
     "invalid_payload_json",
     "invalid_payload",
+    "invalid_payload_hash",
 }
 REQUIRED_FIELDS = ("symbol", "trade_date", "close", "adjusted_close")
-REQUIRED_METADATA = ("source_id", "raw_path", "reviewer", "reviewed_at", "evidence_basis")
+REQUIRED_METADATA = ("source_id", "raw_path", "reviewer", "reviewed_at", "evidence_basis", "payload_sha256")
 
 
 def load_reviewed_evidence_manifest(path: str | Path) -> dict[str, Any]:
@@ -43,6 +46,10 @@ def load_reviewed_evidence_payload(path: str | Path) -> Any:
         with source.open("r", encoding="utf-8-sig", newline="") as handle:
             return list(csv.DictReader(handle))
     return json.loads(source.read_text(encoding="utf-8-sig"))
+
+
+def compute_file_sha256(path: str | Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def normalize_reviewed_evidence_rows(payload_or_csv: Any) -> list[dict[str, Any]]:
@@ -66,6 +73,14 @@ def validate_reviewed_evidence_manifest(manifest: dict[str, Any]) -> list[str]:
         reasons.append(f"unsupported_evidence_basis:{basis}")
     if basis == "raw_close_as_adjusted_close":
         reasons.append("raw_close_as_adjusted_close_blocked")
+    payload_sha256 = _clean_optional(manifest.get("payload_sha256"))
+    if payload_sha256 and not _is_sha256(payload_sha256):
+        reasons.append("payload_sha256_invalid")
+    reviewed_at = _clean_optional(manifest.get("reviewed_at"))
+    if reviewed_at and not _is_iso_date(reviewed_at):
+        reasons.append("reviewed_at_must_be_iso_date")
+    if basis == "manual_curated_for_dev_only" and manifest.get("not_real_market_data") is not True:
+        reasons.append("not_real_market_data_required_for_dev_only")
     if bool(manifest.get("allow_network")):
         reasons.append("live_network_fetch_blocked")
     return reasons
@@ -185,6 +200,35 @@ def run_reviewed_adjusted_price_evidence_intake(
                 symbols=requested,
                 manifest_status="invalid_manifest",
                 reasons=manifest_errors,
+                manifest_integrity=_manifest_integrity(manifest),
+            ),
+            validation_output_path,
+        )
+
+    try:
+        computed_sha256 = compute_file_sha256(payload_path)
+    except FileNotFoundError:
+        return _write_report(
+            _summary(
+                status="missing_payload",
+                symbols=requested,
+                manifest_status="ok",
+                reasons=[f"Payload not found: {payload_path}"],
+                manifest_integrity=_manifest_integrity(manifest),
+            ),
+            validation_output_path,
+        )
+
+    manifest_integrity = _manifest_integrity(manifest, computed_payload_sha256=computed_sha256)
+    expected_sha256 = str(manifest.get("payload_sha256") or "").strip().lower()
+    if computed_sha256 != expected_sha256:
+        return _write_report(
+            _summary(
+                status="invalid_payload_hash",
+                symbols=requested,
+                manifest_status="ok",
+                reasons=["payload_sha256_mismatch"],
+                manifest_integrity=manifest_integrity,
             ),
             validation_output_path,
         )
@@ -198,6 +242,7 @@ def run_reviewed_adjusted_price_evidence_intake(
                 symbols=requested,
                 manifest_status="ok",
                 reasons=[f"Payload not found: {payload_path}"],
+                manifest_integrity=manifest_integrity,
             ),
             validation_output_path,
         )
@@ -208,6 +253,7 @@ def run_reviewed_adjusted_price_evidence_intake(
                 symbols=requested,
                 manifest_status="ok",
                 reasons=[f"Invalid payload: {exc}"],
+                manifest_integrity=manifest_integrity,
             ),
             validation_output_path,
         )
@@ -231,6 +277,7 @@ def run_reviewed_adjusted_price_evidence_intake(
                 missing_records=len(row_validation["missing_symbols"]),
                 reasons=sorted(set(reasons or ["reviewed_evidence_not_ready"])),
                 row_errors=row_validation["row_errors"],
+                manifest_integrity=manifest_integrity,
             ),
             validation_output_path,
         )
@@ -266,6 +313,7 @@ def run_reviewed_adjusted_price_evidence_intake(
         readiness_status=pipeline_result.get("readiness_status"),
         backtest_gate=pipeline_result.get("backtest_gate"),
         reasons=list(pipeline_result.get("reasons") or []),
+        manifest_integrity=manifest_integrity,
     )
     result["pipeline_result"] = pipeline_result
     return _write_report(result, validation_output_path)
@@ -315,6 +363,7 @@ def _summary(
     backtest_gate: str | None = None,
     reasons: list[str] | None = None,
     row_errors: list[dict[str, Any]] | None = None,
+    manifest_integrity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     result = {
         "status": status,
@@ -339,6 +388,8 @@ def _summary(
     }
     if row_errors is not None:
         result["row_errors"] = row_errors
+    if manifest_integrity is not None:
+        result["manifest_integrity"] = manifest_integrity
     return result
 
 
@@ -359,6 +410,29 @@ def _explicit_factor_one_reason(row: dict[str, Any]) -> bool:
     return False
 
 
+def _manifest_integrity(
+    manifest: dict[str, Any],
+    *,
+    computed_payload_sha256: str | None = None,
+) -> dict[str, Any]:
+    payload_sha256 = _clean_optional(manifest.get("payload_sha256"))
+    integrity = {
+        "source_id": _clean_optional(manifest.get("source_id")),
+        "raw_path": _clean_optional(manifest.get("raw_path")),
+        "reviewer": _clean_optional(manifest.get("reviewer")),
+        "reviewed_at": _clean_optional(manifest.get("reviewed_at")),
+        "evidence_basis": _clean_optional(manifest.get("evidence_basis")),
+        "payload_sha256": payload_sha256,
+        "computed_payload_sha256": computed_payload_sha256,
+        "payload_sha256_match": computed_payload_sha256 is not None
+        and payload_sha256 is not None
+        and computed_payload_sha256 == payload_sha256.lower(),
+    }
+    if "not_real_market_data" in manifest:
+        integrity["not_real_market_data"] = manifest.get("not_real_market_data")
+    return integrity
+
+
 def _normalize_symbols(values: list[str]) -> list[str]:
     seen = set()
     normalized = []
@@ -377,6 +451,20 @@ def _normalize_symbol(value: Any) -> str:
 def _clean_optional(value: Any) -> str | None:
     text = str(value or "").strip()
     return text or None
+
+
+def _is_sha256(value: str) -> bool:
+    clean = value.strip().lower()
+    return len(clean) == 64 and all(char in "0123456789abcdef" for char in clean)
+
+
+def _is_iso_date(value: str) -> bool:
+    if len(value) != 10 or value[4] != "-" or value[7] != "-":
+        return False
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
 
 
 def _to_float(value: Any) -> float | None:
