@@ -30,6 +30,9 @@ is approved:
 - source adapter fixtures for adjusted-close and corporate-action payloads;
 - controlled local payload verification for `FPT`, `VNM`, and `VCB`.
 
+Backtrader and VN100 work remains blocked until a real source is approved,
+factor records are verified, adjusted OHLC is populated, and readiness passes.
+
 ## 3. What is still missing
 
 The missing decision is the real source of adjustment evidence. The repo still

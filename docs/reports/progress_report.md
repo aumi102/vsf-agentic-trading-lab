@@ -46,7 +46,7 @@ No production DB write, no production backtest, no broker execution.
 | Adjustment factor source approval | Mentor-facing approval package identifies candidate real sources, minimum acceptance criteria, and the FPT/VNM/VCB verification plan. No live adapter is implemented until a source is approved. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1014 tests pass** |
+| Test suite | **1023 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -88,11 +88,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted factor evidence capture tests | 18 targeted tests |
 | Local adjustment factor application tests | 18 targeted tests |
 | Adjustment factor source adapter tests | 14 targeted tests |
-| Controlled factor source verification tests | 14 targeted tests |
+| Controlled factor source verification tests | 23 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1014 |
+| Total tests passing | 1023 |
 
 ---
 
