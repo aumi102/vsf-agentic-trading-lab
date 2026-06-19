@@ -26,7 +26,18 @@ def main() -> int:
     parser.add_argument("--source-id", required=True)
     parser.add_argument("--raw-path", required=True)
     parser.add_argument("--symbols", default="")
+    parser.add_argument(
+        "--allow-network",
+        action="store_true",
+        help="Reserved for future live verification; currently blocked.",
+    )
     args = parser.parse_args()
+
+    if args.allow_network:
+        return _print_error(
+            "network_not_implemented",
+            "Live factor-source verification is not implemented; use a local payload.",
+        )
 
     if args.method not in CANDIDATE_METHODS:
         return _print_error(

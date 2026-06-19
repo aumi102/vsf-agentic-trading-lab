@@ -46,6 +46,33 @@ def test_plan_blocks_allow_network() -> None:
     assert any("Live factor-source verification is not implemented" in reason for reason in plan["blocked_reasons"])
 
 
+def test_config_defaults_match_small_symbol_guardrail() -> None:
+    config = _load(Path("configs/ingestion/verified_factor_source_check_mvp.json"))
+
+    assert config["default_symbols"] == ["FPT", "VNM", "VCB"]
+    assert config["max_symbols_per_check"] == 3
+    assert config["allow_network_default"] is False
+
+
+def test_module_starts_with_future_annotations_import() -> None:
+    source = Path("src/trading_agent/ingestion/factor_source_verification.py").read_text(encoding="utf-8")
+
+    assert source.startswith("from __future__ import annotations\n")
+
+
+def test_controlled_verification_doc_frontmatter_is_valid() -> None:
+    source = Path("docs/data_platform/controlled_factor_source_verification.md").read_text(encoding="utf-8")
+    expected = [
+        "---",
+        "title: controlled_factor_source_verification",
+        "toc_min_heading_level: 2",
+        "toc_max_heading_level: 3",
+        "---",
+    ]
+
+    assert source.splitlines()[:5] == expected
+
+
 def test_adjusted_close_payload_verifies_usable_record() -> None:
     result = verify_factor_source_payload(
         _load(ADJUSTED_CLOSE_PAYLOAD),
@@ -121,6 +148,42 @@ def test_symbols_filter_excludes_unrequested_symbols() -> None:
     assert result["symbols"] == ["FPT"]
 
 
+def test_requested_symbol_not_present_returns_no_usable_records() -> None:
+    result = verify_factor_source_payload(
+        _load(ADJUSTED_CLOSE_PAYLOAD),
+        method="adjusted_close_ratio",
+        source_id="fixture:adjusted_close",
+        raw_path=str(ADJUSTED_CLOSE_PAYLOAD),
+        symbols=["MSN"],
+    )
+
+    assert result["status"] == "not_ready"
+    assert result["usable_records"] == 0
+    assert result["records_total"] == 0
+    assert "no_usable_factor_records" in result["reasons"]
+
+
+def test_mixed_usable_and_invalid_requested_records_are_reported() -> None:
+    payload = [
+        {"symbol": "FPT", "trade_date": "2026-01-02", "close": 100.0, "adjusted_close": 80.0},
+        {"symbol": "FPT", "trade_date": "2026-01-03", "close": 100.0, "adjusted_close": -1.0},
+        {"symbol": "VNM", "trade_date": "2026-01-02", "close": 100.0, "adjusted_close": 90.0},
+    ]
+    result = verify_factor_source_payload(
+        payload,
+        method="adjusted_close_ratio",
+        source_id="fixture:adjusted_close",
+        raw_path="fixtures/mixed.json",
+        symbols=["FPT"],
+    )
+
+    assert result["status"] == "ok"
+    assert result["records_total"] == 2
+    assert result["usable_records"] == 1
+    assert result["invalid_records"] == 1
+    assert result["missing_records"] == 0
+
+
 def test_cli_success_exits_zero() -> None:
     proc = _run_cli(
         "--payload",
@@ -141,6 +204,48 @@ def test_cli_success_exits_zero() -> None:
     assert payload["usable_records"] == 1
 
 
+def test_cli_allow_network_exits_one_cleanly() -> None:
+    proc = _run_cli(
+        "--payload",
+        str(ADJUSTED_CLOSE_PAYLOAD),
+        "--method",
+        "adjusted_close_ratio",
+        "--source-id",
+        "fixture:adjusted_close",
+        "--raw-path",
+        str(ADJUSTED_CLOSE_PAYLOAD),
+        "--symbols",
+        "FPT",
+        "--allow-network",
+    )
+
+    assert proc.returncode == 1
+    assert "Traceback" not in proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["status"] == "network_not_implemented"
+    assert payload["network_request_made"] is False
+
+
+def test_cli_unknown_method_exits_one_cleanly() -> None:
+    proc = _run_cli(
+        "--payload",
+        str(ADJUSTED_CLOSE_PAYLOAD),
+        "--method",
+        "raw_close_is_adjusted",
+        "--source-id",
+        "fixture:adjusted_close",
+        "--raw-path",
+        str(ADJUSTED_CLOSE_PAYLOAD),
+        "--symbols",
+        "FPT",
+    )
+
+    assert proc.returncode == 1
+    assert "Traceback" not in proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["status"] == "unknown_method"
+
+
 def test_cli_missing_payload_exits_one_cleanly() -> None:
     proc = _run_cli(
         "--payload",
@@ -159,6 +264,49 @@ def test_cli_missing_payload_exits_one_cleanly() -> None:
     assert "Traceback" not in proc.stderr
     payload = json.loads(proc.stdout)
     assert payload["status"] == "missing_payload"
+
+
+def test_cli_invalid_json_exits_one_cleanly(tmp_path: Path) -> None:
+    payload_path = tmp_path / "invalid.json"
+    payload_path.write_text("{not json", encoding="utf-8")
+    proc = _run_cli(
+        "--payload",
+        str(payload_path),
+        "--method",
+        "adjusted_close_ratio",
+        "--source-id",
+        "fixture:adjusted_close",
+        "--raw-path",
+        str(payload_path),
+        "--symbols",
+        "FPT",
+    )
+
+    assert proc.returncode == 1
+    assert "Traceback" not in proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["status"] == "invalid_json"
+
+
+def test_cli_requested_symbol_not_present_exits_one_cleanly() -> None:
+    proc = _run_cli(
+        "--payload",
+        str(ADJUSTED_CLOSE_PAYLOAD),
+        "--method",
+        "adjusted_close_ratio",
+        "--source-id",
+        "fixture:adjusted_close",
+        "--raw-path",
+        str(ADJUSTED_CLOSE_PAYLOAD),
+        "--symbols",
+        "MSN",
+    )
+
+    assert proc.returncode == 1
+    assert "Traceback" not in proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["status"] == "not_ready"
+    assert payload["usable_records"] == 0
 
 
 def test_cli_no_usable_records_exits_one_cleanly() -> None:
