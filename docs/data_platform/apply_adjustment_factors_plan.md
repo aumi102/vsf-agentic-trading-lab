@@ -38,6 +38,10 @@ unadjusted and is reported.
 fixture-only adapter contract that can convert synthetic adjusted-close or
 corporate-action payloads into the same factor-record format. This proves the
 handoff into local factor application, but it does not approve a live source.
+A controlled, no-network verification layer
+(`docs/data_platform/controlled_factor_source_verification.md`) reuses that
+adapter to confirm a payload yields usable factor records before any ETL
+population.
 
 Factor provenance is separate from raw OHLC provenance. `daily_prices.source_id`
 and `daily_prices.raw_path` continue to identify the raw OHLC source, while

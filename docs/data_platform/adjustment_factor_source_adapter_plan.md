@@ -51,4 +51,6 @@ fixture payload -> factor records -> local factor application -> adjusted readin
 ## Next Step
 
 Use this adapter contract to evaluate an approved live/vendor adjusted-close or
-corporate-action endpoint on a small explicit symbol set.
+corporate-action endpoint on a small explicit symbol set. The controlled,
+no-network verification layer that consumes this contract is documented in
+`docs/data_platform/controlled_factor_source_verification.md`.
