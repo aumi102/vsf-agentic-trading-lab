@@ -108,7 +108,9 @@ confirmed: current VN100 list, adjusted price mandatory, full OHLC adjustment,
 dividend/split factor logic, project-researched transaction cost, and slippage
 bounded by HSX/HOSE +/-7% and UPCoM +/-15%. See
 `docs/data_platform/confirmed_adjusted_price_policy.md` and
-`docs/demo/mentor_adjustment_factor_source_questions.md`.
+`docs/demo/mentor_adjustment_factor_source_questions.md`. The local adjusted
+price evidence pipeline now verifies payload evidence, writes factor records,
+can explicitly apply them to a local DB, and runs readiness for FPT/VNM/VCB.
 
 ## 6. Proposed Backtrader Pipeline
 
@@ -177,9 +179,9 @@ batch and rate controls.
 
 ## 12. Next Implementation Steps
 
-1. Verify adjusted-price/factor evidence against the controlled local payload contract on FPT/VNM/VCB.
+1. Run the local adjusted-price evidence pipeline on FPT/VNM/VCB.
 2. Capture raw evidence and provenance for the verified source path.
-3. Use the local factor application path to populate adjusted OHLC for a small explicit symbol set.
+3. Use explicit execute mode only after local evidence is reviewed.
 4. Add ETL Docker/scheduler foundation for stable ingestion only.
 5. Add Backtrader research scaffold over a small subset after adjusted readiness passes.
 6. Produce VN100 strategy selection report.
