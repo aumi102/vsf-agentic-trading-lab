@@ -57,5 +57,7 @@ python scripts/smoke_reviewed_adjusted_price_evidence_package.py --package-dir p
 - No Backtrader.
 - No Docker/scheduler.
 
-Next, replace the fixture package with real reviewed FPT/VNM/VCB evidence files
-provided by the user or mentor and run the same QA before any Backtrader work.
+Next, use `docs/data_platform/real_adjusted_price_evidence_onboarding.md` to
+place real reviewed FPT/VNM/VCB evidence under ignored local paths, generate the
+SHA-256 manifest, and save a QA report without committing real data. Backtrader
+remains blocked until reviewed real evidence and adjusted readiness pass.

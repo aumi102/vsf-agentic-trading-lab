@@ -16,6 +16,8 @@ env/
 config/source_probe_targets.local.json
 
 # Raw/private/non-public materials
+data/reviewed_evidence/
+reports/reviewed_evidence/
 data/
 reports/
 .pytest-tmp/

@@ -50,7 +50,7 @@ No production DB write, no production backtest, no broker execution.
 | Reviewed adjusted price evidence package QA | Synthetic/dev-only package smoke validates manifest+JSON+CSV shape, temporary execute, and readiness. No live fetch, production DB mutation, full VN100, or Backtrader. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1092 tests pass** |
+| Test suite | **1107 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -97,10 +97,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted price evidence smoke tests | 7 targeted tests |
 | Reviewed adjusted price evidence intake tests | 29 targeted tests |
 | Reviewed adjusted price evidence package QA tests | 13 targeted tests |
+| Real adjusted price evidence onboarding tests | 15 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1092 |
+| Total tests passing | 1107 |
 
 ---
 
@@ -126,7 +127,7 @@ No production DB write, no production backtest, no broker execution.
 9. ~~Implement exploratory backtest MVP (`mvp_ma20_ma50_momentum` strategy over FPT/VNM/VCB).~~ - Scaffold added over cached SQLite data with explicit caveats and validation gates.
 10. ~~Run mentor demo session and capture answers before QuestDB/LLM/backtest hardening.~~ — 2026-06-18 feedback captured; Backtrader, current VN100, adjusted OHLC, FA scan, simple TA templates, and ETL-first Docker direction recorded.
 11. ~~Add adjusted OHLC readiness gates so Backtrader work is blocked while adjusted columns are missing or invalid.~~ — Read-only API/tool/CLI added; current demo DB returns `not_ready` as expected.
-12. Run reviewed adjusted-price evidence package QA, then replace the dev fixture with real reviewed FPT/VNM/VCB evidence before any Backtrader VN100 work.
+12. Use the real adjusted-price evidence onboarding workflow to generate a manifest and QA report for manually provided FPT/VNM/VCB evidence before any Backtrader VN100 work.
 13. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
 
 ---
