@@ -149,6 +149,15 @@ def run_adjusted_price_evidence_pipeline(
     if apply_result and apply_result.get("status") in ERROR_STATUSES:
         status = str(apply_result["status"])
         reasons.extend(str(reason) for reason in apply_result.get("reasons", []))
+    elif execute and usable:
+        readiness_status = readiness_result.get("status") if readiness_result else None
+        backtest_gate = readiness_result.get("backtest_gate") if readiness_result else None
+        if readiness_status != "ok":
+            status = "not_ready"
+            reasons.append("adjusted_readiness_not_ready")
+        if backtest_gate != "pass":
+            status = "not_ready"
+            reasons.append("backtest_gate_blocked")
 
     return _summary(
         status=status,

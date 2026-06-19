@@ -63,7 +63,9 @@ python scripts/run_adjusted_price_evidence_pipeline.py --payload path/to/payload
 The JSON summary reports status, symbols, total/usable/invalid records, factor
 output path, DB mutation flag, readiness status, and backtest gate. Execute mode
 uses the existing local factor application path and then calls the adjusted OHLC
-readiness gate.
+readiness gate. Execute mode returns top-level `status=ok` only when readiness
+returns `status=ok` and `backtest_gate=pass`; partial DB adjustment with blocked
+readiness returns `status=not_ready`.
 
 ## Boundaries
 

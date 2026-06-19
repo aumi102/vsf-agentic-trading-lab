@@ -47,7 +47,7 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted price evidence pipeline | Local-first pipeline verifies adjusted-price payload evidence, writes factor records, can explicitly apply to a local DB, and runs adjusted readiness for FPT/VNM/VCB. No live fetch, full universe, or Backtrader. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1041 tests pass** |
+| Test suite | **1043 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -90,11 +90,11 @@ No production DB write, no production backtest, no broker execution.
 | Local adjustment factor application tests | 18 targeted tests |
 | Adjustment factor source adapter tests | 14 targeted tests |
 | Controlled factor source verification tests | 23 targeted tests |
-| Adjusted price evidence pipeline tests | 18 targeted tests |
+| Adjusted price evidence pipeline tests | 20 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1041 |
+| Total tests passing | 1043 |
 
 ---
 

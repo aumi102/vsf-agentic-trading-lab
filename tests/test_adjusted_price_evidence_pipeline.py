@@ -198,9 +198,11 @@ def test_missing_factors_keep_readiness_blocked(tmp_path: Path) -> None:
         dry_run=False,
     )
 
-    assert result["status"] == "ok"
+    assert result["status"] == "not_ready"
     assert result["readiness_status"] == "not_ready"
     assert result["backtest_gate"] == "blocked"
+    assert "adjusted_readiness_not_ready" in result["reasons"]
+    assert "backtest_gate_blocked" in result["reasons"]
     assert result["apply_result"]["rows_missing_factor"] == 1
 
 
@@ -280,6 +282,66 @@ def test_cli_allow_network_is_blocked(tmp_path: Path) -> None:
     assert completed.returncode == 1
     assert '"network_not_implemented"' in completed.stdout
     assert not output_path.exists()
+
+
+def test_cli_execute_with_blocked_readiness_exits_one_without_traceback(tmp_path: Path) -> None:
+    db_path = _make_db(
+        tmp_path,
+        [
+            {"symbol": "FPT", "trade_date": "2026-01-02"},
+            {"symbol": "FPT", "trade_date": "2026-01-03"},
+        ],
+    )
+    output_path = tmp_path / "factors.json"
+
+    completed = _run_cli(
+        "--payload",
+        str(FIXTURE),
+        "--source-id",
+        "fixture:adjusted_close",
+        "--raw-path",
+        str(FIXTURE),
+        "--symbols",
+        "FPT",
+        "--factor-output",
+        str(output_path),
+        "--db-path",
+        str(db_path),
+        "--execute",
+    )
+
+    assert completed.returncode == 1
+    assert '"status": "not_ready"' in completed.stdout
+    assert '"readiness_status": "not_ready"' in completed.stdout
+    assert '"backtest_gate": "blocked"' in completed.stdout
+    assert "Traceback" not in completed.stderr
+
+
+def test_cli_execute_with_full_coverage_exits_zero(tmp_path: Path) -> None:
+    db_path = _make_db(tmp_path, [{"symbol": "FPT", "trade_date": "2026-01-02"}])
+    output_path = tmp_path / "factors.json"
+
+    completed = _run_cli(
+        "--payload",
+        str(FIXTURE),
+        "--source-id",
+        "fixture:adjusted_close",
+        "--raw-path",
+        str(FIXTURE),
+        "--symbols",
+        "FPT",
+        "--factor-output",
+        str(output_path),
+        "--db-path",
+        str(db_path),
+        "--execute",
+    )
+
+    assert completed.returncode == 0
+    assert '"status": "ok"' in completed.stdout
+    assert '"readiness_status": "ok"' in completed.stdout
+    assert '"backtest_gate": "pass"' in completed.stdout
+    assert "Traceback" not in completed.stderr
 
 
 def test_write_factor_records_round_trips_payload(tmp_path: Path) -> None:
