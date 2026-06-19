@@ -15,8 +15,8 @@ usable, provenance-backed factor records before any ETL adjusted-OHLC
 population. It does not perform full-universe crawling and does not populate
 adjusted OHLC from unverified data.
 
-PR #37 created this controlled local verification layer; it did not approve a
-live source or populate adjusted OHLC.
+PR #37 created this controlled local verification layer; it did not wire a live
+source or populate adjusted OHLC.
 
 ## Relation To The Source Adapter (PR #36)
 
