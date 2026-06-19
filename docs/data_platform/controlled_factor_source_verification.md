@@ -8,15 +8,15 @@ toc_max_heading_level: 3
 
 ## Purpose
 
-This is a controlled, no-network-by-default verification layer for evaluating an
-approved adjusted-close or corporate-action factor source on a small explicit
-symbol set (default `FPT`, `VNM`, `VCB`). It confirms that a payload can produce
+This is a controlled, no-network-by-default verification layer for evaluating
+adjusted-price or corporate-action factor evidence on a small explicit symbol
+set (default `FPT`, `VNM`, `VCB`). It confirms that a payload can produce
 usable, provenance-backed factor records before any ETL adjusted-OHLC
 population. It does not perform full-universe crawling and does not populate
 adjusted OHLC from unverified data.
 
-PR #37 created this controlled local verification layer; it did not approve a
-live source or populate adjusted OHLC.
+PR #37 created this controlled local verification layer; it did not wire a live
+source or populate adjusted OHLC.
 
 ## Relation To The Source Adapter (PR #36)
 
@@ -74,7 +74,7 @@ provenance.
 
 ## Limitations
 
-- No approved live/vendor source is wired in unless explicitly verified.
+- No live/vendor source is wired in yet.
 - No full-universe crawl.
 - No adjusted OHLC population from this layer.
 - No Backtrader/VN100 unblock.
@@ -83,9 +83,12 @@ provenance.
 
 ## Next Step
 
-The next step is mentor approval of a real adjusted-close or corporate-action
-source, tracked in
-`docs/data_platform/adjustment_factor_source_approval_package.md`. Once a source
-is approved and verified against this contract, integrate it into ETL for a
-small explicit symbol set, then run the local factor application path and
-confirm adjusted readiness before any Backtrader VN100 work.
+Mentor policy is confirmed in
+`docs/data_platform/confirmed_adjusted_price_policy.md`: adjusted price is
+mandatory, full OHLC must be adjusted, VN100 uses the current list, transaction
+cost should be researched, and slippage must stay within HSX/HOSE +/-7% and
+UPCoM +/-15%.
+
+The next step is implementation verification of adjusted-price or factor
+evidence. Verify a small explicit symbol set, then run the local factor
+application path and confirm adjusted readiness before any Backtrader VN100 work.

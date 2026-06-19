@@ -43,7 +43,7 @@ commands to run during the mentor session.
 
 | Decision | Why it matters |
 |---|---|
-| approved live source | confirms which endpoint is allowed for repeated use |
+| verified live source | confirms which endpoint is allowed for repeated use |
 | symbol universe | prevents accidental full-universe crawl |
 | rate-limit/politeness policy | controls request cadence before scheduler work |
 | raw retention policy | defines how long payload evidence is kept |

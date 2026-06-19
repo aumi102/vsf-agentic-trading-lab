@@ -71,7 +71,7 @@ it may have no `source_runs` or `ingestion_watermarks`. A DB updated by
 and `status=ok` when lineage is complete.
 
 `tool_readiness=ok` only means the local deterministic tools have enough rows to
-answer. It does not mean production-grade ingestion, source approval, or
+answer. It does not mean production-grade ingestion, source verification, or
 freshness guarantees.
 
 ## Boundaries

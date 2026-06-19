@@ -18,7 +18,9 @@ financial advice.
 
 ## Adjustment Factor
 
-When a trusted adjusted close is available, derive one factor per row:
+Mentor policy is confirmed: adjusted price is mandatory, and the full OHLC
+series must be adjusted, not only close. When adjusted price is available,
+derive one factor per row:
 
 ```text
 adjust_factor = adjusted_close / close
@@ -28,9 +30,10 @@ adjusted_low = low * adjust_factor
 adjusted_close = close * adjust_factor
 ```
 
-If adjusted close is not available, the factor must be derived from dividend,
-split, and corporate action events before the row can be used in hardened
-backtests.
+The factor must reflect dividend/split/corporate-action logic and be traceable
+to source evidence. If adjusted price is not available, the factor must be
+derived from dividend, split, and corporate action events before the row can be
+used in hardened backtests.
 
 ## Raw Vs Adjusted Columns
 
@@ -84,23 +87,29 @@ network data. Readiness requires adjusted OHLC plus `adjustment_source_id`,
 `src/trading_agent/ingestion/sources/adjustment_factor_source.py` adds a
 fixture-only adapter interface for converting adjusted-close or
 corporate-action payloads into factor records with provenance. The current
-fixtures are synthetic and are not an approved live source. A controlled,
+fixtures are synthetic and are not a live source. A controlled,
 no-network verification layer
 (`docs/data_platform/controlled_factor_source_verification.md`) reuses that
 adapter to confirm a local payload yields usable factor records on a small
 explicit symbol set before any ETL adjusted-OHLC population. PR #37 created
-that controlled local verification layer without approving a live source or
+that controlled local verification layer without wiring a live source or
 populating adjusted OHLC.
-The next required step is mentor approval of the real adjustment evidence
-source, documented in
-`docs/data_platform/adjustment_factor_source_approval_package.md`.
+
+The confirmed policy is documented in
+`docs/data_platform/confirmed_adjusted_price_policy.md`. The next required step
+is implementation verification of adjusted-price or factor evidence for
+`FPT`, `VNM`, and `VCB`.
 
 ## Corporate Action Data
 
-The adjustment factor must come from approved source logic for dividends,
+The adjustment factor must come from verified source logic for dividends,
 splits, and other relevant corporate actions. The source, event date, effective
 date, and calculation method should be auditable. If events conflict across
 sources, the row should be flagged rather than silently adjusted.
+
+For later Backtrader assumptions, transaction cost is a research task. Slippage
+must be reasonable and bounded by daily exchange price bands: HSX/HOSE +/-7% and
+UPCoM +/-15%.
 
 ## Validation Checks
 
@@ -124,10 +133,9 @@ schema, factor provenance, and validation tests are in place.
 Not implemented yet:
 
 - full dividend/split/corporate-action event engine;
-- approved source for adjustment factors;
+- verified source evidence for adjustment factors;
 - reviewed source-probe evidence for ETL integration;
 - ETL population from a real verified source adapter;
-- approved live/vendor source verification for factor records;
-- mentor-approved adjustment factor source;
+- live/vendor source verification for factor records;
 - Backtrader strategy optimizer;
 - ETL Docker scheduler.
