@@ -1,0 +1,26 @@
+{
+  "default_symbols": ["FPT", "VNM", "VCB"],
+  "max_symbols": 3,
+  "allow_network_default": false,
+  "input_formats": ["json", "csv"],
+  "required_fields": ["symbol", "trade_date", "close", "adjusted_close"],
+  "required_metadata": ["source_id", "raw_path", "reviewer", "reviewed_at", "evidence_basis"],
+  "accepted_evidence_basis": [
+    "adjusted_price_vendor_export",
+    "corporate_action_derived",
+    "manual_curated_for_dev_only"
+  ],
+  "blocked": [
+    "factor_1_fallback",
+    "raw_close_as_adjusted_close",
+    "missing_provenance",
+    "missing_reviewer",
+    "more_than_3_symbols",
+    "live_network_fetch"
+  ],
+  "caveats": [
+    "Reviewed local files only; no network fetch.",
+    "Backtrader/VN100 remains blocked until reviewed evidence passes and adjusted readiness passes.",
+    "Manual curated evidence is development-only and not production evidence."
+  ]
+}

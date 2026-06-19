@@ -74,6 +74,13 @@ synthetic local FPT/VNM/VCB smoke. It creates temporary payload and SQLite
 artifacts by default, runs dry-run and execute modes, and checks readiness
 without live fetch, full-universe mutation, or Backtrader.
 
+## Reviewed Evidence Intake
+
+Use `docs/data_platform/reviewed_adjusted_price_evidence_intake.md` after the
+synthetic smoke. That layer accepts reviewed local JSON/CSV evidence with
+source, raw path, reviewer, review timestamp, and evidence-basis metadata before
+factor generation or optional local DB execute.
+
 ## Boundaries
 
 - No uncontrolled live fetch.
