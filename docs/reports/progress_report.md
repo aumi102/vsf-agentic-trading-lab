@@ -42,10 +42,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted factor evidence capture | Local payload evidence capture records symbol/source/path, SHA-256 content hash, candidate evidence fields, and derivability status. No network, DB mutation, or adjusted OHLC population. |
 | Local adjustment factor application | Dry-run-first module/CLI applies reviewed local factor records to adjusted OHLC columns for explicit symbols only. Execute mode mutates adjusted columns and separate factor provenance, not raw OHLC. No network, source discovery, full-universe mutation, or Backtrader. |
 | Adjustment factor source adapter | Fixture-only parser interface converts synthetic adjusted-close or corporate-action payloads into provenance-backed factor records compatible with local factor application. No live source approved, no network, and no DB mutation. |
-| Controlled factor source verification | No-network plan-only and local-payload verification layer reuses the source adapter to confirm a payload yields usable, provenance-backed factor records on a small explicit symbol set. No approved live source, no full-universe crawl, no adjusted OHLC population, no DB mutation. |
+| Controlled factor source verification | PR #37 added no-network plan-only and local-payload verification that reuses the source adapter to confirm a payload yields usable, provenance-backed factor records on a small explicit symbol set. No approved live source, no full-universe crawl, no adjusted OHLC population, no DB mutation. |
+| Adjustment factor source approval | Mentor-facing approval package identifies candidate real sources, minimum acceptance criteria, and the FPT/VNM/VCB verification plan. No live adapter is implemented until a source is approved. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1014 tests pass** |
+| Test suite | **1023 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -59,7 +60,7 @@ No production DB write, no production backtest, no broker execution.
 - **Production DB write:** Blocked until all §17 gates met (see `vietcap_iq_fa_ingestion_v2_readiness.md`).
 - **Full-history FA fetch:** Not implemented — blocked on mapping, PIT, and schema gates.
 - **Production backtest hardening:** Blocked on mentor review of store choice, execution convention, cost/slippage assumptions, and data adjustment policy.
-- **Adjusted OHLC hardening:** Schema slots and pure helpers exist, but trusted corporate-action factor sourcing is not implemented. Backtrader VN100 runs remain blocked until adjusted OHLC rows are populated and validated.
+- **Adjusted OHLC hardening:** Schema slots, pure helpers, local application, and controlled local payload verification exist, but a real adjusted-close or corporate-action source still needs mentor approval. Backtrader VN100 runs remain blocked until adjusted OHLC rows are populated and validated.
 
 ---
 
@@ -87,11 +88,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted factor evidence capture tests | 18 targeted tests |
 | Local adjustment factor application tests | 18 targeted tests |
 | Adjustment factor source adapter tests | 14 targeted tests |
-| Controlled factor source verification tests | 14 targeted tests |
+| Controlled factor source verification tests | 23 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1014 |
+| Total tests passing | 1023 |
 
 ---
 
@@ -117,7 +118,7 @@ No production DB write, no production backtest, no broker execution.
 9. ~~Implement exploratory backtest MVP (`mvp_ma20_ma50_momentum` strategy over FPT/VNM/VCB).~~ - Scaffold added over cached SQLite data with explicit caveats and validation gates.
 10. ~~Run mentor demo session and capture answers before QuestDB/LLM/backtest hardening.~~ — 2026-06-18 feedback captured; Backtrader, current VN100, adjusted OHLC, FA scan, simple TA templates, and ETL-first Docker direction recorded.
 11. ~~Add adjusted OHLC readiness gates so Backtrader work is blocked while adjusted columns are missing or invalid.~~ — Read-only API/tool/CLI added; current demo DB returns `not_ready` as expected.
-12. Verify an approved adjusted-close or corporate-action source on a small explicit symbol set, then use the local factor application path before Backtrader VN100 runs.
+12. Get mentor approval for the real adjusted-close or corporate-action source, verify it on FPT/VNM/VCB, then use the local factor application path before Backtrader VN100 runs.
 13. Build full-history FA fetcher only after mapping, PIT, and schema gates are clearer.
 
 ---

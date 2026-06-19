@@ -88,7 +88,12 @@ fixtures are synthetic and are not an approved live source. A controlled,
 no-network verification layer
 (`docs/data_platform/controlled_factor_source_verification.md`) reuses that
 adapter to confirm a local payload yields usable factor records on a small
-explicit symbol set before any ETL adjusted-OHLC population.
+explicit symbol set before any ETL adjusted-OHLC population. PR #37 created
+that controlled local verification layer without approving a live source or
+populating adjusted OHLC.
+The next required step is mentor approval of the real adjustment evidence
+source, documented in
+`docs/data_platform/adjustment_factor_source_approval_package.md`.
 
 ## Corporate Action Data
 
@@ -123,5 +128,6 @@ Not implemented yet:
 - reviewed source-probe evidence for ETL integration;
 - ETL population from a real verified source adapter;
 - approved live/vendor source verification for factor records;
+- mentor-approved adjustment factor source;
 - Backtrader strategy optimizer;
 - ETL Docker scheduler.

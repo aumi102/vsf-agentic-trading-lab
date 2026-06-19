@@ -102,7 +102,11 @@ factor records compatible with local application, but no live source is approved
 yet. A controlled, no-network verification layer
 (`docs/data_platform/controlled_factor_source_verification.md`) reuses that
 adapter to confirm a local payload yields usable factor records on a small
-explicit symbol set before any ETL adjusted-OHLC population.
+explicit symbol set before any ETL adjusted-OHLC population. PR #37 created
+that controlled local verification layer; the next step is mentor approval of
+the real adjusted-close or corporate-action source. See
+`docs/data_platform/adjustment_factor_source_approval_package.md` and
+`docs/demo/mentor_adjustment_factor_source_questions.md`.
 
 ## 6. Proposed Backtrader Pipeline
 
@@ -171,8 +175,8 @@ batch and rate controls.
 
 ## 12. Next Implementation Steps
 
-1. Integrate a trusted adjusted-close or corporate-action factor source.
-2. Verify a small approved live/vendor source against the fixture adapter contract.
+1. Get mentor approval for the trusted adjusted-close or corporate-action factor source.
+2. Verify the approved source against the controlled local payload contract on FPT/VNM/VCB.
 3. Use the local factor application path to populate adjusted OHLC for a small explicit symbol set.
 4. Add ETL Docker/scheduler foundation for stable ingestion only.
 5. Add Backtrader research scaffold over a small subset after adjusted readiness passes.
