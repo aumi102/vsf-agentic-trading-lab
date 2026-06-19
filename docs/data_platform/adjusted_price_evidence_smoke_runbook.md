@@ -44,6 +44,10 @@ dry-run mode, runs execute mode against that temporary DB, then calls adjusted
 OHLC readiness. It exits `0` only when dry-run succeeds, execute mode succeeds,
 and readiness returns `backtest_gate=pass`.
 
+Invalid requests, such as more than three symbols or symbols outside the
+synthetic `FPT,VNM,VCB` smoke set, exit `1` with a JSON `invalid_request`
+summary and no DB mutation.
+
 ## Persisted Local Artifacts
 
 To inspect the generated local payload, factor files, and temporary DB, provide

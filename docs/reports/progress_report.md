@@ -48,7 +48,7 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted price evidence smoke | Synthetic local smoke/runbook exercises FPT/VNM/VCB dry-run, execute against temporary SQLite, and adjusted readiness. No live fetch, production DB mutation, full universe, or Backtrader. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1046 tests pass** |
+| Test suite | **1050 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -92,11 +92,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjustment factor source adapter tests | 14 targeted tests |
 | Controlled factor source verification tests | 23 targeted tests |
 | Adjusted price evidence pipeline tests | 20 targeted tests |
-| Adjusted price evidence smoke tests | 3 targeted tests |
+| Adjusted price evidence smoke tests | 7 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1046 |
+| Total tests passing | 1050 |
 
 ---
 

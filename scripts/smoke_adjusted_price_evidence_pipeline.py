@@ -55,28 +55,25 @@ def main() -> int:
 def run_smoke(*, work_dir: Path, symbols: list[str], artifacts_persisted: bool) -> dict[str, Any]:
     requested = _validate_symbols(symbols)
     if not requested:
-        return {
-            "status": "invalid_request",
-            "symbols": requested,
-            "reasons": ["explicit_symbols_required"],
-            "artifacts_persisted": artifacts_persisted,
-        }
+        return _invalid_summary(
+            symbols=requested,
+            reasons=["explicit_symbols_required"],
+            artifacts_persisted=artifacts_persisted,
+        )
     if len(requested) > 3:
-        return {
-            "status": "invalid_request",
-            "symbols": requested,
-            "reasons": ["too_many_symbols:max=3"],
-            "artifacts_persisted": artifacts_persisted,
-        }
+        return _invalid_summary(
+            symbols=requested,
+            reasons=["too_many_symbols:max=3"],
+            artifacts_persisted=artifacts_persisted,
+        )
 
     missing = sorted(set(requested) - set(SYNTHETIC_PRICES))
     if missing:
-        return {
-            "status": "invalid_request",
-            "symbols": requested,
-            "reasons": [f"unsupported_synthetic_symbols:{','.join(missing)}"],
-            "artifacts_persisted": artifacts_persisted,
-        }
+        return _invalid_summary(
+            symbols=requested,
+            reasons=[f"unsupported_synthetic_symbols:{','.join(missing)}"],
+            artifacts_persisted=artifacts_persisted,
+        )
 
     work_dir.mkdir(parents=True, exist_ok=True)
     payload_path = work_dir / "adjusted_price_payload.json"
@@ -145,6 +142,31 @@ def _write_payload(path: Path, symbols: list[str]) -> None:
             }
         )
     path.write_text(json.dumps(rows, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _invalid_summary(
+    *,
+    symbols: list[str],
+    reasons: list[str],
+    artifacts_persisted: bool,
+) -> dict[str, Any]:
+    return {
+        "status": "invalid_request",
+        "symbols": symbols,
+        "artifacts_persisted": artifacts_persisted,
+        "payload_path": None,
+        "db_path": None,
+        "factor_output_paths": [],
+        "dry_run": None,
+        "execute": None,
+        "readiness": None,
+        "reasons": reasons,
+        "caveats": [
+            "Synthetic local payload only; no network request is made.",
+            "No DB mutation was made.",
+            "No Backtrader/VN100 run is performed.",
+        ],
+    }
 
 
 def _write_daily_price_db(path: Path, symbols: list[str]) -> None:
