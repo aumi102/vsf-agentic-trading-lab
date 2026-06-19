@@ -70,6 +70,12 @@ The validation report includes a `manifest_integrity` object with source ID,
 raw path, reviewer, review date, evidence basis, expected/computed payload
 SHA-256, hash-match status, and `not_real_market_data` when present.
 
+## Package QA
+
+`docs/data_platform/reviewed_adjusted_price_evidence_package_qa.md` documents
+the package-level smoke that runs JSON dry-run, CSV dry-run, temporary-DB
+execute, and readiness against a synthetic reviewed evidence package.
+
 ## Boundaries
 
 - Reviewed local evidence only.
