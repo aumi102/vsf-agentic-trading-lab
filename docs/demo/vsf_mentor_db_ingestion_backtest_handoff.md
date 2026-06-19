@@ -28,13 +28,15 @@ python scripts/build_mvp_db.py --symbols FPT,VNM,VCB
 python scripts/run_ohlcv_ingestion.py --symbols FPT,VNM,VCB --mode cached
 python scripts/run_ingestion_status.py --symbols FPT,VNM,VCB
 python scripts/check_adjusted_ohlc_readiness.py --symbols FPT,VNM,VCB
+python scripts/smoke_adjusted_price_evidence_pipeline.py
 python scripts/plan_live_ingestion_run.py --symbols FPT,VNM,VCB
 python scripts/run_mentor_demo_suite.py
 ```
 
 Expected result: the DB build and cached ingestion succeed, ingestion status
-returns `ok`, the production ingestion planner returns `ok` without network or
-DB mutation, and the mentor suite passes.
+returns `ok`, the adjusted-price evidence smoke returns `ok` against a
+temporary local DB, the production ingestion planner returns `ok` without
+network or DB mutation, and the mentor suite passes.
 
 ## 3. Current DB/Ingestion Architecture
 
@@ -111,6 +113,9 @@ bounded by HSX/HOSE +/-7% and UPCoM +/-15%. See
 `docs/demo/mentor_adjustment_factor_source_questions.md`. The local adjusted
 price evidence pipeline now verifies payload evidence, writes factor records,
 can explicitly apply them to a local DB, and runs readiness for FPT/VNM/VCB.
+A synthetic local smoke/runbook now exercises that path with temporary payload
+and DB artifacts before any reviewed real evidence or production adjusted OHLC
+population.
 
 ## 6. Proposed Backtrader Pipeline
 
@@ -179,9 +184,9 @@ batch and rate controls.
 
 ## 12. Next Implementation Steps
 
-1. Run the local adjusted-price evidence pipeline on FPT/VNM/VCB.
+1. Run the adjusted-price evidence smoke/runbook for FPT/VNM/VCB.
 2. Capture raw evidence and provenance for the verified source path.
-3. Use explicit execute mode only after local evidence is reviewed.
+3. Use explicit execute mode only after reviewed local evidence is available.
 4. Add ETL Docker/scheduler foundation for stable ingestion only.
 5. Add Backtrader research scaffold over a small subset after adjusted readiness passes.
 6. Produce VN100 strategy selection report.

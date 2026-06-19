@@ -67,6 +67,13 @@ readiness gate. Execute mode returns top-level `status=ok` only when readiness
 returns `status=ok` and `backtest_gate=pass`; partial DB adjustment with blocked
 readiness returns `status=not_ready`.
 
+## Smoke Runbook
+
+Use `docs/data_platform/adjusted_price_evidence_smoke_runbook.md` for the
+synthetic local FPT/VNM/VCB smoke. It creates temporary payload and SQLite
+artifacts by default, runs dry-run and execute modes, and checks readiness
+without live fetch, full-universe mutation, or Backtrader.
+
 ## Boundaries
 
 - No uncontrolled live fetch.
