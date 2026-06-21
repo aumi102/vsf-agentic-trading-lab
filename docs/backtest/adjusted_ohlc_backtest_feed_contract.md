@@ -149,3 +149,12 @@ python scripts/preview_adjusted_ohlc_backtest_feed.py --db-path path/to/local.sq
 
 This preview is read-only and maps adjusted OHLC into the `open/high/low/close`
 fields expected by a later feed. It does not run Backtrader or a strategy.
+
+## Next Step
+
+`docs/backtest/adjusted_ohlc_feed_to_backtest_dry_run.md` consumes this feed
+preview JSON and prepares a backtest input contract for a research dry-run. That
+layer validates the adjusted feed plus explicit transaction-cost and slippage
+assumptions (slippage bounded by HOSE/HSX +/-7% and UPCoM +/-15%). It is
+preparation only: it does not implement Backtrader, optimize a strategy, run
+full VN100, or produce investment advice.
