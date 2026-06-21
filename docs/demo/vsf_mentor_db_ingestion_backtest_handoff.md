@@ -132,7 +132,9 @@ audit before any Backtrader work. That audit is read-only and checks adjusted
 row population, factor provenance, factor consistency, validation status, and
 readiness status. Strict audit mode requires factor records, validation report,
 and readiness report; raw OHLC unchanged is independently verified only when a
-raw baseline is supplied.
+raw baseline is supplied. The feed contract then maps adjusted OHLC into preview
+`open/high/low/close` fields for FPT/VNM/VCB planning only; it still does not
+implement Backtrader or strategies.
 
 ## 6. Proposed Backtrader Pipeline
 
@@ -205,7 +207,8 @@ batch and rate controls.
 2. Generate a SHA-256 manifest, validation JSON, and dry-run Markdown report for that package.
 3. Use explicit local execute readiness only after reviewed local evidence and the report pass inspection.
 4. Audit adjusted OHLC execution outputs in strict mode before considering backtest feed planning.
-5. Add ETL Docker/scheduler foundation for stable ingestion only.
-6. Add Backtrader research scaffold over a small subset after adjusted readiness passes.
-7. Produce VN100 strategy selection report.
-8. Only then consider broader scheduler, QuestDB, or realtime work.
+5. Review the adjusted OHLC backtest feed contract before implementing any Backtrader scaffold.
+6. Add ETL Docker/scheduler foundation for stable ingestion only.
+7. Add Backtrader research scaffold over a small subset after adjusted readiness passes.
+8. Produce VN100 strategy selection report.
+9. Only then consider broader scheduler, QuestDB, or realtime work.

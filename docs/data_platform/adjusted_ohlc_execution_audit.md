@@ -70,6 +70,7 @@ raw OHLC equality.
 - No Backtrader.
 - No Docker/scheduler.
 
-If this strict audit passes for FPT/VNM/VCB, the next step is a small-symbol
-adjusted OHLC backtest feed contract/planning layer, not Backtrader
+If this strict audit passes for FPT/VNM/VCB, the next step is
+`docs/backtest/adjusted_ohlc_backtest_feed_contract.md`: a small-symbol feed
+contract and preview layer that uses adjusted OHLC only. It is not Backtrader
 implementation or full VN100 execution.

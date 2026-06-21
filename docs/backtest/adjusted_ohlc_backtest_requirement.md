@@ -111,6 +111,9 @@ adjusted rows, factor provenance, factor consistency, and readiness reports
 before any Backtrader feed planning. Strict audit mode requires factor records,
 validation report, and readiness report. Raw OHLC unchanged is independently
 verified only if a raw baseline file is supplied.
+`docs/backtest/adjusted_ohlc_backtest_feed_contract.md` then defines the
+small-symbol feed preview contract that maps adjusted OHLC into feed
+`open/high/low/close` fields without implementing Backtrader.
 
 ## Corporate Action Data
 
@@ -137,6 +140,7 @@ Before a row enters a hardened backtest feed:
 - rows with unresolved corporate-action status are excluded or blocked.
 - local execute-readiness validation and adjusted OHLC execution audit both pass.
 - adjusted OHLC execution audit reports `backtest_planning_gate=pass`.
+- feed preview uses adjusted OHLC only and keeps raw OHLC diagnostics-only.
 
 ## Caveats
 
