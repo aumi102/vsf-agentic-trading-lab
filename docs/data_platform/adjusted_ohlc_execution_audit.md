@@ -70,6 +70,15 @@ raw OHLC equality.
 - No Backtrader.
 - No Docker/scheduler.
 
-If this strict audit passes for FPT/VNM/VCB, the next step is a small-symbol
-adjusted OHLC backtest feed contract/planning layer, not Backtrader
+If this strict audit passes for FPT/VNM/VCB, the next step is
+`docs/backtest/adjusted_ohlc_backtest_feed_contract.md`: a small-symbol feed
+contract and preview layer that uses adjusted OHLC only. It is not Backtrader
 implementation or full VN100 execution.
+
+The feed contract consumes this audit report directly and will not accept it
+just because `status=ok`. It re-checks `evidence_mode=strict`,
+`required_evidence_present=true`, `unadjusted_rows=0`, `readiness_status=ok`,
+`backtest_gate=pass`, `validation_status=ok`, `db_mutation_made=true`, that the
+audit `symbols` cover the requested symbols, and that the audit `db_path`
+matches the feed DB. Keep these fields populated; a minimal audit report blocks
+the feed preview with `audit_missing_required_field:<field>`.

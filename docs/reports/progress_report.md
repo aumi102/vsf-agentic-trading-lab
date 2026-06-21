@@ -51,9 +51,10 @@ No production DB write, no production backtest, no broker execution.
 | Real adjusted price evidence onboarding | Local-only manifest generation and package validation for manually provided FPT/VNM/VCB evidence under ignored paths. No real data committed, no live fetch, no Backtrader. |
 | Real adjusted price local execute readiness | Explicit local SQLite execute-readiness wrapper applies reviewed package factors, writes readiness JSON, and emits a Markdown report. No production/demo DB by default, no Backtrader. |
 | Adjusted OHLC execution audit | Read-only strict audit checks adjusted OHLC population, provenance, factor consistency, validation report status, readiness report status, and optional raw OHLC baseline after local execute readiness. No DB mutation or Backtrader. |
+| Adjusted OHLC backtest feed contract | Read-only small-symbol contract and preview maps adjusted OHLC to feed price fields only after strict audit passes. Hardened gates require every requested symbol to have eligible adjusted rows, reject stale/mismatched audit metadata, validate date and `max_rows` instead of silently correcting them, and emit `feed_contract_version=adjusted_ohlc_feed_v1`. No Backtrader implementation or strategy execution. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1187 tests pass** |
+| Test suite | **1224 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -104,10 +105,11 @@ No production DB write, no production backtest, no broker execution.
 | Reviewed adjusted price evidence report tests | 17 targeted tests |
 | Reviewed adjusted price local execute readiness tests | 24 targeted tests |
 | Adjusted OHLC execution audit tests | 33 targeted tests |
+| Adjusted OHLC backtest feed readiness tests | 37 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1187 |
+| Total tests passing | 1224 |
 
 ---
 
