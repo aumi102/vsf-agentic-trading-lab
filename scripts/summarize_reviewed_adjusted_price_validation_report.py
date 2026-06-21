@@ -74,6 +74,17 @@ def _validation_reasons(report: dict[str, Any], expected_symbols: list[str], min
     reasons: list[str] = []
     if report.get("status") != "ok":
         reasons.append(f"validation_status:{report.get('status')}")
+    integrity = report.get("manifest_integrity")
+    if not isinstance(integrity, dict):
+        reasons.append("manifest_integrity_missing")
+    elif integrity.get("payload_sha256_match") is not True:
+        reasons.append("payload_sha256_not_matched")
+    invalid = _to_int(report.get("invalid_records"))
+    if invalid > 0:
+        reasons.append(f"invalid_records_present:{invalid}")
+    missing = _to_int(report.get("missing_records"))
+    if missing > 0:
+        reasons.append(f"missing_records_present:{missing}")
     report_symbols = {_normalize_symbol(item) for item in report.get("symbols") or []}
     missing_symbols = [symbol for symbol in expected_symbols if symbol not in report_symbols]
     if missing_symbols:

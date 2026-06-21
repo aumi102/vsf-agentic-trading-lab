@@ -51,7 +51,7 @@ No production DB write, no production backtest, no broker execution.
 | Real adjusted price evidence onboarding | Local-only manifest generation and package validation for manually provided FPT/VNM/VCB evidence under ignored paths. No real data committed, no live fetch, no Backtrader. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1123 tests pass** |
+| Test suite | **1130 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -99,11 +99,11 @@ No production DB write, no production backtest, no broker execution.
 | Reviewed adjusted price evidence intake tests | 29 targeted tests |
 | Reviewed adjusted price evidence package QA tests | 13 targeted tests |
 | Real adjusted price evidence onboarding tests | 21 targeted tests |
-| Reviewed adjusted price evidence report tests | 10 targeted tests |
+| Reviewed adjusted price evidence report tests | 17 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1123 |
+| Total tests passing | 1130 |
 
 ---
 

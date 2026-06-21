@@ -40,15 +40,19 @@ python scripts/summarize_reviewed_adjusted_price_validation_report.py --validati
 ## Pass Criteria
 
 - Validation status is `ok`.
+- Manifest integrity is present.
 - Manifest integrity has `payload_sha256_match=true`.
 - Expected symbols are present.
 - Usable records meet the configured minimum.
-- No invalid or missing records are reported.
+- `invalid_records=0`.
+- `missing_records=0`.
 
 ## Fail Criteria
 
 - Missing or invalid manifest.
+- Missing manifest integrity.
 - Payload SHA-256 mismatch.
+- Invalid or missing records.
 - Missing expected symbols.
 - Any raw-close-as-adjusted-close or `factor=1` fallback issue.
 - Validation status other than `ok`.
