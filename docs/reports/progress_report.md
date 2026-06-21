@@ -50,9 +50,10 @@ No production DB write, no production backtest, no broker execution.
 | Reviewed adjusted price evidence package QA | Synthetic/dev-only package smoke validates manifest+JSON+CSV shape, temporary execute, and readiness. No live fetch, production DB mutation, full VN100, or Backtrader. |
 | Real adjusted price evidence onboarding | Local-only manifest generation and package validation for manually provided FPT/VNM/VCB evidence under ignored paths. No real data committed, no live fetch, no Backtrader. |
 | Real adjusted price local execute readiness | Explicit local SQLite execute-readiness wrapper applies reviewed package factors, writes readiness JSON, and emits a Markdown report. No production/demo DB by default, no Backtrader. |
+| Adjusted OHLC execution audit | Read-only audit checks adjusted OHLC population, provenance, factor consistency, validation report status, and readiness report status after local execute readiness. No DB mutation or Backtrader. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1154 tests pass** |
+| Test suite | **1174 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -102,10 +103,11 @@ No production DB write, no production backtest, no broker execution.
 | Real adjusted price evidence onboarding tests | 21 targeted tests |
 | Reviewed adjusted price evidence report tests | 17 targeted tests |
 | Reviewed adjusted price local execute readiness tests | 24 targeted tests |
+| Adjusted OHLC execution audit tests | 20 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1154 |
+| Total tests passing | 1174 |
 
 ---
 

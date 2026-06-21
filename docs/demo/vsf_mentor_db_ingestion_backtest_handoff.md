@@ -128,7 +128,9 @@ execute-readiness workflow can then apply the package only to an explicit
 temporary/local SQLite DB and write readiness reports. If package validation
 fails before DB mutation, readiness is skipped rather than inferred from
 unrelated DB state. The next inspection layer is an adjusted OHLC execution
-audit before any Backtrader work.
+audit before any Backtrader work. That audit is read-only and checks adjusted
+row population, factor provenance, factor consistency, validation status, and
+readiness status.
 
 ## 6. Proposed Backtrader Pipeline
 
