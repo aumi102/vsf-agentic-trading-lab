@@ -69,3 +69,7 @@ separate reviewed data process.
 - Do not commit generated reports under `reports/reviewed_evidence/`.
 - Do not execute into production/demo DB.
 - Do not run Backtrader until reviewed evidence and adjusted readiness pass.
+
+After the report passes, use
+`docs/data_platform/real_adjusted_price_local_execute_readiness.md` for an
+explicit temporary/local SQLite execute-readiness check.
