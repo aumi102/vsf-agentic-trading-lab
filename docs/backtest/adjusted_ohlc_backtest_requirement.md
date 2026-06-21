@@ -108,7 +108,9 @@ evidence-basis metadata plus payload SHA-256 integrity before real adjusted-pric
 evidence is used. After local execute readiness, the read-only
 `docs/data_platform/adjusted_ohlc_execution_audit.md` workflow must inspect
 adjusted rows, factor provenance, factor consistency, and readiness reports
-before any Backtrader feed planning.
+before any Backtrader feed planning. Strict audit mode requires factor records,
+validation report, and readiness report. Raw OHLC unchanged is independently
+verified only if a raw baseline file is supplied.
 
 ## Corporate Action Data
 
@@ -134,6 +136,7 @@ Before a row enters a hardened backtest feed:
 - adjusted OHLC remains internally consistent after rounding;
 - rows with unresolved corporate-action status are excluded or blocked.
 - local execute-readiness validation and adjusted OHLC execution audit both pass.
+- adjusted OHLC execution audit reports `backtest_planning_gate=pass`.
 
 ## Caveats
 

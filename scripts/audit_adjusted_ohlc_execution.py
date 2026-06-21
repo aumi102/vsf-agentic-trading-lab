@@ -24,8 +24,10 @@ def main() -> int:
     parser.add_argument("--factor-records", default=None)
     parser.add_argument("--validation-report", default=None)
     parser.add_argument("--readiness-report", default=None)
+    parser.add_argument("--raw-baseline", default=None)
     parser.add_argument("--output-json", default=None)
     parser.add_argument("--output-md", default=None)
+    parser.add_argument("--allow-incomplete-evidence", action="store_true")
     parser.add_argument("--allow-demo-db", action="store_true")
     args = parser.parse_args()
 
@@ -35,7 +37,9 @@ def main() -> int:
         factor_records_path=Path(args.factor_records) if args.factor_records else None,
         validation_report_path=Path(args.validation_report) if args.validation_report else None,
         readiness_report_path=Path(args.readiness_report) if args.readiness_report else None,
+        raw_baseline_path=Path(args.raw_baseline) if args.raw_baseline else None,
         allow_demo_db=args.allow_demo_db,
+        allow_incomplete_evidence=args.allow_incomplete_evidence,
     )
     if args.output_json:
         _write_json(Path(args.output_json), result)

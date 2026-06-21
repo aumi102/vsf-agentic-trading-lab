@@ -19,12 +19,14 @@ or approve full VN100 execution.
 ## Command
 
 ```bash
-python scripts/audit_adjusted_ohlc_execution.py --db-path path/to/local.sqlite --symbols FPT,VNM,VCB --factor-records reports/reviewed_evidence/factors_execute.json --validation-report reports/reviewed_evidence/execute_validation.json --readiness-report reports/reviewed_evidence/readiness.json --output-json reports/reviewed_evidence/adjusted_ohlc_audit.json --output-md reports/reviewed_evidence/adjusted_ohlc_audit.md
+python scripts/audit_adjusted_ohlc_execution.py --db-path path/to/local.sqlite --symbols FPT,VNM,VCB --factor-records reports/reviewed_evidence/factors_execute.json --validation-report reports/reviewed_evidence/execute_validation.json --readiness-report reports/reviewed_evidence/readiness.json --raw-baseline reports/reviewed_evidence/raw_ohlc_baseline.json --output-json reports/reviewed_evidence/adjusted_ohlc_audit.json --output-md reports/reviewed_evidence/adjusted_ohlc_audit.md
 ```
 
 ## Pass Criteria
 
 - DB exists and an explicit symbol set is provided.
+- Strict evidence mode is used.
+- Factor records, validation report, and readiness report are provided.
 - Requested symbols have daily price rows.
 - Adjusted open, high, low, and close are populated.
 - Adjustment source, raw path, and method provenance are present.
@@ -33,14 +35,31 @@ python scripts/audit_adjusted_ohlc_execution.py --db-path path/to/local.sqlite -
   the reviewed factor within tolerance.
 - Validation report is `ok` and shows `db_mutation_made=true`.
 - Readiness report is `ok` and `backtest_gate=pass`.
+- `backtest_planning_gate=pass`.
 
 ## Failure Cases
 
 - Missing DB or missing explicit symbols.
 - Demo DB path without explicit override.
+- Missing factor records, validation report, or readiness report in strict mode.
 - Missing adjusted OHLC or provenance.
 - Factor mismatch or missing factor record.
 - Validation or readiness report is missing, failed, or stale.
+- Raw OHLC baseline mismatch if `--raw-baseline` is provided.
+
+## Incomplete Evidence Mode
+
+`--allow-incomplete-evidence` is for row-level inspection only. It may return
+`status=ok` for adjusted row checks, but it always keeps
+`backtest_planning_gate=blocked` and is not sufficient for backtest feed
+planning.
+
+## Raw OHLC Baseline
+
+The audit is read-only, but raw OHLC equality against the pre-execute state is
+verified only when `--raw-baseline` is provided. Without that file, the report
+states `raw_ohlc_baseline_status=not_provided` and does not claim pre-execute
+raw OHLC equality.
 
 ## Boundaries
 
@@ -51,5 +70,6 @@ python scripts/audit_adjusted_ohlc_execution.py --db-path path/to/local.sqlite -
 - No Backtrader.
 - No Docker/scheduler.
 
-If this audit passes for FPT/VNM/VCB, the next step is small-symbol adjusted
-OHLC backtest integration planning, not full VN100 execution.
+If this strict audit passes for FPT/VNM/VCB, the next step is a small-symbol
+adjusted OHLC backtest feed contract/planning layer, not Backtrader
+implementation or full VN100 execution.

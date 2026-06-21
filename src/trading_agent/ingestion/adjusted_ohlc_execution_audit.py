@@ -29,10 +29,16 @@ def audit_adjusted_ohlc_execution(
     factor_records_path: str | Path | None = None,
     validation_report_path: str | Path | None = None,
     readiness_report_path: str | Path | None = None,
+    raw_baseline_path: str | Path | None = None,
     allow_demo_db: bool = False,
+    require_factor_records: bool = True,
+    require_validation_report: bool = True,
+    require_readiness_report: bool = True,
+    allow_incomplete_evidence: bool = False,
 ) -> dict[str, Any]:
     requested_symbols = _normalize_symbols(symbols)
     path = Path(db_path)
+    evidence_mode = "incomplete" if allow_incomplete_evidence else "strict"
     request_reasons = _request_reasons(path, requested_symbols, allow_demo_db)
     if request_reasons:
         return _summary(
@@ -40,11 +46,21 @@ def audit_adjusted_ohlc_execution(
             db_path=path,
             symbols=requested_symbols,
             reasons=request_reasons,
+            evidence_mode=evidence_mode,
         )
 
     factor_records, factor_load_reasons = load_factor_records(factor_records_path)
     validation = _load_status_report(validation_report_path, "validation")
     readiness = _load_status_report(readiness_report_path, "readiness")
+    baseline_records, baseline_load_reasons = load_raw_ohlc_baseline(raw_baseline_path)
+    required_evidence_reasons = _required_evidence_reasons(
+        factor_records_path=factor_records_path,
+        validation_report_path=validation_report_path,
+        readiness_report_path=readiness_report_path,
+        require_factor_records=require_factor_records and not allow_incomplete_evidence,
+        require_validation_report=require_validation_report and not allow_incomplete_evidence,
+        require_readiness_report=require_readiness_report and not allow_incomplete_evidence,
+    )
 
     with _connect_readonly(path) as con:
         columns = _column_names(con, "daily_prices")
@@ -56,24 +72,31 @@ def audit_adjusted_ohlc_execution(
                 reasons=["daily_prices_table_missing"],
                 validation=validation,
                 readiness=readiness,
+                evidence_mode=evidence_mode,
             )
         rows = _load_daily_price_rows(con, requested_symbols)
 
     coverage = audit_symbol_coverage(rows, requested_symbols)
     row_audit = audit_adjusted_ohlc_rows(rows, columns)
     factor_audit = audit_factor_consistency(rows, factor_records) if factor_records_path else _empty_factor_audit()
+    baseline_audit = audit_raw_ohlc_baseline(rows, baseline_records) if raw_baseline_path else _baseline_not_provided()
     validation_reasons = _validation_report_reasons(validation)
     readiness_reasons = _readiness_report_reasons(readiness)
 
     reasons = [
+        *required_evidence_reasons,
         *factor_load_reasons,
+        *baseline_load_reasons,
         *coverage["reasons"],
         *row_audit["reasons"],
         *factor_audit["reasons"],
+        *baseline_audit["reasons"],
         *validation_reasons,
         *readiness_reasons,
     ]
     status = "ok" if not reasons else "not_ready"
+    required_evidence_present = not required_evidence_reasons
+    backtest_planning_gate = "pass" if status == "ok" and evidence_mode == "strict" and required_evidence_present else "blocked"
     return _summary(
         status=status,
         db_path=path,
@@ -85,6 +108,8 @@ def audit_adjusted_ohlc_execution(
         invalid_rows=row_audit["invalid_rows"],
         factor_consistency_errors=factor_audit["factor_consistency_errors"],
         provenance_errors=row_audit["provenance_errors"] + factor_audit["provenance_errors"],
+        raw_ohlc_baseline_status=baseline_audit["status"],
+        raw_ohlc_baseline_errors=baseline_audit["errors"],
         readiness_status=readiness.get("status"),
         backtest_gate=readiness.get("backtest_gate"),
         validation_status=validation.get("status"),
@@ -92,6 +117,10 @@ def audit_adjusted_ohlc_execution(
         reasons=reasons,
         validation=validation,
         readiness=readiness,
+        evidence_mode=evidence_mode,
+        required_evidence_present=required_evidence_present,
+        backtest_planning_gate=backtest_planning_gate,
+        incomplete_evidence=allow_incomplete_evidence,
     )
 
 
@@ -104,6 +133,27 @@ def load_factor_records(path: str | Path | None) -> tuple[list[Any], list[str]]:
         return [], [f"factor_records_missing:{path}"]
     except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
         return [], [f"factor_records_invalid:{exc}"]
+
+
+def load_raw_ohlc_baseline(path: str | Path | None) -> tuple[list[dict[str, Any]], list[str]]:
+    if path is None:
+        return [], []
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    except FileNotFoundError:
+        return [], [f"raw_ohlc_baseline_missing:{path}"]
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        return [], [f"raw_ohlc_baseline_invalid:{exc}"]
+    if not isinstance(payload, list):
+        return [], ["raw_ohlc_baseline_must_be_list"]
+    records: list[dict[str, Any]] = []
+    reasons: list[str] = []
+    for index, item in enumerate(payload):
+        if not isinstance(item, dict):
+            reasons.append(f"raw_ohlc_baseline_record_must_be_object:{index}")
+            continue
+        records.append(item)
+    return records, reasons
 
 
 def audit_symbol_coverage(rows: list[dict[str, Any]], symbols: list[str]) -> dict[str, Any]:
@@ -242,11 +292,47 @@ def audit_factor_consistency(rows: list[dict[str, Any]], factor_records: list[An
     }
 
 
+def audit_raw_ohlc_baseline(rows: list[dict[str, Any]], baseline_records: list[dict[str, Any]]) -> dict[str, Any]:
+    row_map = {
+        (str(row.get("symbol") or "").upper(), str(row.get("trade_date") or "")): row
+        for row in rows
+    }
+    reasons: list[str] = []
+    errors: list[dict[str, Any]] = []
+    for record in baseline_records:
+        symbol = str(record.get("symbol") or "").strip().upper()
+        trade_date = str(record.get("trade_date") or "").strip()
+        row = row_map.get((symbol, trade_date))
+        if row is None:
+            errors.append({"symbol": symbol, "trade_date": trade_date, "reason": "row_missing"})
+            reasons.append(f"raw_ohlc_baseline_row_missing:{symbol}:{trade_date}")
+            continue
+        for column in RAW_OHLC_COLUMNS:
+            expected = _to_float(record.get(column))
+            actual = _to_float(row.get(column))
+            if expected is None or actual is None or abs(actual - expected) > EPSILON:
+                errors.append(
+                    {
+                        "symbol": symbol,
+                        "trade_date": trade_date,
+                        "column": column,
+                        "expected": expected,
+                        "actual": actual,
+                    }
+                )
+                reasons.append(f"raw_ohlc_baseline_mismatch:{symbol}:{trade_date}:{column}")
+    return {"status": "ok" if not reasons else "not_ready", "errors": errors, "reasons": _dedupe(reasons)}
+
+
 def render_adjusted_ohlc_audit_markdown(result: dict[str, Any]) -> str:
     lines = [
         "# Adjusted OHLC Execution Audit",
         "",
         f"- Status: `{result.get('status')}`",
+        f"- Evidence mode: `{result.get('evidence_mode')}`",
+        f"- Backtest planning gate: `{result.get('backtest_planning_gate')}`",
+        f"- Required evidence present: `{result.get('required_evidence_present')}`",
+        f"- Raw OHLC baseline status: `{result.get('raw_ohlc_baseline_status')}`",
         f"- Symbols: `{', '.join(result.get('symbols') or [])}`",
         f"- Rows total: `{result.get('rows_total')}`",
         f"- Adjusted rows: `{result.get('adjusted_rows')}`",
@@ -264,11 +350,23 @@ def render_adjusted_ohlc_audit_markdown(result: dict[str, Any]) -> str:
         "",
         *_bullet_list([str(item) for item in result.get("caveats") or []]),
         "",
+        "## Backtest Planning Decision",
+        "",
+        _planning_recommendation(result),
+        "",
         "This audit is read-only. It is not Backtrader, not production DB population, and not investment advice.",
         "",
         "Backtrader/VN100 remains blocked until reviewed evidence, adjusted OHLC execution audit, and adjusted readiness pass.",
     ]
     return "\n".join(lines) + "\n"
+
+
+def _planning_recommendation(result: dict[str, Any]) -> str:
+    if result.get("backtest_planning_gate") == "pass":
+        return "Sufficient for small-symbol adjusted OHLC backtest feed planning."
+    if result.get("evidence_mode") == "incomplete":
+        return "Incomplete evidence mode is not sufficient for backtest planning."
+    return "Fix audit blockers before small-symbol backtest feed planning."
 
 
 def _request_reasons(db_path: Path, symbols: list[str], allow_demo_db: bool) -> list[str]:
@@ -279,6 +377,25 @@ def _request_reasons(db_path: Path, symbols: list[str], allow_demo_db: bool) -> 
         reasons.append(f"db_missing:{db_path}")
     if _is_demo_db(db_path) and not allow_demo_db:
         reasons.append("demo_db_blocked")
+    return reasons
+
+
+def _required_evidence_reasons(
+    *,
+    factor_records_path: str | Path | None,
+    validation_report_path: str | Path | None,
+    readiness_report_path: str | Path | None,
+    require_factor_records: bool,
+    require_validation_report: bool,
+    require_readiness_report: bool,
+) -> list[str]:
+    reasons: list[str] = []
+    if require_factor_records and factor_records_path is None:
+        reasons.append("factor_records_required")
+    if require_validation_report and validation_report_path is None:
+        reasons.append("validation_report_required")
+    if require_readiness_report and readiness_report_path is None:
+        reasons.append("readiness_report_required")
     return reasons
 
 
@@ -360,6 +477,8 @@ def _summary(
     invalid_rows: list[dict[str, Any]] | None = None,
     factor_consistency_errors: list[dict[str, Any]] | None = None,
     provenance_errors: list[dict[str, Any]] | None = None,
+    raw_ohlc_baseline_status: str = "not_provided",
+    raw_ohlc_baseline_errors: list[dict[str, Any]] | None = None,
     readiness_status: str | None = None,
     backtest_gate: str | None = None,
     validation_status: str | None = None,
@@ -367,7 +486,21 @@ def _summary(
     reasons: list[str] | None = None,
     validation: dict[str, Any] | None = None,
     readiness: dict[str, Any] | None = None,
+    evidence_mode: str = "strict",
+    required_evidence_present: bool = False,
+    backtest_planning_gate: str = "blocked",
+    incomplete_evidence: bool = False,
 ) -> dict[str, Any]:
+    caveats = [
+        "Read-only adjusted OHLC execution audit.",
+        "No DB mutation, no live fetch, no Backtrader, and no full VN100 run.",
+    ]
+    if incomplete_evidence:
+        caveats.append("Incomplete evidence mode; not sufficient for backtest planning.")
+    if raw_ohlc_baseline_status == "not_provided":
+        caveats.append(
+            "Raw OHLC baseline not provided; audit only confirms read-only behavior, not pre-execute raw OHLC equality."
+        )
     return {
         "status": status,
         "db_path": str(db_path),
@@ -379,22 +512,28 @@ def _summary(
         "invalid_rows": invalid_rows or [],
         "factor_consistency_errors": factor_consistency_errors or [],
         "provenance_errors": provenance_errors or [],
+        "raw_ohlc_baseline_status": raw_ohlc_baseline_status,
+        "raw_ohlc_baseline_errors": raw_ohlc_baseline_errors or [],
         "readiness_status": readiness_status,
         "backtest_gate": backtest_gate,
         "validation_status": validation_status,
         "db_mutation_made": db_mutation_made,
+        "evidence_mode": evidence_mode,
+        "required_evidence_present": required_evidence_present,
+        "backtest_planning_gate": backtest_planning_gate,
         "reasons": _dedupe(reasons or []),
         "validation": validation or {},
         "readiness": readiness or {},
-        "caveats": [
-            "Read-only adjusted OHLC execution audit.",
-            "No DB mutation, no live fetch, no Backtrader, and no full VN100 run.",
-        ],
+        "caveats": caveats,
     }
 
 
 def _empty_factor_audit() -> dict[str, Any]:
     return {"factor_consistency_errors": [], "provenance_errors": [], "reasons": []}
+
+
+def _baseline_not_provided() -> dict[str, Any]:
+    return {"status": "not_provided", "errors": [], "reasons": []}
 
 
 def _is_demo_db(path: Path) -> bool:
