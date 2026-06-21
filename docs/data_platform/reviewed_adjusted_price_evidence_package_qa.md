@@ -59,5 +59,7 @@ python scripts/smoke_reviewed_adjusted_price_evidence_package.py --package-dir p
 
 Next, use `docs/data_platform/real_adjusted_price_evidence_onboarding.md` to
 place real reviewed FPT/VNM/VCB evidence under ignored local paths, generate the
-SHA-256 manifest, and save a QA report without committing real data. Backtrader
-remains blocked until reviewed real evidence and adjusted readiness pass.
+SHA-256 manifest, and save a validation JSON without committing real data.
+`docs/data_platform/real_adjusted_price_evidence_dry_run_report.md` then turns
+that JSON into a human-readable report. Backtrader remains blocked until
+reviewed real evidence and adjusted readiness pass.

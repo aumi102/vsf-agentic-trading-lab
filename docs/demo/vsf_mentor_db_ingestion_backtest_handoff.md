@@ -122,7 +122,8 @@ Reviewed evidence package QA now checks a full synthetic package shape with
 JSON, CSV, temporary execute, and readiness before real reviewed evidence is
 used. The real evidence onboarding workflow keeps manually obtained evidence and
 generated QA reports in ignored local paths while creating SHA-256 manifests for
-review.
+review. The dry-run report workflow converts validation JSON into a
+human-readable checklist before any execute-mode DB population.
 
 ## 6. Proposed Backtrader Pipeline
 
@@ -192,8 +193,8 @@ batch and rate controls.
 ## 12. Next Implementation Steps
 
 1. Place manually obtained FPT/VNM/VCB adjusted-price evidence under the ignored onboarding path.
-2. Generate a SHA-256 manifest and dry-run QA report for that package.
-3. Use explicit execute mode only after reviewed local evidence passes intake.
+2. Generate a SHA-256 manifest, validation JSON, and dry-run Markdown report for that package.
+3. Use explicit execute mode only after reviewed local evidence and the report pass inspection.
 4. Add ETL Docker/scheduler foundation for stable ingestion only.
 5. Add Backtrader research scaffold over a small subset after adjusted readiness passes.
 6. Produce VN100 strategy selection report.
