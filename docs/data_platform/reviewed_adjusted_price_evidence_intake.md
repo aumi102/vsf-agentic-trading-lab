@@ -76,6 +76,13 @@ SHA-256, hash-match status, and `not_real_market_data` when present.
 the package-level smoke that runs JSON dry-run, CSV dry-run, temporary-DB
 execute, and readiness against a synthetic reviewed evidence package.
 
+## Real Evidence Onboarding
+
+`docs/data_platform/real_adjusted_price_evidence_onboarding.md` documents the
+local-only workflow for manually obtained FPT/VNM/VCB evidence. It keeps real
+payloads and generated reports under ignored paths, creates a manifest with the
+payload SHA-256, and runs dry-run validation before any execute-mode population.
+
 ## Boundaries
 
 - Reviewed local evidence only.

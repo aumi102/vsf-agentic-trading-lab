@@ -4,7 +4,7 @@
   "reviewer": "fixture-reviewer",
   "reviewed_at": "2026-06-19",
   "evidence_basis": "manual_curated_for_dev_only",
-  "payload_sha256": "969871cc73d31814a38117ade313cbb06e462bd2f00a2e18d9663b16b4cc6420",
+  "payload_sha256": "69cf76fd2115d9deeff1df8e656662f23edc13c9175d7c0003dbeab0e3c73884",
   "not_real_market_data": true,
   "notes": "Synthetic development-only reviewed evidence package. Not real market data."
 }
