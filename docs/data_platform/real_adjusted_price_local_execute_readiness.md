@@ -60,4 +60,10 @@ python scripts/run_reviewed_adjusted_price_local_execute_readiness.py --package-
 - No Docker/scheduler.
 
 After this passes for a small explicit local DB, the next step is an adjusted
-OHLC execution audit/inspection report, not full VN100 or Backtrader execution.
+OHLC execution audit/inspection report:
+`docs/data_platform/adjusted_ohlc_execution_audit.md`. This audit checks
+populated adjusted rows, provenance, factor consistency, and readiness reports
+in strict mode. Raw OHLC equality requires an optional raw baseline file; without
+that baseline, the audit confirms read-only behavior but does not prove
+pre-execute raw OHLC equality. It is still not full VN100 or Backtrader
+execution.

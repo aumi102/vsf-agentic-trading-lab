@@ -105,7 +105,12 @@ population path. `docs/data_platform/adjusted_price_evidence_smoke_runbook.md`
 proves the mechanics with synthetic local data only. Reviewed local evidence
 intake still must require source, raw-path, reviewer, review timestamp, and
 evidence-basis metadata plus payload SHA-256 integrity before real adjusted-price
-evidence is used.
+evidence is used. After local execute readiness, the read-only
+`docs/data_platform/adjusted_ohlc_execution_audit.md` workflow must inspect
+adjusted rows, factor provenance, factor consistency, and readiness reports
+before any Backtrader feed planning. Strict audit mode requires factor records,
+validation report, and readiness report. Raw OHLC unchanged is independently
+verified only if a raw baseline file is supplied.
 
 ## Corporate Action Data
 
@@ -130,6 +135,8 @@ Before a row enters a hardened backtest feed:
 - `adjusted_low <= min(adjusted_open, adjusted_close)`;
 - adjusted OHLC remains internally consistent after rounding;
 - rows with unresolved corporate-action status are excluded or blocked.
+- local execute-readiness validation and adjusted OHLC execution audit both pass.
+- adjusted OHLC execution audit reports `backtest_planning_gate=pass`.
 
 ## Caveats
 
