@@ -43,6 +43,10 @@ python scripts/create_reviewed_adjusted_price_manifest.py --payload data/reviewe
 For development-only fixtures, use `manual_curated_for_dev_only` with
 `--not-real-market-data`.
 
+`raw_path` must be package-relative and must point to `payload.json` or
+`payload.csv` inside the package directory. Absolute paths and paths outside the
+package are rejected.
+
 ## Package Validation
 
 Run dry-run validation and save reports only when explicitly requested:
@@ -50,6 +54,11 @@ Run dry-run validation and save reports only when explicitly requested:
 ```bash
 python scripts/validate_reviewed_adjusted_price_package.py --package-dir data/reviewed_evidence/adjusted_price/FPT_VNM_VCB --symbols FPT,VNM,VCB --validation-output reports/reviewed_evidence/validation_report.json --factor-output reports/reviewed_evidence/factors.json
 ```
+
+The validator reads `manifest.json` first and validates the payload selected by
+`manifest.raw_path`. If a package contains both JSON and CSV payloads, the
+manifest controls which file is validated; the validator does not silently
+choose `payload.json`.
 
 Execute mode is optional and must use an explicit local DB path:
 

@@ -50,7 +50,7 @@ No production DB write, no production backtest, no broker execution.
 | Reviewed adjusted price evidence package QA | Synthetic/dev-only package smoke validates manifest+JSON+CSV shape, temporary execute, and readiness. No live fetch, production DB mutation, full VN100, or Backtrader. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1107 tests pass** |
+| Test suite | **1113 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -97,11 +97,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted price evidence smoke tests | 7 targeted tests |
 | Reviewed adjusted price evidence intake tests | 29 targeted tests |
 | Reviewed adjusted price evidence package QA tests | 13 targeted tests |
-| Real adjusted price evidence onboarding tests | 15 targeted tests |
+| Real adjusted price evidence onboarding tests | 21 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1107 |
+| Total tests passing | 1113 |
 
 ---
 

@@ -72,6 +72,23 @@ def test_package_validator_validates_synthetic_temp_package_dry_run(tmp_path: Pa
     assert factors.exists()
 
 
+def test_package_validator_uses_manifest_raw_path_when_both_payloads_exist(tmp_path: Path) -> None:
+    package = _copy_package(tmp_path)
+    manifest_path = package / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["raw_path"] = "payload.csv"
+    manifest["payload_sha256"] = _sha256(package / "payload.csv")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    completed = _run_validate(package)
+
+    assert completed.returncode == 0
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "ok"
+    assert payload["payload_path"].endswith("payload.csv")
+    assert payload["manifest_integrity"]["raw_path"] == "payload.csv"
+
+
 def test_package_validator_rejects_hash_mismatch(tmp_path: Path) -> None:
     package = _copy_package(tmp_path)
     payload_path = package / "payload.json"
@@ -82,6 +99,62 @@ def test_package_validator_rejects_hash_mismatch(tmp_path: Path) -> None:
     assert completed.returncode == 1
     assert "Traceback" not in completed.stderr
     assert '"status": "invalid_payload_hash"' in completed.stdout
+
+
+def test_package_validator_rejects_absolute_raw_path(tmp_path: Path) -> None:
+    package = _copy_package(tmp_path)
+    manifest_path = package / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["raw_path"] = str((package / "payload.json").resolve())
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    completed = _run_validate(package)
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    assert "manifest_raw_path_must_be_package_relative" in completed.stdout
+
+
+def test_package_validator_rejects_raw_path_outside_package(tmp_path: Path) -> None:
+    package = _copy_package(tmp_path)
+    manifest_path = package / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["raw_path"] = "../payload.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    completed = _run_validate(package)
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    assert "manifest_raw_path_outside_package" in completed.stdout
+
+
+def test_package_validator_rejects_unsupported_raw_path_filename(tmp_path: Path) -> None:
+    package = _copy_package(tmp_path)
+    other = package / "other.json"
+    other.write_text((package / "payload.json").read_text(encoding="utf-8"), encoding="utf-8")
+    manifest_path = package / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["raw_path"] = "other.json"
+    manifest["payload_sha256"] = _sha256(other)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    completed = _run_validate(package)
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    assert "manifest_raw_path_must_reference_payload_json_or_csv" in completed.stdout
+
+
+def test_package_validator_rejects_invalid_manifest_json_cleanly(tmp_path: Path) -> None:
+    package = _copy_package(tmp_path)
+    (package / "manifest.json").write_text("{bad", encoding="utf-8")
+
+    completed = _run_validate(package)
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    assert '"status": "invalid_manifest_json"' in completed.stdout
 
 
 def test_package_validator_rejects_missing_manifest(tmp_path: Path) -> None:
@@ -105,6 +178,18 @@ def test_package_validator_rejects_missing_payload(tmp_path: Path) -> None:
     assert '"missing_payload"' in completed.stdout
 
 
+def test_package_validator_rejects_missing_manifest_referenced_payload(tmp_path: Path) -> None:
+    package = _copy_package(tmp_path)
+    (package / "payload.json").unlink()
+
+    completed = _run_validate(package)
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    assert '"missing_payload"' in completed.stdout
+    assert "payload.csv" not in json.loads(completed.stdout)["payload_path"]
+
+
 def test_package_validator_execute_temp_db_readiness_pass(tmp_path: Path) -> None:
     package = _copy_package(tmp_path)
     db_path = _make_db(tmp_path)
@@ -124,7 +209,7 @@ def test_cli_expected_errors_exit_one_without_traceback(tmp_path: Path) -> None:
 
     assert completed.returncode == 1
     assert "Traceback" not in completed.stderr
-    assert '"status": "invalid_request"' in completed.stdout
+    assert '"status": "missing_manifest"' in completed.stdout
 
 
 def test_no_network_imports() -> None:
