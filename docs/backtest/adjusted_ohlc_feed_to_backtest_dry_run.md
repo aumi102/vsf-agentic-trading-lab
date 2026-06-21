@@ -46,15 +46,26 @@ The preparation layer blocks unless all of the following hold:
 - feed preview `status=ok`;
 - feed preview `feed_contract_version=adjusted_ohlc_feed_v1`;
 - feed preview `source_price_basis=adjusted_ohlc`;
-- every requested symbol is present in the feed preview;
+- every requested symbol is present in the feed preview
+  (`requested_symbol_missing_from_feed:<SYMBOL>`);
 - date range is valid ISO `YYYY-MM-DD` and `start_date <= end_date`;
-- `max_rows > 0`;
+- `max_rows > 0` (never silently corrected);
 - each row has `open/high/low/close/volume`;
 - no raw OHLC field is used as a trading price;
 - no signal, trade, or performance field is present in the input;
 - `transaction_cost_bps >= 0` and `slippage_bps >= 0`;
-- `exchange` is one of `HOSE`, `HSX`, `UPCOM`, `UPCoM`;
-- `slippage_bps` is within the exchange band.
+- `exchange` is one of `HOSE`, `HSX`, `UPCOM`, `UPCoM`
+  (`unknown_exchange:<value>` otherwise);
+- `slippage_bps` is within the exchange band
+  (`slippage_bps_exceeds_exchange_band:<slippage>/<band>` otherwise);
+- **every requested symbol still survives the date-range filter**
+  (`prepared_input_missing_symbol_after_filter:<SYMBOL>` otherwise);
+- **every requested symbol still survives the `max_rows` limit**
+  (`prepared_input_missing_symbol_after_limit:<SYMBOL>` otherwise).
+
+A requested symbol must never be silently dropped: if filtering or the row
+limit removes it, the dry-run is `blocked` and the symbol is listed under
+`missing_symbols`.
 
 ## Output
 
@@ -65,6 +76,9 @@ The preparation layer blocks unless all of the following hold:
   "backtest_input_status": "ready_for_research_dry_run",
   "price_basis": "adjusted_ohlc",
   "symbols": ["FPT", "VNM", "VCB"],
+  "requested_symbols": ["FPT", "VNM", "VCB"],
+  "represented_symbols": ["FPT", "VNM", "VCB"],
+  "missing_symbols": [],
   "row_count": 3,
   "assumptions": {
     "transaction_cost_bps": 15,
@@ -73,6 +87,8 @@ The preparation layer blocks unless all of the following hold:
     "slippage_band_bps": 700
   },
   "rows_preview": [],
+  "fixture_signal": null,
+  "not_financial_advice": true,
   "reasons": [],
   "caveats": [
     "Preparation only; no Backtrader execution.",
@@ -82,10 +98,12 @@ The preparation layer blocks unless all of the following hold:
 }
 ```
 
-The output reports dry-run status, input rows, symbols, date range assumptions,
-and blocked reasons. It makes no performance claim. A performance claim would
-require an actual backtest engine to be safely called and clearly marked as
-fixture/research only; this layer does not do that.
+The output reports dry-run status, input rows, requested/represented/missing
+symbols, date range assumptions, and blocked reasons, and always carries
+`not_financial_advice=true`. It reports **no performance metrics** and makes no
+performance claim. A performance claim would require an actual backtest engine
+to be safely called and clearly marked as fixture/research only; this layer
+does not do that.
 
 ## Fixture Signal Mode
 
@@ -104,7 +122,18 @@ python scripts/prepare_adjusted_ohlc_backtest_dry_run.py --feed-preview reports/
 - no Backtrader;
 - no full VN100;
 - no optimizer;
+- no DB mutation;
+- no live data fetch;
+- no performance metrics;
 - no live trading;
 - no broker execution;
 - no investment advice;
 - no production readiness claim.
+
+## Next Safe Step
+
+The next safe step is a tiny deterministic fixture strategy/signal dry-run
+contract over this prepared adjusted OHLC input (default all-cash,
+`research_fixture_signal`, no recommendation), reviewed with the mentor before
+any actual backtest engine integration. It is not Backtrader production, not an
+optimizer, and not full VN100.

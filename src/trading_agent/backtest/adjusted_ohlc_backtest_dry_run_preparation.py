@@ -72,7 +72,7 @@ def load_feed_preview(path: str | Path) -> dict[str, Any]:
     except (json.JSONDecodeError, UnicodeDecodeError):
         return {"ok": False, "reason": "feed_preview_invalid_json", "payload": None}
     if not isinstance(payload, dict):
-        return {"ok": False, "reason": "feed_preview_not_object", "payload": None}
+        return {"ok": False, "reason": "feed_preview_must_be_object", "payload": None}
     return {"ok": True, "reason": None, "payload": payload}
 
 
@@ -95,12 +95,12 @@ def validate_feed_preview_for_backtest(
     if payload.get("feed_contract_version") != FEED_CONTRACT_VERSION:
         reasons.append(f"feed_contract_version_mismatch:{payload.get('feed_contract_version')}")
     if payload.get("source_price_basis") != SOURCE_PRICE_BASIS:
-        reasons.append(f"source_price_basis_not_adjusted_ohlc:{payload.get('source_price_basis')}")
+        reasons.append(f"feed_source_price_basis_not_adjusted_ohlc:{payload.get('source_price_basis')}")
 
     feed_symbols = {str(symbol).strip().upper() for symbol in (payload.get("symbols") or [])}
     for symbol in requested_symbols:
         if symbol not in feed_symbols:
-            reasons.append(f"missing_requested_symbol:{symbol}")
+            reasons.append(f"requested_symbol_missing_from_feed:{symbol}")
 
     reasons.extend(_validate_date_and_rows(start_date, end_date, max_rows))
     reasons.extend(_validate_assumptions(transaction_cost_bps, slippage_bps, exchange))
@@ -141,6 +141,7 @@ def build_backtest_input_preview(
         return _result(
             status="blocked",
             requested=requested,
+            represented=[],
             assumptions=assumptions,
             rows_preview=[],
             reasons=reasons,
@@ -162,11 +163,34 @@ def build_backtest_input_preview(
     )
     reasons = _dedupe(reasons)
 
-    rows_preview = _clean_rows(payload.get("rows") or [], requested, max_rows) if not reasons else []
+    rows_preview: list[dict[str, Any]] = []
+    represented: list[str] = []
+    if not reasons:
+        # Structural and assumption checks passed. Now confirm every requested
+        # symbol survives the date-range filter and the max_rows limit, so a
+        # prepared input never silently drops a requested symbol.
+        filtered = _filter_rows(payload.get("rows") or [], requested, start_date, end_date)
+        represented_after_filter = _ordered_symbols(filtered, requested)
+        for symbol in requested:
+            if symbol not in represented_after_filter:
+                reasons.append(f"prepared_input_missing_symbol_after_filter:{symbol}")
+
+        limited = filtered[: int(max_rows)]
+        represented_after_limit = _ordered_symbols(limited, requested)
+        for symbol in requested:
+            if symbol in represented_after_filter and symbol not in represented_after_limit:
+                reasons.append(f"prepared_input_missing_symbol_after_limit:{symbol}")
+
+        reasons = _dedupe(reasons)
+        represented = represented_after_limit
+        if not reasons:
+            rows_preview = [_clean_row(row) for row in limited]
+
     status = "ok" if not reasons else "blocked"
     return _result(
         status=status,
         requested=requested,
+        represented=represented,
         assumptions=assumptions,
         rows_preview=rows_preview,
         reasons=reasons,
@@ -193,6 +217,7 @@ def _result(
     *,
     status: str,
     requested: list[str],
+    represented: list[str],
     assumptions: dict[str, Any],
     rows_preview: list[dict[str, Any]],
     reasons: list[str],
@@ -204,22 +229,24 @@ def _result(
         "No live trading and no broker execution.",
         "No investment advice and no performance claim.",
     ]
-    result: dict[str, Any] = {
+    missing_symbols = [symbol for symbol in requested if symbol not in represented]
+    return {
         "status": status,
         "dry_run_stage": DRY_RUN_STAGE,
         "backtest_input_status": READY_STATUS if status == "ok" else "blocked",
         "price_basis": SOURCE_PRICE_BASIS,
         "symbols": requested,
+        "requested_symbols": requested,
+        "represented_symbols": represented,
+        "missing_symbols": missing_symbols,
         "row_count": len(rows_preview),
         "assumptions": assumptions,
         "rows_preview": rows_preview,
+        "fixture_signal": prepare_fixture_signal_dry_run() if fixture_signal_mode else None,
         "reasons": reasons,
         "caveats": caveats,
         "not_financial_advice": True,
     }
-    if fixture_signal_mode:
-        result["fixture_signal"] = prepare_fixture_signal_dry_run()
-    return result
 
 
 def _validate_assumptions(transaction_cost_bps: float, slippage_bps: float, exchange: str) -> list[str]:
@@ -231,9 +258,9 @@ def _validate_assumptions(transaction_cost_bps: float, slippage_bps: float, exch
     exchange_key = str(exchange or "").strip().upper()
     band = EXCHANGE_SLIPPAGE_BANDS_BPS.get(exchange_key)
     if band is None:
-        reasons.append(f"invalid_exchange:{exchange}")
+        reasons.append(f"unknown_exchange:{exchange}")
     elif _is_number(slippage_bps) and float(slippage_bps) > band:
-        reasons.append(f"slippage_exceeds_exchange_band:{slippage_bps}>{band}")
+        reasons.append(f"slippage_bps_exceeds_exchange_band:{slippage_bps}/{band}")
     return reasons
 
 
@@ -282,19 +309,37 @@ def _validate_date_and_rows(
     return reasons
 
 
-def _clean_rows(rows: list[Any], requested: list[str], max_rows: int) -> list[dict[str, Any]]:
-    clean: list[dict[str, Any]] = []
+def _filter_rows(
+    rows: list[Any],
+    requested: list[str],
+    start_date: str | None,
+    end_date: str | None,
+) -> list[dict[str, Any]]:
+    """Keep only requested-symbol rows inside the date range (ISO order)."""
     requested_set = set(requested)
+    filtered: list[dict[str, Any]] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
         symbol = str(row.get("symbol") or "").strip().upper()
         if requested_set and symbol not in requested_set:
             continue
-        clean.append({field: row[field] for field in _ALLOWED_ROW_FIELDS if field in row})
-        if len(clean) >= int(max_rows):
-            break
-    return clean
+        datetime_value = str(row.get("datetime") or "")
+        if start_date and datetime_value and datetime_value < start_date:
+            continue
+        if end_date and datetime_value and datetime_value > end_date:
+            continue
+        filtered.append(row)
+    return filtered
+
+
+def _clean_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {field: row[field] for field in _ALLOWED_ROW_FIELDS if field in row}
+
+
+def _ordered_symbols(rows: list[dict[str, Any]], requested: list[str]) -> list[str]:
+    present = {str(row.get("symbol") or "").strip().upper() for row in rows}
+    return [symbol for symbol in requested if symbol in present]
 
 
 def _is_iso_date(value: str) -> bool:

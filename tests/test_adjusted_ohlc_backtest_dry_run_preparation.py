@@ -96,7 +96,7 @@ def test_feed_preview_not_object_blocks(tmp_path: Path) -> None:
     arr.write_text("[1, 2, 3]", encoding="utf-8")
     result = _build(tmp_path, feed_path=arr)
     assert result["status"] == "blocked"
-    assert "feed_preview_not_object" in result["reasons"]
+    assert "feed_preview_must_be_object" in result["reasons"]
 
 
 # 4
@@ -120,7 +120,7 @@ def test_source_price_basis_not_adjusted_ohlc_blocks(tmp_path: Path) -> None:
     feed = _write_feed_preview(tmp_path, overrides={"source_price_basis": "raw_ohlc"})
     result = _build(tmp_path, feed_path=feed)
     assert result["status"] == "blocked"
-    assert "source_price_basis_not_adjusted_ohlc:raw_ohlc" in result["reasons"]
+    assert "feed_source_price_basis_not_adjusted_ohlc:raw_ohlc" in result["reasons"]
 
 
 # 7
@@ -128,7 +128,7 @@ def test_missing_requested_symbol_blocks(tmp_path: Path) -> None:
     feed = _write_feed_preview(tmp_path, symbols=("FPT",), rows=[_feed_row("FPT")])
     result = _build(tmp_path, feed_path=feed, symbols=["FPT", "VNM"])
     assert result["status"] == "blocked"
-    assert "missing_requested_symbol:VNM" in result["reasons"]
+    assert "requested_symbol_missing_from_feed:VNM" in result["reasons"]
 
 
 # 8
@@ -163,21 +163,21 @@ def test_negative_slippage_blocks(tmp_path: Path) -> None:
 def test_hose_slippage_over_band_blocks(tmp_path: Path) -> None:
     result = _build(tmp_path, exchange="HOSE", slippage_bps=701.0)
     assert result["status"] == "blocked"
-    assert any(str(r).startswith("slippage_exceeds_exchange_band:") for r in result["reasons"])
+    assert any(str(r).startswith("slippage_bps_exceeds_exchange_band:") for r in result["reasons"])
 
 
 # 13
 def test_hsx_slippage_over_band_blocks(tmp_path: Path) -> None:
     result = _build(tmp_path, exchange="HSX", slippage_bps=701.0)
     assert result["status"] == "blocked"
-    assert any(str(r).startswith("slippage_exceeds_exchange_band:") for r in result["reasons"])
+    assert any(str(r).startswith("slippage_bps_exceeds_exchange_band:") for r in result["reasons"])
 
 
 # 14
 def test_upcom_slippage_over_band_blocks(tmp_path: Path) -> None:
     result = _build(tmp_path, exchange="UPCoM", slippage_bps=1501.0)
     assert result["status"] == "blocked"
-    assert any(str(r).startswith("slippage_exceeds_exchange_band:") for r in result["reasons"])
+    assert any(str(r).startswith("slippage_bps_exceeds_exchange_band:") for r in result["reasons"])
 
 
 def test_upcom_slippage_within_band_ok(tmp_path: Path) -> None:
@@ -291,7 +291,7 @@ def test_cli_invalid_exchange_exits_one(tmp_path: Path) -> None:
     completed = _run_cli(tmp_path, "--exchange", "NYSE")
     assert completed.returncode == 1
     assert "Traceback" not in completed.stderr
-    assert "invalid_exchange:NYSE" in completed.stdout
+    assert "unknown_exchange:NYSE" in completed.stdout
 
 
 # 25
@@ -309,6 +309,71 @@ def test_output_json_written(tmp_path: Path) -> None:
     completed = _run_cli(tmp_path, "--output-json", str(output))
     assert completed.returncode == 0
     assert json.loads(output.read_text(encoding="utf-8"))["status"] == "ok"
+
+
+DRY_RUN_DOC = Path("docs/backtest/adjusted_ohlc_feed_to_backtest_dry_run.md")
+PROGRESS_DOC = Path("docs/reports/progress_report.md")
+
+
+def test_dry_run_doc_has_valid_frontmatter() -> None:
+    lines = (ROOT / DRY_RUN_DOC).read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "---"
+    assert "title: adjusted_ohlc_feed_to_backtest_dry_run" in lines[:6]
+    assert "toc_min_heading_level: 2" in lines[:6]
+    assert "toc_max_heading_level: 3" in lines[:6]
+    assert lines[4] == "---"
+
+
+def test_no_duplicate_progress_rows() -> None:
+    text = (ROOT / PROGRESS_DOC).read_text(encoding="utf-8")
+    assert text.count("| Adjusted OHLC backtest feed contract |") == 1
+    assert text.count("| Adjusted OHLC backtest dry-run preparation |") == 1
+
+
+def test_date_filter_removing_symbol_blocks(tmp_path: Path) -> None:
+    rows = [
+        _feed_row("FPT", datetime_value="2026-01-02"),
+        _feed_row("VNM", datetime_value="2026-01-02"),
+        _feed_row("VCB", datetime_value="2026-06-01"),
+    ]
+    feed = _write_feed_preview(tmp_path, rows=rows)
+    result = _build(tmp_path, feed_path=feed, start_date="2026-01-01", end_date="2026-01-31")
+    assert result["status"] == "blocked"
+    assert "prepared_input_missing_symbol_after_filter:VCB" in result["reasons"]
+    assert "VCB" in result["missing_symbols"]
+
+
+def test_max_rows_truncating_symbol_blocks(tmp_path: Path) -> None:
+    result = _build(tmp_path, max_rows=2)
+    assert result["status"] == "blocked"
+    assert "prepared_input_missing_symbol_after_limit:VCB" in result["reasons"]
+    assert "VCB" in result["missing_symbols"]
+
+
+def test_max_rows_zero_blocks(tmp_path: Path) -> None:
+    result = _build(tmp_path, max_rows=0)
+    assert result["status"] == "blocked"
+    assert "max_rows_must_be_positive" in result["reasons"]
+
+
+def test_unknown_exchange_blocks(tmp_path: Path) -> None:
+    result = _build(tmp_path, exchange="NYSE")
+    assert result["status"] == "blocked"
+    assert "unknown_exchange:NYSE" in result["reasons"]
+
+
+def test_output_symbol_coverage_fields(tmp_path: Path) -> None:
+    result = _build(tmp_path)
+    assert result["status"] == "ok"
+    assert result["requested_symbols"] == ["FPT", "VNM", "VCB"]
+    assert result["represented_symbols"] == ["FPT", "VNM", "VCB"]
+    assert result["missing_symbols"] == []
+    assert result["not_financial_advice"] is True
+
+
+def test_fixture_signal_null_when_mode_off(tmp_path: Path) -> None:
+    result = _build(tmp_path)
+    assert result["fixture_signal"] is None
 
 
 def _run_cli(tmp_path: Path, *overrides: str) -> subprocess.CompletedProcess[str]:
