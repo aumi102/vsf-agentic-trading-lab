@@ -72,4 +72,6 @@ separate reviewed data process.
 
 After the report passes, use
 `docs/data_platform/real_adjusted_price_local_execute_readiness.md` for an
-explicit temporary/local SQLite execute-readiness check.
+explicit temporary/local SQLite execute-readiness check. When passed with
+`--require-dry-run-report`, that runner checks the Markdown report content for
+`ok` status and the Backtrader/VN100 block warning before execute mode.

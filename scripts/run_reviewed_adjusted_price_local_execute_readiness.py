@@ -84,12 +84,26 @@ def run_local_execute_readiness(
         db_path=db_path,
         execute=True,
     )
-    readiness = get_adjusted_ohlc_readiness(db_path=db_path, symbols=symbols)
+    if validation.get("status") != "ok" and validation.get("db_mutation_made") is not True:
+        readiness = {
+            "status": "skipped",
+            "backtest_gate": "blocked",
+            "reason": "validation_failed_no_db_mutation",
+            "symbols": symbols,
+            "db_path": str(db_path),
+            "caveats": [
+                "Readiness skipped because package validation failed before DB mutation.",
+            ],
+        }
+    else:
+        readiness = get_adjusted_ohlc_readiness(db_path=db_path, symbols=symbols)
     _write_json(readiness_output_path, readiness)
 
     reasons = []
     if validation.get("status") != "ok":
         reasons.append(f"validation_status:{validation.get('status')}")
+    if readiness.get("reason") == "validation_failed_no_db_mutation":
+        reasons.append("validation_failed_no_db_mutation")
     if validation.get("readiness_status") != "ok":
         reasons.append(f"validation_readiness_status:{validation.get('readiness_status')}")
     if validation.get("backtest_gate") != "pass":
@@ -139,8 +153,29 @@ def _validate_request(
         reasons.append("readiness_output_required")
     if report_md_path is None:
         reasons.append("report_md_required")
-    if require_dry_run_report is not None and not require_dry_run_report.exists():
-        reasons.append(f"required_dry_run_report_missing:{require_dry_run_report}")
+    if require_dry_run_report is not None:
+        reasons.extend(validate_required_dry_run_report(require_dry_run_report))
+    return reasons
+
+
+def validate_required_dry_run_report(path: Path) -> list[str]:
+    reasons: list[str] = []
+    if not path.exists():
+        return [f"required_dry_run_report_missing:{path}"]
+    if path.suffix.lower() != ".md":
+        reasons.append("required_dry_run_report_must_be_markdown")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return reasons + ["required_dry_run_report_unreadable"]
+    if "# Reviewed Adjusted Price Evidence Dry-Run Report" not in text:
+        reasons.append("required_dry_run_report_invalid_format")
+    if "- Status: `ok`" not in text:
+        reasons.append("required_dry_run_report_not_ok")
+    if "Fix the evidence package" in text:
+        reasons.append("required_dry_run_report_failed_recommendation")
+    if "Backtrader/VN100 must remain blocked" not in text:
+        reasons.append("required_dry_run_report_missing_backtrader_block")
     return reasons
 
 
@@ -173,9 +208,14 @@ def _write_markdown_report(result: dict[str, Any], path: Path | None) -> None:
     lines = [
         "# Reviewed Adjusted Price Local Execute Readiness",
         "",
+        f"- Decision: `{_decision(result)}`",
         f"- Status: `{result.get('status')}`",
         f"- Symbols: `{', '.join(result.get('symbols') or [])}`",
         f"- DB path: `{result.get('db_path')}`",
+        f"- Factor output path: `{result.get('factor_output_path')}`",
+        f"- Validation output path: `{result.get('validation_output_path')}`",
+        f"- Readiness output path: `{result.get('readiness_output_path')}`",
+        f"- Report path: `{result.get('report_md_path')}`",
         f"- DB mutation made: `{result.get('db_mutation_made', False)}`",
         f"- Validation status: `{validation.get('status')}`",
         f"- Readiness status: `{readiness.get('status')}`",
@@ -185,9 +225,21 @@ def _write_markdown_report(result: dict[str, Any], path: Path | None) -> None:
         "",
         *_bullet_list([str(item) for item in result.get("reasons") or []]),
         "",
+        "## Validation Reasons",
+        "",
+        *_bullet_list([str(item) for item in validation.get("reasons") or []]),
+        "",
+        "## Readiness Reasons",
+        "",
+        *_bullet_list(_readiness_reasons(readiness)),
+        "",
         "## Recommendation",
         "",
         _recommendation(result),
+        "",
+        "This is not Backtrader.",
+        "",
+        "This is not production DB population.",
         "",
         "Backtrader/VN100 remains blocked until reviewed evidence and adjusted readiness pass.",
     ]
@@ -196,8 +248,26 @@ def _write_markdown_report(result: dict[str, Any], path: Path | None) -> None:
 
 def _recommendation(result: dict[str, Any]) -> str:
     if result.get("status") == "ok":
-        return "Local execute readiness passed for this explicit DB and reviewed package."
+        return "READY_FOR_LOCAL_REVIEW_ONLY: local execute readiness passed for this explicit DB and reviewed package."
     return "Fix the reviewed package, local DB coverage, or readiness blockers before any broader use."
+
+
+def _decision(result: dict[str, Any]) -> str:
+    return "READY_FOR_LOCAL_REVIEW_ONLY" if result.get("status") == "ok" else "BLOCKED"
+
+
+def _readiness_reasons(readiness: dict[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    raw_reasons = readiness.get("reasons")
+    if isinstance(raw_reasons, list):
+        reasons.extend(str(item) for item in raw_reasons)
+    reason = readiness.get("reason")
+    if reason:
+        reasons.append(str(reason))
+    raw_caveats = readiness.get("caveats")
+    if isinstance(raw_caveats, list):
+        reasons.extend(str(item) for item in raw_caveats)
+    return reasons
 
 
 def _bullet_list(items: list[str]) -> list[str]:

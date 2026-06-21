@@ -125,7 +125,10 @@ generated QA reports in ignored local paths while creating SHA-256 manifests for
 review. The dry-run report workflow converts validation JSON into a
 human-readable checklist before any execute-mode DB population. The local
 execute-readiness workflow can then apply the package only to an explicit
-temporary/local SQLite DB and write readiness reports.
+temporary/local SQLite DB and write readiness reports. If package validation
+fails before DB mutation, readiness is skipped rather than inferred from
+unrelated DB state. The next inspection layer is an adjusted OHLC execution
+audit before any Backtrader work.
 
 ## 6. Proposed Backtrader Pipeline
 
@@ -197,7 +200,8 @@ batch and rate controls.
 1. Place manually obtained FPT/VNM/VCB adjusted-price evidence under the ignored onboarding path.
 2. Generate a SHA-256 manifest, validation JSON, and dry-run Markdown report for that package.
 3. Use explicit local execute readiness only after reviewed local evidence and the report pass inspection.
-4. Add ETL Docker/scheduler foundation for stable ingestion only.
-5. Add Backtrader research scaffold over a small subset after adjusted readiness passes.
-6. Produce VN100 strategy selection report.
-7. Only then consider broader scheduler, QuestDB, or realtime work.
+4. Audit adjusted OHLC execution outputs before considering backtest integration.
+5. Add ETL Docker/scheduler foundation for stable ingestion only.
+6. Add Backtrader research scaffold over a small subset after adjusted readiness passes.
+7. Produce VN100 strategy selection report.
+8. Only then consider broader scheduler, QuestDB, or realtime work.

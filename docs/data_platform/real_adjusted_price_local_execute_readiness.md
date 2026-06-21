@@ -17,6 +17,8 @@ It is not production DB population and not Backtrader.
 ## Preconditions
 
 - Dry-run report passed.
+- If `--require-dry-run-report` is used, the runner validates the Markdown
+  report content, not only that the file exists.
 - Reviewed package validation passed.
 - Explicit local SQLite DB is prepared.
 - Output paths are explicit.
@@ -35,12 +37,17 @@ python scripts/run_reviewed_adjusted_price_local_execute_readiness.py --package-
 - Adjusted readiness status is `ok`.
 - `backtest_gate=pass`.
 - Markdown report is written.
+- The Markdown report decision is `READY_FOR_LOCAL_REVIEW_ONLY`.
 
 ## Failure Cases
 
 - Missing explicit DB path.
 - Demo DB path is used without explicit override.
+- Required dry-run report is missing, stale, not `ok`, or lacks the Backtrader
+  block warning.
 - Package validation fails.
+- If validation fails before DB mutation, readiness is skipped and the readiness
+  JSON records `status=skipped`.
 - Reviewed package does not cover all requested DB rows.
 - Adjusted readiness is not `ok`.
 
@@ -52,5 +59,5 @@ python scripts/run_reviewed_adjusted_price_local_execute_readiness.py --package-
 - No Backtrader.
 - No Docker/scheduler.
 
-After this passes for a small explicit local DB, the next step is small-symbol
-adjusted OHLC integration planning, not full VN100 or Backtrader execution.
+After this passes for a small explicit local DB, the next step is an adjusted
+OHLC execution audit/inspection report, not full VN100 or Backtrader execution.

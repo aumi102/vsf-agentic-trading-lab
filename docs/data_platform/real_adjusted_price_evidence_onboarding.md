@@ -82,4 +82,6 @@ Run real FPT/VNM/VCB evidence through dry-run validation, then use
 `docs/data_platform/real_adjusted_price_evidence_dry_run_report.md` to generate
 a human-readable checklist report before any execute-mode population or
 Backtrader work. If the report passes, use the local execute-readiness workflow
-against an explicit temporary/local SQLite DB.
+against an explicit temporary/local SQLite DB. Execute readiness should use a
+passing dry-run report gate, and an adjusted OHLC execution audit should inspect
+the populated rows before any backtest integration planning.
