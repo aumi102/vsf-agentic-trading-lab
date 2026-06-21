@@ -134,7 +134,13 @@ readiness status. Strict audit mode requires factor records, validation report,
 and readiness report; raw OHLC unchanged is independently verified only when a
 raw baseline is supplied. The feed contract then maps adjusted OHLC into preview
 `open/high/low/close` fields for FPT/VNM/VCB planning only; it still does not
-implement Backtrader or strategies.
+implement Backtrader or strategies. That feed preview is hardened: it requires a
+strict adjusted OHLC execution audit whose metadata (evidence mode, required
+evidence, unadjusted rows, readiness/validation/backtest gates, mutation flag,
+covered symbols, and DB path) matches the current request, requires every
+requested symbol to have eligible adjusted rows, and validates date and
+`max_rows` inputs instead of silently correcting them. Raw OHLC stays
+diagnostics-only and is never exposed as a trading price.
 
 ## 6. Proposed Backtrader Pipeline
 

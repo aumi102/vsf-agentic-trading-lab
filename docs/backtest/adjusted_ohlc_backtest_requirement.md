@@ -113,7 +113,12 @@ validation report, and readiness report. Raw OHLC unchanged is independently
 verified only if a raw baseline file is supplied.
 `docs/backtest/adjusted_ohlc_backtest_feed_contract.md` then defines the
 small-symbol feed preview contract that maps adjusted OHLC into feed
-`open/high/low/close` fields without implementing Backtrader.
+`open/high/low/close` fields without implementing Backtrader. That contract is
+preview only: it requires a strict adjusted OHLC execution audit whose metadata
+matches the DB and requested symbols, requires every requested symbol to have
+eligible adjusted rows, validates date and `max_rows` inputs instead of
+silently correcting them, keeps raw OHLC diagnostics-only, and emits
+`feed_contract_version=adjusted_ohlc_feed_v1` with `source_price_basis=adjusted_ohlc`.
 
 ## Corporate Action Data
 

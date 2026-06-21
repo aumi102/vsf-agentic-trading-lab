@@ -203,6 +203,260 @@ def test_no_db_mutation(tmp_path: Path) -> None:
     assert _raw_rows(db_path) == before
 
 
+# --- Phase C: symbol coverage -------------------------------------------------
+
+
+def test_missing_requested_symbol_blocks(tmp_path: Path) -> None:
+    db_path = _make_db_with_rows(tmp_path, [_eligible_row("FPT")])
+
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=db_path,
+        symbols=["FPT", "VNM"],
+        audit_report_path=_write_audit(tmp_path, symbols=("FPT", "VNM")),
+    )
+
+    assert result["status"] == "not_ready"
+    assert "missing_requested_symbol:VNM" in result["reasons"]
+    assert result["missing_symbols"] == ["VNM"]
+    assert result["symbols_with_eligible_rows"] == ["FPT"]
+
+
+def test_symbol_with_null_adjusted_ohlc_is_missing(tmp_path: Path) -> None:
+    db_path = _make_db_with_rows(tmp_path, [_eligible_row("VNM", adjusted_close=None)])
+
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=db_path,
+        symbols=["VNM"],
+        audit_report_path=_write_audit(tmp_path, symbols=("VNM",)),
+    )
+
+    assert result["status"] == "not_ready"
+    assert "missing_requested_symbol:VNM" in result["reasons"]
+    assert result["missing_symbols"] == ["VNM"]
+
+
+def test_symbol_with_non_ok_quality_is_missing(tmp_path: Path) -> None:
+    db_path = _make_db_with_rows(tmp_path, [_eligible_row("VNM", quality_status="ohlc_fail")])
+
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=db_path,
+        symbols=["VNM"],
+        audit_report_path=_write_audit(tmp_path, symbols=("VNM",)),
+    )
+
+    assert result["status"] == "not_ready"
+    assert "missing_requested_symbol:VNM" in result["reasons"]
+
+
+def test_symbol_with_missing_provenance_is_missing(tmp_path: Path) -> None:
+    db_path = _make_db_with_rows(tmp_path, [_eligible_row("VNM", adjustment_raw_path=None)])
+
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=db_path,
+        symbols=["VNM"],
+        audit_report_path=_write_audit(tmp_path, symbols=("VNM",)),
+    )
+
+    assert result["status"] == "not_ready"
+    assert "missing_requested_symbol:VNM" in result["reasons"]
+
+
+# --- Phase D: stale audit report gate -----------------------------------------
+
+
+def test_audit_missing_requested_symbol_blocks(tmp_path: Path) -> None:
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=_make_db(tmp_path),
+        symbols=["FPT", "VNM"],
+        audit_report_path=_write_audit(tmp_path, symbols=("FPT",)),
+    )
+
+    assert result["status"] == "not_ready"
+    assert "audit_missing_symbol:VNM" in result["reasons"]
+
+
+def test_audit_evidence_mode_not_strict_blocks(tmp_path: Path) -> None:
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=_make_db(tmp_path),
+        symbols=["FPT"],
+        audit_report_path=_write_audit(tmp_path, overrides={"evidence_mode": "incomplete"}),
+    )
+
+    assert result["status"] == "not_ready"
+    assert "audit_evidence_mode_not_strict:incomplete" in result["reasons"]
+
+
+def test_audit_required_evidence_not_present_blocks(tmp_path: Path) -> None:
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=_make_db(tmp_path),
+        symbols=["FPT"],
+        audit_report_path=_write_audit(tmp_path, overrides={"required_evidence_present": False}),
+    )
+
+    assert result["status"] == "not_ready"
+    assert "audit_required_evidence_not_present" in result["reasons"]
+
+
+def test_audit_db_path_mismatch_blocks(tmp_path: Path) -> None:
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=_make_db(tmp_path),
+        symbols=["FPT"],
+        audit_report_path=_write_audit(tmp_path, overrides={"db_path": "/other/place/elsewhere.sqlite"}),
+    )
+
+    assert result["status"] == "not_ready"
+    assert "audit_db_path_mismatch" in result["reasons"]
+
+
+def test_audit_unadjusted_rows_present_blocks(tmp_path: Path) -> None:
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=_make_db(tmp_path),
+        symbols=["FPT"],
+        audit_report_path=_write_audit(tmp_path, overrides={"unadjusted_rows": 1}),
+    )
+
+    assert result["status"] == "not_ready"
+    assert "audit_unadjusted_rows_present:1" in result["reasons"]
+
+
+def test_audit_readiness_status_not_ok_blocks(tmp_path: Path) -> None:
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=_make_db(tmp_path),
+        symbols=["FPT"],
+        audit_report_path=_write_audit(tmp_path, overrides={"readiness_status": "not_ready"}),
+    )
+
+    assert result["status"] == "not_ready"
+    assert "audit_readiness_status_not_ok:not_ready" in result["reasons"]
+
+
+def test_audit_validation_status_not_ok_blocks(tmp_path: Path) -> None:
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=_make_db(tmp_path),
+        symbols=["FPT"],
+        audit_report_path=_write_audit(tmp_path, overrides={"validation_status": "not_ready"}),
+    )
+
+    assert result["status"] == "not_ready"
+    assert "audit_validation_status_not_ok:not_ready" in result["reasons"]
+
+
+def test_audit_db_mutation_not_made_blocks(tmp_path: Path) -> None:
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=_make_db(tmp_path),
+        symbols=["FPT"],
+        audit_report_path=_write_audit(tmp_path, overrides={"db_mutation_made": False}),
+    )
+
+    assert result["status"] == "not_ready"
+    assert "audit_db_mutation_not_made" in result["reasons"]
+
+
+def test_audit_missing_required_metadata_blocks(tmp_path: Path) -> None:
+    audit = _write_raw_audit(
+        tmp_path,
+        {"status": "ok", "backtest_planning_gate": "pass", "reasons": []},
+    )
+
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=_make_db(tmp_path),
+        symbols=["FPT"],
+        audit_report_path=audit,
+    )
+
+    assert result["status"] == "not_ready"
+    assert any(reason.startswith("audit_missing_required_field:") for reason in result["reasons"])
+
+
+# --- Phase E: date and max_rows validation ------------------------------------
+
+
+def test_invalid_date_format_blocks(tmp_path: Path) -> None:
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=_make_db(tmp_path),
+        symbols=["FPT"],
+        start_date="2026/01/01",
+        audit_report_path=_write_audit(tmp_path),
+    )
+
+    assert result["status"] != "ok"
+    assert "invalid_start_date_format:2026/01/01" in result["reasons"]
+
+
+def test_start_date_after_end_date_blocks(tmp_path: Path) -> None:
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=_make_db(tmp_path),
+        symbols=["FPT"],
+        start_date="2026-01-05",
+        end_date="2026-01-01",
+        audit_report_path=_write_audit(tmp_path),
+    )
+
+    assert result["status"] != "ok"
+    assert "invalid_date_range:start_after_end" in result["reasons"]
+
+
+def test_max_rows_zero_blocks(tmp_path: Path) -> None:
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=_make_db(tmp_path),
+        symbols=["FPT"],
+        audit_report_path=_write_audit(tmp_path),
+        max_rows=0,
+    )
+
+    assert result["status"] != "ok"
+    assert "max_rows_must_be_positive" in result["reasons"]
+
+
+def test_cli_max_rows_zero_exits_one_without_traceback(tmp_path: Path) -> None:
+    completed = _run_cli(tmp_path, "--max-rows", "0")
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    assert "max_rows_must_be_positive" in completed.stdout
+
+
+# --- Phase F: feed output contract --------------------------------------------
+
+
+def test_feed_contract_version_in_output(tmp_path: Path) -> None:
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=_make_db(tmp_path),
+        symbols=["FPT"],
+        audit_report_path=_write_audit(tmp_path),
+    )
+
+    assert result["feed_contract_version"] == "adjusted_ohlc_feed_v1"
+    assert result["source_price_basis"] == "adjusted_ohlc"
+    assert result["missing_symbols"] == []
+
+
+def test_rows_have_no_raw_or_signal_fields(tmp_path: Path) -> None:
+    result = check_adjusted_ohlc_feed_readiness(
+        db_path=_make_db(tmp_path),
+        symbols=["FPT"],
+        audit_report_path=_write_audit(tmp_path),
+    )
+
+    forbidden = {
+        "raw_open",
+        "raw_high",
+        "raw_low",
+        "raw_close",
+        "signal",
+        "signal_id",
+        "trade",
+        "trade_id",
+        "pnl",
+        "equity",
+        "strategy",
+        "strategy_id",
+    }
+    for row in result["rows"]:
+        assert forbidden.isdisjoint(row.keys())
+        assert row["source_price_basis"] == "adjusted_ohlc"
+
+
 def _run_cli(tmp_path: Path, *overrides: str) -> subprocess.CompletedProcess[str]:
     db_path = _make_db(tmp_path)
     audit = _write_audit(tmp_path)
@@ -279,13 +533,60 @@ def _insert_daily_price(con: sqlite3.Connection, row: dict[str, object]) -> None
     )
 
 
-def _write_audit(tmp_path: Path, *, status: str = "ok", gate: str = "pass") -> Path:
+def _write_audit(
+    tmp_path: Path,
+    *,
+    status: str = "ok",
+    gate: str = "pass",
+    db_path: Path | None = None,
+    symbols: tuple[str, ...] | list[str] = ("FPT", "VNM", "VCB"),
+    overrides: dict[str, object] | None = None,
+) -> Path:
     path = tmp_path / "adjusted_ohlc_audit.json"
-    path.write_text(
-        json.dumps({"status": status, "backtest_planning_gate": gate, "reasons": []}, indent=2),
-        encoding="utf-8",
-    )
+    if db_path is None:
+        db_path = tmp_path / "feed_readiness.sqlite"
+    report: dict[str, object] = {
+        "status": status,
+        "backtest_planning_gate": gate,
+        "evidence_mode": "strict",
+        "required_evidence_present": True,
+        "symbols": list(symbols),
+        "db_path": str(db_path),
+        "unadjusted_rows": 0,
+        "readiness_status": "ok",
+        "backtest_gate": "pass",
+        "validation_status": "ok",
+        "db_mutation_made": True,
+        "reasons": [],
+    }
+    if overrides:
+        report.update(overrides)
+    path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return path
+
+
+def _write_raw_audit(tmp_path: Path, report: dict[str, object]) -> Path:
+    path = tmp_path / "adjusted_ohlc_audit.json"
+    path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return path
+
+
+def _make_db_with_rows(tmp_path: Path, rows: list[dict[str, object]]) -> Path:
+    db_path = tmp_path / "feed_readiness.sqlite"
+    if db_path.exists():
+        db_path.unlink()
+    with sqlite3.connect(db_path) as con:
+        create_schema(con)
+        for row in rows:
+            _insert_daily_price(con, row)
+        con.commit()
+    return db_path
+
+
+def _eligible_row(symbol: str, *, trade_date: str = "2026-01-02", close: float = 100.0, **overrides: object) -> dict[str, object]:
+    row = _row(symbol, trade_date, close)
+    row.update(overrides)
+    return row
 
 
 def _raw_rows(db_path: Path) -> dict[str, tuple[float, float, float, float]]:
