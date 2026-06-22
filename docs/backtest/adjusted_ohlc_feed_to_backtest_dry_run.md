@@ -136,4 +136,7 @@ The next safe step is a tiny deterministic fixture strategy/signal dry-run
 contract over this prepared adjusted OHLC input (default all-cash,
 `research_fixture_signal`, no recommendation), reviewed with the mentor before
 any actual backtest engine integration. It is not Backtrader production, not an
-optimizer, and not full VN100.
+optimizer, and not full VN100. That layer is implemented in
+`docs/backtest/adjusted_ohlc_fixture_signal_dry_run.md`: it consumes this
+preparation JSON and emits a deterministic `NO_POSITION` fixture signal preview
+with no performance metrics.
