@@ -28,8 +28,8 @@ database, report performance metrics, or produce investment advice.
   (`reason=research_fixture_all_cash`). The fixture always stays out of the
   market.
 - `alternating_fixture_signal` (optional): a purely synthetic on/off flag that
-  alternates `NO_POSITION` and `RESEARCH_FIXTURE_FLAG` by row index. It is a
-  plumbing fixture only, not a trade rule.
+  alternates `FIXTURE_ENTER` and `FIXTURE_EXIT` by row index. It is a plumbing
+  fixture only, not a trade rule.
 
 Neither mode uses buy/sell/hold wording. Neither mode is a recommendation.
 
@@ -51,8 +51,8 @@ Representative block reasons: `preparation_missing:<path>`,
 `preparation_status_not_ok:<value>`,
 `preparation_input_status_not_ready:<value>`,
 `preparation_price_basis_not_adjusted_ohlc:<value>`,
-`requested_symbol_not_represented:<SYMBOL>`,
-`missing_cost_slippage_assumptions`, `unknown_signal_mode:<value>`,
+`requested_symbol_missing_from_preparation:<SYMBOL>`,
+`preparation_assumptions_missing`, `unknown_signal_mode:<value>`,
 `max_rows_must_be_positive`.
 
 ## Output

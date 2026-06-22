@@ -56,7 +56,7 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC fixture signal dry-run | Fixture-only layer consumes the PR #49 preparation JSON and emits a tiny deterministic fixture signal preview (default `all_cash` → `NO_POSITION` per row; optional synthetic `alternating_fixture_signal`). Validates preparation status/input status/price basis, requested symbol coverage, cost/slippage assumptions, signal mode, and `max_rows`. `performance_metrics=null` and `not_financial_advice=true` always; no buy/sell/hold wording. Renders a Markdown report. Does not call any engine, run Backtrader, optimize, mutate a DB, fetch live data, or give advice. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1287 tests pass** |
+| Test suite | **1288 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -109,11 +109,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC execution audit tests | 33 targeted tests |
 | Adjusted OHLC backtest feed readiness tests | 37 targeted tests |
 | Adjusted OHLC backtest dry-run preparation tests | 38 targeted tests |
-| Adjusted OHLC fixture signal dry-run tests | 25 targeted tests |
+| Adjusted OHLC fixture signal dry-run tests | 26 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1287 |
+| Total tests passing | 1288 |
 
 ---
 

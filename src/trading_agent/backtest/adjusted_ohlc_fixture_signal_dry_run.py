@@ -17,7 +17,8 @@ ALTERNATING_MODE = "alternating_fixture_signal"
 ALLOWED_SIGNAL_MODES = (ALL_CASH_MODE, ALTERNATING_MODE)
 
 NO_POSITION = "NO_POSITION"
-ALT_FIXTURE_FLAG = "RESEARCH_FIXTURE_FLAG"
+FIXTURE_ENTER = "FIXTURE_ENTER"
+FIXTURE_EXIT = "FIXTURE_EXIT"
 
 REQUIRED_ASSUMPTION_FIELDS = ("transaction_cost_bps", "slippage_bps")
 
@@ -58,13 +59,13 @@ def validate_preparation_for_fixture_signal(
     represented = {str(symbol).strip().upper() for symbol in (payload.get("represented_symbols") or [])}
     for symbol in requested_symbols:
         if symbol not in represented:
-            reasons.append(f"requested_symbol_not_represented:{symbol}")
+            reasons.append(f"requested_symbol_missing_from_preparation:{symbol}")
 
     assumptions = payload.get("assumptions")
     if not isinstance(assumptions, dict) or any(
         assumptions.get(field) is None for field in REQUIRED_ASSUMPTION_FIELDS
     ):
-        reasons.append("missing_cost_slippage_assumptions")
+        reasons.append("preparation_assumptions_missing")
 
     if signal_mode not in ALLOWED_SIGNAL_MODES:
         reasons.append(f"unknown_signal_mode:{signal_mode}")
@@ -213,7 +214,7 @@ def _build_signal_rows(rows: list[dict[str, Any]], signal_mode: str) -> list[dic
     signal_rows: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
         if signal_mode == ALTERNATING_MODE:
-            action = NO_POSITION if index % 2 == 0 else ALT_FIXTURE_FLAG
+            action = FIXTURE_ENTER if index % 2 == 0 else FIXTURE_EXIT
             reason = "research_fixture_alternating"
         else:
             action = NO_POSITION

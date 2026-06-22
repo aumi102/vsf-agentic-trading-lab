@@ -142,7 +142,7 @@ def test_missing_requested_symbol_blocks(tmp_path: Path) -> None:
     )
     result = _build(tmp_path, prep_path=prep, symbols=["FPT", "VNM"])
     assert result["status"] == "blocked"
-    assert "requested_symbol_not_represented:VNM" in result["reasons"]
+    assert "requested_symbol_missing_from_preparation:VNM" in result["reasons"]
 
 
 # 8
@@ -150,7 +150,7 @@ def test_missing_assumptions_blocks(tmp_path: Path) -> None:
     prep = _write_preparation(tmp_path, overrides={"assumptions": {"exchange": "HOSE"}})
     result = _build(tmp_path, prep_path=prep)
     assert result["status"] == "blocked"
-    assert "missing_cost_slippage_assumptions" in result["reasons"]
+    assert "preparation_assumptions_missing" in result["reasons"]
 
 
 # 9
@@ -212,6 +212,14 @@ def test_alternating_mode_has_no_recommendation_language(tmp_path: Path) -> None
     text = json.dumps(result).lower()
     for word in ["buy", "sell", "hold"]:
         assert word not in text
+
+
+def test_alternating_mode_uses_fixture_action_names(tmp_path: Path) -> None:
+    result = _build(tmp_path, signal_mode="alternating_fixture_signal")
+    assert result["status"] == "ok"
+    actions = {row["fixture_signal_action"] for row in result["signal_rows"]}
+    assert actions.issubset({"NO_POSITION", "FIXTURE_ENTER", "FIXTURE_EXIT"})
+    assert actions == {"FIXTURE_ENTER", "FIXTURE_EXIT"}
 
 
 # 16
