@@ -20,3 +20,10 @@ requires adjusted OHLC and rules frozen before implementation.
 Mentor approval is needed to choose the family, exact lookbacks, rules,
 execution convention, and risk behavior. This document intentionally selects
 none of them.
+
+These families are catalogued in the read-only
+[strategy adapter registry](./strategy_adapter_registry.md). Only `noop` is
+implemented and enabled (interface preview); every candidate above stays
+disabled and `pending_mentor_approval` until a mentor-approved contract selects
+one. See [candidate adapter contracts](./candidate_adapter_contracts.md) and the
+[mentor strategy selection flow](./mentor_strategy_selection_flow.md).

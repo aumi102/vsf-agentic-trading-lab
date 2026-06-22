@@ -21,6 +21,10 @@ PR #55 adds a machine-readable strategy contract validator and mentor decision
 materials. The template remains pending and blocks real backtesting.
 PR #56 adds a no-op strategy adapter interface preview. It demonstrates approved
 contract and adjusted-input wiring only; a real adapter remains blocked.
+PR #57 adds a read-only strategy adapter registry listing candidate families
+(`noop` enabled as interface preview; all others disabled and
+`pending_mentor_approval`). No real strategy adapter is enabled until the mentor
+selects a family and a contract validates `ok`.
 
 Intentionally blocked: real Backtrader execution, strategy optimization, full
 VN100, production scheduling, broker execution, live trading, and investment
