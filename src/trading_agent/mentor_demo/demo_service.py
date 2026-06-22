@@ -10,6 +10,10 @@ from trading_agent.mentor_demo.decision_capture import (
     build_pending_contract_draft,
     get_decision_fields,
 )
+from trading_agent.mentor_demo.demo_readiness import (
+    build_demo_readiness_report,
+    get_five_minute_demo_script,
+)
 from trading_agent.strategy.strategy_adapter import run_strategy_adapter_preview
 from trading_agent.strategy.strategy_adapter_registry import (
     REGISTRY_VERSION,
@@ -91,6 +95,14 @@ def get_decision_example() -> dict[str, Any]:
     )
 
 
+def get_demo_readiness() -> dict[str, Any]:
+    return build_demo_readiness_report()
+
+
+def get_demo_script() -> dict[str, Any]:
+    return get_five_minute_demo_script()
+
+
 def run_pending_contract_validation() -> dict[str, Any]:
     return validate_strategy_contract_file(ROOT / CONTRACT_TEMPLATE_PATH)
 
@@ -123,6 +135,7 @@ def build_demo_summary() -> dict[str, Any]:
     noop = run_noop_adapter_preview()
     disabled = run_disabled_family_preview()
     upload = get_upload_recommendation()
+    readiness = get_demo_readiness()
     return {
         "status": "ok",
         "checks": {
@@ -155,6 +168,11 @@ def build_demo_summary() -> dict[str, Any]:
             "status": "available",
             "mentor_approval_status": "pending",
             "persistence": "none",
+        },
+        "demo_readiness": {
+            "status": readiness["status"],
+            "demo_command": readiness["demo_command"],
+            "browser_url": readiness["browser_url"],
         },
         "mentor_decisions_needed": [
             "first strategy family",

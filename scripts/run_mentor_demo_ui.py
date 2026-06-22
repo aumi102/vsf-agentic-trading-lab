@@ -20,6 +20,8 @@ from trading_agent.mentor_demo.demo_service import (
     get_decision_example,
     get_decision_field_schema,
     get_decision_template,
+    get_demo_readiness,
+    get_demo_script,
     get_demo_status,
     get_upload_recommendation,
     list_registry_status,
@@ -46,6 +48,8 @@ API_ROUTES: dict[str, Callable[[], dict[str, Any]]] = {
     "/api/decision-template": get_decision_template,
     "/api/decision-example": get_decision_example,
     "/api/talk-track": get_demo_talk_track,
+    "/api/demo-readiness": get_demo_readiness,
+    "/api/demo-script": get_demo_script,
 }
 
 
@@ -114,6 +118,13 @@ def build_dashboard_html() -> str:
       <button onclick="copyDemoTalkTrack()">Copy Demo Talk Track</button>
       <button onclick="loadSection('/api/decision-example','decision-output')">Show Pending Example</button>
       <pre id="decision-output">Draft remains pending until approval is recorded manually.</pre>
+    </section>
+    <section class="wide"><h2>10. Final Demo Readiness</h2>
+      <p>Verify the one-command demo, minimal upload, safety checks, and five-minute call route.</p>
+      <button onclick="loadSection('/api/demo-readiness','readiness-output')">Check Demo Readiness</button>
+      <button onclick="loadSection('/api/demo-script','readiness-output')">Show 5-Minute Demo Script</button>
+      <button onclick="copyDemoScript()">Copy Demo Script</button>
+      <pre id="readiness-output">Ready to run the final local checks.</pre>
     </section>
   </main>
   <script>
@@ -211,6 +222,13 @@ def build_dashboard_html() -> str:
       const payload = await response.json();
       document.getElementById('decision-output').textContent = payload.talk_track;
       if (navigator.clipboard) { await navigator.clipboard.writeText(payload.talk_track); }
+    }
+    async function copyDemoScript() {
+      const response = await fetch('/api/demo-script');
+      const payload = await response.json();
+      const text = payload.steps.map(step => `${step.time} — ${step.topic}: ${step.talk_track}`).join('\n');
+      document.getElementById('readiness-output').textContent = text;
+      if (navigator.clipboard) { await navigator.clipboard.writeText(text); }
     }
   </script>
 </body>
