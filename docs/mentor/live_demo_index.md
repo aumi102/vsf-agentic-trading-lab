@@ -19,6 +19,8 @@ OHLC feed contract, dry-run preparation, fixture signal/metrics, fixture
 round-trip diagnostics, and fixture cost/slippage bps-units diagnostics.
 PR #55 adds a machine-readable strategy contract validator and mentor decision
 materials. The template remains pending and blocks real backtesting.
+PR #56 adds a no-op strategy adapter interface preview. It demonstrates approved
+contract and adjusted-input wiring only; a real adapter remains blocked.
 
 Intentionally blocked: real Backtrader execution, strategy optimization, full
 VN100, production scheduling, broker execution, live trading, and investment

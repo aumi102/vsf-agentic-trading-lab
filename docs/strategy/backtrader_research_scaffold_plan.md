@@ -20,3 +20,7 @@ It must not add an optimizer, parameter sweep, full VN100, production service,
 live network source, broker execution, real-money path, profitability guarantee,
 or investment advice. Mentor approval and adjusted-readiness gates are required
 before implementation starts.
+
+PR #56 adds the adapter interface and no-op preview that must be validated before
+any scaffold. A real adapter remains blocked until the mentor approves one fully
+specified contract.
