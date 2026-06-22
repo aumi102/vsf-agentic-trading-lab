@@ -18,10 +18,11 @@ After the mentor call:
 8. only then consider a separately approved Backtrader research scaffold.
 
 The candidate families are catalogued in the read-only
-[strategy adapter registry](./strategy_adapter_registry.md). Enabling exactly one
-candidate adapter (step 3) flips that family's registry status in a later PR;
-until then only `noop` is enabled. See the
-[mentor strategy selection flow](./mentor_strategy_selection_flow.md).
+[strategy adapter registry](./strategy_adapter_registry.md), now enforced by the
+[strategy family enablement gate](./strategy_family_enablement_gate.md): only an
+enabled family can run the adapter preview (only `noop` today). Enabling exactly
+one candidate adapter (step 3) flips that family's registry status in a later PR.
+See the [mentor strategy selection flow](./mentor_strategy_selection_flow.md).
 
 Optimization, full VN100, live fetch, broker execution, production use,
 performance claims, and investment advice remain excluded.

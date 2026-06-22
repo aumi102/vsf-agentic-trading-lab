@@ -16,7 +16,7 @@ SYMBOLS = ["FPT", "VNM", "VCB"]
 
 def _contract(**overrides: object) -> dict[str, object]:
     payload: dict[str, object] = {
-        "strategy_id": "mentor_baseline_v1", "strategy_family": "moving_average",
+        "strategy_id": "mentor_baseline_v1", "strategy_family": "noop",
         "universe": "mentor_approved_small_symbol_research", "symbols": SYMBOLS,
         "date_range": {"start": "2022-01-01", "end": "2025-12-31"},
         "price_basis": "adjusted_ohlc", "feature_inputs": ["adjusted_close_lag_1"],
@@ -69,6 +69,54 @@ def test_contract_pending_blocks(tmp_path: Path) -> None:
 
 def test_contract_invalid_blocks(tmp_path: Path) -> None:
     assert _run(tmp_path, contract=[])["status"] == "blocked"
+
+
+def test_disabled_family_blocks_with_named_reason(tmp_path: Path) -> None:
+    result = _run(tmp_path, contract=_contract(strategy_family="moving_average"))
+    assert result["status"] == "blocked"
+    assert "strategy_family_not_enabled:moving_average" in result["reasons"]
+
+
+def test_momentum_family_blocks(tmp_path: Path) -> None:
+    result = _run(tmp_path, contract=_contract(strategy_family="momentum"))
+    assert "strategy_family_not_enabled:momentum" in result["reasons"]
+
+
+def test_unknown_family_blocks(tmp_path: Path) -> None:
+    result = _run(tmp_path, contract=_contract(strategy_family="does_not_exist"))
+    assert "unknown_family:does_not_exist" in result["reasons"]
+
+
+def test_breakout_family_blocks(tmp_path: Path) -> None:
+    result = _run(tmp_path, contract=_contract(strategy_family="breakout"))
+    assert "strategy_family_not_enabled:breakout" in result["reasons"]
+
+
+def test_mean_reversion_family_blocks(tmp_path: Path) -> None:
+    result = _run(tmp_path, contract=_contract(strategy_family="mean_reversion"))
+    assert "strategy_family_not_enabled:mean_reversion" in result["reasons"]
+
+
+def test_approved_noop_family_passes(tmp_path: Path) -> None:
+    result = _run(tmp_path, contract=_contract(strategy_family="noop"))
+    assert result["status"] == "ok"
+
+
+def test_enablement_gate_doc_has_valid_frontmatter() -> None:
+    text = Path("docs/strategy/strategy_family_enablement_gate.md").read_text(encoding="utf-8")
+    assert text.startswith("---\n")
+    closing = text.index("\n---", 4)
+    front = text[4:closing]
+    assert "title: strategy_family_enablement_gate" in front
+
+
+def test_pending_contract_blocks_before_family_check(tmp_path: Path) -> None:
+    # A pending contract must block on contract readiness, not the family gate,
+    # even if its family would otherwise be disabled.
+    result = _run(tmp_path, contract=_contract(strategy_family="moving_average", mentor_approval_status="pending"))
+    assert result["status"] == "blocked"
+    assert any(reason.startswith("contract_not_ready:") for reason in result["reasons"])
+    assert not any(reason.startswith("strategy_family_not_enabled:") for reason in result["reasons"])
 
 
 def test_prepared_input_missing_blocks(tmp_path: Path) -> None:

@@ -31,10 +31,17 @@ equity, returns, broker actions, or Backtrader execution. Raw OHLC cannot replac
 the prepared adjusted OHLC basis. PR #56 implements only `NO_SIGNAL` as an
 interface preview.
 
-## Registry
+## Registry gate
 
-A read-only [strategy adapter registry](./strategy_adapter_registry.md) lists the
-candidate families. It is planning-only and is **not** wired into this preview's
-execution path yet, so the preview stays family-independent. Wiring the registry
-into execution (so only an enabled family can run) is the next step after the
-mentor selects a family.
+The preview is wired to the read-only
+[strategy adapter registry](./strategy_adapter_registry.md) through the
+[strategy family enablement gate](./strategy_family_enablement_gate.md). After the
+contract validates `status=ok`, the adapter reads `strategy_family` and requires
+that the family be enabled:
+
+- unknown family blocks with `unknown_family:<family>`;
+- disabled family blocks with `strategy_family_not_enabled:<family>`.
+
+Only `noop` is enabled today, so an approved `strategy_family=noop` contract can
+pass; any other family blocks until a mentor-approved PR enables exactly one.
+This is an enablement gate only — it runs no strategy.

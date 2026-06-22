@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from trading_agent.strategy.strategy_adapter_registry import validate_family_enabled
 from trading_agent.strategy.strategy_contract import (
     load_strategy_contract,
     validate_strategy_contract_file,
@@ -46,6 +47,14 @@ def run_strategy_adapter_preview(
         return _result(None, [], [], [str(contract_loaded["reason"])])
     contract = contract_loaded["payload"]
     symbols = _normalize_symbols(contract.get("symbols"))
+
+    family = str(contract.get("strategy_family") or "").strip().lower()
+    family_check = validate_family_enabled(family)
+    if not family_check["ok"]:
+        reason = str(family_check["reason"])
+        if reason.startswith("family_not_enabled:"):
+            reason = f"strategy_family_not_enabled:{family}"
+        return _result(contract.get("strategy_id"), symbols, [], [reason])
 
     prepared_loaded = load_json_object(prepared_input_path, "prepared_input")
     if not prepared_loaded["ok"]:
