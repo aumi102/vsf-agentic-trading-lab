@@ -4,3 +4,9 @@ openpyxl
 vnstock
 pytest
 httpx
+
+# Optional: DeepAgents LLM agent mode (rule-based agent + backend work without these).
+# Requires OPENAI_API_KEY at runtime. See src/trading_agent/agent/deepagents_questdb_service.py
+deepagents
+langchain
+langchain-openai

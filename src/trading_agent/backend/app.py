@@ -18,6 +18,7 @@ Endpoints:
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -25,13 +26,29 @@ from urllib.parse import parse_qs, urlparse
 
 import pandas as pd
 
+from trading_agent.agent.deepagents_questdb_service import answer_query_deepagents
 from trading_agent.agent.questdb_agent_service import answer_query
 from trading_agent.strategies.simple_ma_cross import run_ma_cross_backtest
 from trading_agent.tools import questdb_market_data_tool as tool
 
 SERVICE_NAME = "vsf-questdb-agent-backend"
-MODEL_ID = "vsf-questdb-agent"
+MODEL_ID = "vsf-questdb-agent"             # rule-based
+MODEL_ID_DEEP = "vsf-questdb-deepagent"    # DeepAgents (LLM)
 DEFAULT_OHLCV_LIMIT = 2000
+
+
+def _resolve_mode(requested: str | None) -> str:
+    """rule (default) | deep | auto (deep iff VSF_AGENT_MODE=deep)."""
+    mode = (requested or "rule").strip().lower()
+    if mode == "auto":
+        return "deep" if os.environ.get("VSF_AGENT_MODE", "").lower() == "deep" else "rule"
+    return mode if mode in {"rule", "deep"} else "rule"
+
+
+def _dispatch_agent(message: str, mode: str, qurl: str) -> dict:
+    if mode == "deep":
+        return answer_query_deepagents(message, questdb_url=qurl)
+    return answer_query(message, questdb_url=qurl)
 
 
 # --- route handlers: each returns (status_code, dict) -----------------------
@@ -118,17 +135,24 @@ def handle_backtest(qurl: str, body: dict) -> tuple[int, dict]:
     return code, bt
 
 
-def handle_agent_chat(qurl: str, body: dict) -> tuple[int, dict]:
+def handle_agent_chat(qurl: str, body: dict, params: dict) -> tuple[int, dict]:
     message = str(body.get("message", "")).strip()
     if not message:
         return 400, {"status": "error", "caveats": ["message is required"]}
-    return 200, answer_query(message, questdb_url=qurl)
+    requested = body.get("mode") or (params.get("mode", [None])[0] if params else None)
+    mode = _resolve_mode(requested)
+    result = _dispatch_agent(message, mode, qurl)
+    result.setdefault("mode", mode)
+    return 200, result
 
 
 def handle_models(_qurl: str) -> tuple[int, dict]:
     return 200, {
         "object": "list",
-        "data": [{"id": MODEL_ID, "object": "model", "created": 0, "owned_by": "vsf"}],
+        "data": [
+            {"id": MODEL_ID, "object": "model", "created": 0, "owned_by": "vsf"},
+            {"id": MODEL_ID_DEEP, "object": "model", "created": 0, "owned_by": "vsf"},
+        ],
     }
 
 
@@ -144,19 +168,25 @@ def handle_chat_completions(qurl: str, body: dict) -> tuple[int, dict]:
             break
     if not user_msg:
         return 400, {"error": {"message": "no user message found", "type": "invalid_request_error"}}
-    result = answer_query(user_msg, questdb_url=qurl)
+    requested = body.get("mode")
+    if not requested and str(body.get("model", "")).strip() == MODEL_ID_DEEP:
+        requested = "deep"
+    mode = _resolve_mode(requested)
+    result = _dispatch_agent(user_msg, mode, qurl)
+    model_label = MODEL_ID_DEEP if mode == "deep" else MODEL_ID
     return 200, {
         "id": f"chatcmpl-vsf-{int(time.time()*1000)}",
         "object": "chat.completion",
         "created": int(time.time()),
-        "model": MODEL_ID,
+        "model": model_label,
         "choices": [{
             "index": 0,
-            "message": {"role": "assistant", "content": result["answer_markdown"]},
+            "message": {"role": "assistant", "content": result.get("answer_markdown", "")},
             "finish_reason": "stop",
         }],
-        "vsf_meta": {"intent": result["intent"], "status": result["status"],
-                     "tool_calls": result["tool_calls"], "caveats": result["caveats"]},
+        "vsf_meta": {"mode": result.get("mode", mode), "intent": result.get("intent"),
+                     "status": result.get("status"), "tool_calls": result.get("tool_calls", []),
+                     "caveats": result.get("caveats", [])},
     }
 
 
@@ -220,7 +250,7 @@ class AgentHTTPRequestHandler(BaseHTTPRequestHandler):
             if path == "/backtest/ma-cross":
                 self._send(*handle_backtest(self._qurl, body)); return
             if path == "/agent/chat":
-                self._send(*handle_agent_chat(self._qurl, body)); return
+                self._send(*handle_agent_chat(self._qurl, body, parse_qs(parsed.query))); return
             if path == "/v1/chat/completions":
                 self._send(*handle_chat_completions(self._qurl, body)); return
             self._send(404, {"status": "error", "caveats": [f"unknown route POST {path}"]})
