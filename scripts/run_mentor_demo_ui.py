@@ -30,6 +30,7 @@ HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 
 API_ROUTES: dict[str, Callable[[], dict[str, Any]]] = {
+    "/api/health": lambda: {"status": "ok"},
     "/api/summary": build_demo_summary,
     "/api/status": get_demo_status,
     "/api/upload": get_upload_recommendation,

@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SERVICE_PATH = Path("src/trading_agent/mentor_demo/demo_service.py")
 SCRIPT_PATH = Path("scripts/run_mentor_demo_ui.py")
 RUNBOOK_PATH = Path("docs/mentor/mentor_demo_ui_runbook.md")
+PROGRESS_PATH = Path("docs/reports/progress_report.md")
 CONTRACT_SYMBOLS = {"FPT", "VNM", "VCB"}
 
 
@@ -90,6 +91,22 @@ def test_api_summary_returns_json() -> None:
     assert json.loads(body)["status"] == "ok"
 
 
+def test_health_route_returns_ok() -> None:
+    status, _, body = _script_module().build_response("/api/health")
+    assert status == 200
+    assert json.loads(body) == {"status": "ok"}
+
+
+def test_server_host_is_loopback_only() -> None:
+    assert _script_module().HOST == "127.0.0.1"
+
+
+def test_html_has_no_external_references() -> None:
+    html = _script_module().build_dashboard_html().lower()
+    assert "http://" not in html
+    assert "https://" not in html
+
+
 def test_once_json_exits_zero_and_prints_ok() -> None:
     completed = subprocess.run(
         [sys.executable, str(SCRIPT_PATH), "--once-json"],
@@ -137,6 +154,15 @@ def test_output_has_no_performance_fields() -> None:
 def test_runbook_references_one_command() -> None:
     text = RUNBOOK_PATH.read_text(encoding="utf-8")
     assert "python scripts/run_mentor_demo_ui.py" in text
+
+
+def test_progress_report_has_one_local_demo_ui_row() -> None:
+    rows = [
+        line
+        for line in PROGRESS_PATH.read_text(encoding="utf-8").splitlines()
+        if line.startswith("| Mentor local demo UI |")
+    ]
+    assert len(rows) == 1
 
 
 def _implementation_text() -> str:
