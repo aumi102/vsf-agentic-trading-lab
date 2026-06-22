@@ -5,6 +5,11 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from trading_agent.mentor_demo.decision_capture import (
+    REQUIRED_DECISION_FIELDS,
+    build_pending_contract_draft,
+    get_decision_fields,
+)
 from trading_agent.strategy.strategy_adapter import run_strategy_adapter_preview
 from trading_agent.strategy.strategy_adapter_registry import (
     REGISTRY_VERSION,
@@ -52,6 +57,38 @@ def get_upload_recommendation() -> dict[str, Any]:
             "build/temp artifacts",
         ],
     }
+
+
+def get_decision_field_schema() -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "fields": get_decision_fields(),
+        "persistence": "none",
+        "mentor_approval_status": "pending",
+    }
+
+
+def get_decision_template() -> dict[str, Any]:
+    return build_pending_contract_draft({field: "" for field in REQUIRED_DECISION_FIELDS})
+
+
+def get_decision_example() -> dict[str, Any]:
+    return build_pending_contract_draft(
+        {
+            "strategy_family": "moving_average",
+            "universe": "mentor_selected_small_symbol_universe",
+            "symbols": ["FPT", "VNM", "VCB"],
+            "date_range": {"start": "2025-01-01", "end": "2025-12-31"},
+            "execution_price": "next_adjusted_open",
+            "transaction_cost_bps": 15,
+            "slippage_bps": 10,
+            "exchange": "HOSE",
+            "rebalance_rule": "mentor_to_confirm_daily_review",
+            "risk_rule": "mentor_to_confirm_no_leverage",
+            "position_sizing": "mentor_to_confirm_equal_weight",
+            "max_holding_period": "mentor_to_confirm_20_sessions",
+        }
+    )
 
 
 def run_pending_contract_validation() -> dict[str, Any]:
@@ -113,6 +150,11 @@ def build_demo_summary() -> dict[str, Any]:
         "upload_files": {
             "primary": upload["primary_file"],
             "optional": upload["optional_file"],
+        },
+        "decision_capture": {
+            "status": "available",
+            "mentor_approval_status": "pending",
+            "persistence": "none",
         },
         "mentor_decisions_needed": [
             "first strategy family",

@@ -25,7 +25,11 @@ exit. No npm or external assets are required.
 - the registry with only `noop` enabled;
 - an approved noop adapter preview returning `NO_SIGNAL` for FPT/VNM/VCB;
 - `moving_average` blocked until mentor approval;
+- browser-only mentor decision capture and pending contract draft preview;
 - the decisions needed before one real family can be enabled.
+
+Use the [decision capture guide](./mentor_demo_decision_capture.md) during the
+call. Form values stay in the browser and are not persisted by the server.
 
 ## Talk Track
 
