@@ -28,6 +28,7 @@ No production DB write, no production backtest, no broker execution.
 | Agent tool orchestrator demo | Deterministic wrapper resolves a symbol, calls market/features/signal/risk/report tools, and returns a Vietnamese answer. No LLM, fetch, broker execution, or backtest. |
 | Agent demo readiness | Scenario runner with `market_brief`, `risk_check`, `compare`. Structured result dict with tool-call trace, Vietnamese answer, caveats, `not_financial_advice=True`. CLI: `scripts/run_agent_demo.py`. |
 | Mentor demo package | Runbook (`docs/demo/mentor_demo_runbook.md`), demo reports (`docs/reports/mentor_demo_report.md`, `docs/reports/backtest_mvp_demo_report.md`), and suite runner (`scripts/run_mentor_demo_suite.py`). Agent and Backtest MVP scenarios are included. Production hardening still blocked. |
+| Mentor live demo package | Call-ready package under `docs/mentor/`: single index, Vin folder upload manifest, exact live-system runbook, backtest/strategy review agenda, strategy decision template, readiness checklist, current status, and mentor questions. `scripts/list_mentor_demo_package.py` reports file readiness without network or mutation. No strategy is finalized; no Backtrader, optimizer, full VN100, production-readiness, profitability, or investment-advice claim. |
 | Final mentor handoff | Handoff note at `docs/demo/mentor_handoff_message.md`; awaiting mentor feedback before QuestDB/LLM/backtest hardening. |
 | Post-demo acceptance | Mentor review checklist (`docs/demo/mentor_review_checklist.md`), post-demo technical roadmap (`docs/plans/post_demo_technical_roadmap.md`), current demo architecture (`docs/architecture/current_demo_architecture.md`). Awaiting mentor feedback on store, backtest, LLM timeline. |
 | Data store decision | Decision matrix (`docs/plans/data_store_decision_matrix.md`); ADR-0001 (`docs/decisions/0001_local_sqlite_mvp_store.md`). Recommendation: keep SQLite for now; DuckDB when backtest needs columnar queries; QuestDB deferred until schema stable. |
@@ -59,7 +60,7 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC fixture cost diagnostics | Fixture-only layer consumes PR #49 preparation and PR #52 round-trip output, then attaches validated transaction-cost/slippage assumptions to fixture enter/exit event counts as bps-units diagnostics. Echoes exchange and slippage band. It never multiplies by price and computes no PnL, equity, returns, currency loss, strategy performance, or trade list. No Backtrader, optimizer, full VN100, DB mutation, live fetch, or investment advice. Mentor review is next before real adjusted-basis engine integration. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1379 tests pass** |
+| Test suite | **1390 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -116,10 +117,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC fixture metrics report tests | 28 targeted tests |
 | Adjusted OHLC fixture round-trip engine tests | 33 targeted tests |
 | Adjusted OHLC fixture cost diagnostics tests | 30 targeted tests |
+| Mentor live demo package manifest tests | 11 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1379 |
+| Total tests passing | 1390 |
 
 ---
 
