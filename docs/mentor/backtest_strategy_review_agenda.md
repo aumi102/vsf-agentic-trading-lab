@@ -38,10 +38,13 @@ broker execution, live trading, or profitability claim is authorized yet.
 
 Complete the strategy decision template and readiness checklist. Record rejected
 options and unresolved assumptions, not only the selected option.
+Use `docs/strategy/examples/strategy_contract_template.json` during the call;
+the validator keeps it `not_ready` until mentor approval is explicit.
 
 ## 7. Candidate Next PRs
 
-1. mentor-approved small-symbol strategy contract;
-2. gated Backtrader research scaffold over adjusted OHLC;
-3. deterministic baseline tests and execution-convention tests;
-4. only later, separately reviewed universe expansion or optimization.
+1. complete and approve the small-symbol strategy contract;
+2. implement one approved strategy adapter over adjusted OHLC;
+3. add a gated Backtrader research scaffold only if separately approved;
+4. deterministic baseline tests and execution-convention tests;
+5. only later, separately reviewed universe expansion or optimization.

@@ -8,6 +8,9 @@ toc_max_heading_level: 3
 
 Complete and approve this before a real adjusted-basis strategy run.
 A strategy is not approved until this template has mentor-approved values.
+The machine-readable companion is
+`docs/strategy/examples/strategy_contract_template.json`; validate it with
+`python scripts/validate_strategy_contract.py --contract <path>`.
 
 | Field | Mentor-approved value |
 |---|---|

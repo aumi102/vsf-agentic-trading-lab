@@ -1,0 +1,28 @@
+{
+  "strategy_id": "PENDING_MENTOR_APPROVAL",
+  "strategy_family": "rule_based_baseline",
+  "universe": "small_symbol_fixture",
+  "symbols": ["FPT", "VNM", "VCB"],
+  "date_range": {
+    "start": "2022-01-01",
+    "end": "2025-12-31"
+  },
+  "price_basis": "adjusted_ohlc",
+  "feature_inputs": ["PENDING_MENTOR_APPROVAL"],
+  "entry_rule": "PENDING_MENTOR_APPROVAL",
+  "exit_rule": "PENDING_MENTOR_APPROVAL",
+  "rebalance_rule": "PENDING_MENTOR_APPROVAL",
+  "execution_price": "PENDING_MENTOR_APPROVAL",
+  "transaction_cost_bps": 15,
+  "slippage_bps": 10,
+  "exchange": "HOSE",
+  "slippage_band_bps": 700,
+  "position_sizing": "PENDING_MENTOR_APPROVAL",
+  "risk_rule": "PENDING_MENTOR_APPROVAL",
+  "max_holding_period": "PENDING_MENTOR_APPROVAL",
+  "lookahead_policy": "Features must use information available before execution.",
+  "data_quality_gates": ["adjusted_ohlc_ready", "provenance_present", "symbols_covered"],
+  "expected_outputs": ["research_report", "assumptions", "caveats"],
+  "caveats": ["Template only; no strategy approval or performance claim."],
+  "mentor_approval_status": "pending"
+}
