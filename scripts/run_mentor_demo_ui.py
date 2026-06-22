@@ -27,6 +27,7 @@ from trading_agent.mentor_demo.demo_service import (
     run_noop_adapter_preview,
     run_pending_contract_validation,
 )
+from trading_agent.mentor_demo.decision_capture import get_demo_talk_track
 
 
 HOST = "127.0.0.1"
@@ -44,6 +45,7 @@ API_ROUTES: dict[str, Callable[[], dict[str, Any]]] = {
     "/api/decision-fields": get_decision_field_schema,
     "/api/decision-template": get_decision_template,
     "/api/decision-example": get_decision_example,
+    "/api/talk-track": get_demo_talk_track,
 }
 
 
@@ -107,7 +109,9 @@ def build_dashboard_html() -> str:
         <label>Position sizing<input id="decision-sizing"></label>
         <label>Max holding period<input id="decision-holding"></label>
       </div>
+      <button onclick="fillSampleMentorDecision()">Fill Sample Mentor Decision</button>
       <button onclick="copyPendingDraft()">Copy pending contract draft</button>
+      <button onclick="copyDemoTalkTrack()">Copy Demo Talk Track</button>
       <button onclick="loadSection('/api/decision-example','decision-output')">Show Pending Example</button>
       <pre id="decision-output">Draft remains pending until approval is recorded manually.</pre>
     </section>
@@ -159,11 +163,54 @@ def build_dashboard_html() -> str:
         mentor_approval_status: 'pending'
       };
     }
+    function validateClientDecisionDraft(draft) {
+      const missing = [];
+      for (const field of ['strategy_family', 'universe', 'execution_price', 'exchange', 'rebalance_rule', 'risk_rule', 'position_sizing', 'max_holding_period']) {
+        if (!draft[field]) { missing.push(field); }
+      }
+      if (!draft.symbols.length) { missing.push('symbols'); }
+      if (!draft.date_range.start || !draft.date_range.end) { missing.push('date_range'); }
+      if (draft.transaction_cost_bps === null) { missing.push('transaction_cost_bps'); }
+      if (draft.slippage_bps === null) { missing.push('slippage_bps'); }
+      const missingNumbers = missing.filter(field => ['transaction_cost_bps', 'slippage_bps'].includes(field));
+      return {
+        status: missing.length ? 'not_ready' : 'draft_ready',
+        missing_fields: missing,
+        warning: missingNumbers.length ? 'Required number fields are blank; values remain null and the draft is not_ready.' : null
+      };
+    }
+    function renderDecisionPreview(draft) {
+      const preview = {...validateClientDecisionDraft(draft), contract_draft: draft};
+      document.getElementById('decision-output').textContent = JSON.stringify(preview, null, 2);
+      return preview;
+    }
+    function fillSampleMentorDecision() {
+      document.getElementById('decision-family').value = 'moving_average';
+      document.getElementById('decision-universe').value = 'small_symbol_research';
+      document.getElementById('decision-symbols').value = 'FPT, VNM, VCB';
+      document.getElementById('decision-start').value = '2025-01-01';
+      document.getElementById('decision-end').value = '2025-12-31';
+      document.getElementById('decision-execution').value = 'next_adjusted_open';
+      document.getElementById('decision-cost').value = '15';
+      document.getElementById('decision-slippage').value = '10';
+      document.getElementById('decision-exchange').value = 'HOSE';
+      document.getElementById('decision-rebalance').value = 'daily after completed bar';
+      document.getElementById('decision-risk').value = 'no leverage';
+      document.getElementById('decision-sizing').value = 'equal research weight';
+      document.getElementById('decision-holding').value = '20 sessions';
+      renderDecisionPreview(buildPendingDraft());
+    }
     async function copyPendingDraft() {
       const draft = buildPendingDraft();
       const text = JSON.stringify(draft, null, 2);
-      document.getElementById('decision-output').textContent = text;
+      renderDecisionPreview(draft);
       if (navigator.clipboard) { await navigator.clipboard.writeText(text); }
+    }
+    async function copyDemoTalkTrack() {
+      const response = await fetch('/api/talk-track');
+      const payload = await response.json();
+      document.getElementById('decision-output').textContent = payload.talk_track;
+      if (navigator.clipboard) { await navigator.clipboard.writeText(payload.talk_track); }
     }
   </script>
 </body>

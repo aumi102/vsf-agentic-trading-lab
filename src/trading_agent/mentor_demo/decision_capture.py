@@ -31,6 +31,11 @@ REQUIRED_DECISION_FIELDS = (
 DRAFT_CAVEAT = (
     "Draft only; mentor approval must be recorded manually before validation can return ok."
 )
+DEMO_TALK_TRACK = (
+    "This UI captures mentor decisions into a pending contract draft. "
+    "It does not approve the contract, enable a family, run a strategy, "
+    "compute performance, or provide investment advice."
+)
 
 
 def get_decision_fields() -> list[dict[str, Any]]:
@@ -48,6 +53,14 @@ def get_decision_fields() -> list[dict[str, Any]]:
         _field("position_sizing", "Position sizing", "text"),
         _field("max_holding_period", "Max holding period", "text"),
     ]
+
+
+def get_demo_talk_track() -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "talk_track": DEMO_TALK_TRACK,
+        "not_financial_advice": True,
+    }
 
 
 def validate_decision_completeness(decisions: dict[str, Any]) -> dict[str, Any]:

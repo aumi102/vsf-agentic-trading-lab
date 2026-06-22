@@ -32,6 +32,7 @@ No production DB write, no production backtest, no broker execution.
 | Mentor call brief | Docs-only concise call summary with a minimal Vin upload recommendation. No code, data, or strategy execution. |
 | Mentor local demo UI | Local-only visual dashboard launched with one command. Uses synthetic fixtures with no network, DB mutation, or real strategy execution. |
 | Mentor decision capture | Browser-only form previews a pending adjusted-OHLC strategy contract draft. No persistence, execution, family enablement, or advice. |
+| Mentor decision capture polish | Client-side completeness warnings, sample fill, and a copyable boundary talk track. Blank numbers remain null/not-ready; drafts remain pending. |
 | Final mentor handoff | Handoff note at `docs/demo/mentor_handoff_message.md`; awaiting mentor feedback before QuestDB/LLM/backtest hardening. |
 | Post-demo acceptance | Mentor review checklist (`docs/demo/mentor_review_checklist.md`), post-demo technical roadmap (`docs/plans/post_demo_technical_roadmap.md`), current demo architecture (`docs/architecture/current_demo_architecture.md`). Awaiting mentor feedback on store, backtest, LLM timeline. |
 | Data store decision | Decision matrix (`docs/plans/data_store_decision_matrix.md`); ADR-0001 (`docs/decisions/0001_local_sqlite_mvp_store.md`). Recommendation: keep SQLite for now; DuckDB when backtest needs columnar queries; QuestDB deferred until schema stable. |
@@ -67,7 +68,7 @@ No production DB write, no production backtest, no broker execution.
 | Strategy family enablement gate | Registry wired into the adapter preview: after a contract validates `ok`, the adapter requires its `strategy_family` to be enabled in the registry. Unknown family blocks `unknown_family:<family>`; disabled family blocks `strategy_family_not_enabled:<family>`. Only `noop` is enabled today, so an approved `noop` contract passes and every other family blocks until a mentor-approved enablement PR. Enablement gate only: no real strategy execution, Backtrader, optimizer, full VN100, PnL/equity/returns, DB mutation, network fetch, or investment advice. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1510 tests pass** |
+| Test suite | **1529 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -127,13 +128,14 @@ No production DB write, no production backtest, no broker execution.
 | Mentor live demo package manifest tests | 11 targeted tests |
 | Mentor local demo UI tests | 24 targeted tests |
 | Mentor decision capture tests | 19 targeted tests |
+| Mentor decision capture polish tests | 19 targeted tests |
 | Strategy contract validation tests | 30 targeted tests |
 | Strategy adapter interface tests | 28 targeted tests |
 | Strategy adapter registry tests | 13 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1510 |
+| Total tests passing | 1529 |
 
 ---
 
