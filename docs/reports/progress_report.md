@@ -54,9 +54,10 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC backtest feed contract | Read-only small-symbol contract and preview maps adjusted OHLC to feed price fields only after strict audit passes. Hardened gates require every requested symbol to have eligible adjusted rows, reject stale/mismatched audit metadata, validate date and `max_rows` instead of silently correcting them, and emit `feed_contract_version=adjusted_ohlc_feed_v1`. No Backtrader implementation or strategy execution. |
 | Adjusted OHLC backtest dry-run preparation | Preparation-only layer converts the PR #48 feed preview JSON into a backtest input contract for a research dry-run. Validates feed contract/price basis, requested symbols, date range, `max_rows`, explicit transaction cost/slippage, and exchange slippage bands (HOSE/HSX +/-7%, UPCoM +/-15%). Every requested symbol must survive the date-range filter and `max_rows` limit, else `prepared_input_missing_symbol_after_filter`/`_after_limit` blocks; output reports `requested_symbols`/`represented_symbols`/`missing_symbols` and `not_financial_advice=true` with no performance metrics. Optional `research_fixture_signal` is a deterministic all-cash placeholder. Does not call any engine, run Backtrader, optimize, mutate a DB, fetch live data, or give advice. |
 | Adjusted OHLC fixture signal dry-run | Fixture-only layer consumes the PR #49 preparation JSON and emits a tiny deterministic fixture signal preview (default `all_cash` → `NO_POSITION` per row; optional synthetic `alternating_fixture_signal`). Validates preparation status/input status/price basis, requested symbol coverage, cost/slippage assumptions, signal mode, and `max_rows`. `performance_metrics=null` and `not_financial_advice=true` always; no buy/sell/hold wording. Renders a Markdown report. Does not call any engine, run Backtrader, optimize, mutate a DB, fetch live data, or give advice. |
+| Adjusted OHLC fixture metrics report | Fixture-only diagnostics layer consumes the PR #50 fixture signal JSON and emits deterministic counts (`row_count`, `symbol_count`, `signal_action_counts`, `first_date`/`last_date`, `fixture_no_position_ratio`, `input_price_basis`). Blocks real actions (`BUY`/`SELL`/`HOLD`), non-null `performance_metrics`, and any PnL/equity/performance row field; sets `forbidden_performance_metrics_present`. Intentionally computes no Sharpe/Sortino/Profit Factor/Max Drawdown/PnL/equity/win rate/alpha. `not_financial_advice=true`. Renders Markdown. No engine call, Backtrader, optimizer, DB mutation, live fetch, or advice. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1288 tests pass** |
+| Test suite | **1316 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -110,10 +111,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC backtest feed readiness tests | 37 targeted tests |
 | Adjusted OHLC backtest dry-run preparation tests | 38 targeted tests |
 | Adjusted OHLC fixture signal dry-run tests | 26 targeted tests |
+| Adjusted OHLC fixture metrics report tests | 28 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1288 |
+| Total tests passing | 1316 |
 
 ---
 

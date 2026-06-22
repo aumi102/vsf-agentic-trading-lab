@@ -129,8 +129,13 @@ that preparation JSON and emits a tiny deterministic fixture signal preview
 (default all-cash `NO_POSITION`, optional synthetic alternating flag). It is
 fixture signal preview only: not a real strategy, not Backtrader, not an
 optimizer, not full VN100, and it reports no performance metrics by default and
-gives no investment advice. The next step after it is mentor review of the
-assumption and signal boundaries before any actual backtest engine integration.
+gives no investment advice. `docs/backtest/adjusted_ohlc_fixture_metrics_report.md`
+then consumes that fixture signal output and produces deterministic, clearly
+fixture-labeled diagnostic metrics (counts, dates, no-position ratio). It is
+fixture diagnostics only: not strategy performance, not Backtrader, not an
+optimizer, not full VN100, not investment advice, and it intentionally avoids
+Sharpe/Sortino/Profit Factor/Max Drawdown/PnL/equity curve. The next step after
+it is mentor review before any real adjusted-basis engine integration.
 
 ## Corporate Action Data
 
