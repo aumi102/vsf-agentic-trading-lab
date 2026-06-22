@@ -37,13 +37,13 @@ advice.
 
 ## Live Demo Route
 
-1. Review [current status](./current_system_status_for_call.md).
-2. Follow the [live runbook](./live_system_demo_runbook.md).
-3. Review the [backtest/strategy agenda](./backtest_strategy_review_agenda.md).
-4. Record decisions in the [strategy template](./strategy_decision_template.md).
-5. Confirm the [readiness checklist](./backtest_readiness_checklist.md).
-6. Close the open [mentor questions](./mentor_questions.md).
-7. Fill and validate `docs/strategy/examples/strategy_contract_template.json`.
+1. Start the [local mentor demo UI](./mentor_demo_ui_runbook.md) with one command.
+2. Review [current status](./current_system_status_for_call.md).
+3. Follow the [live runbook](./live_system_demo_runbook.md).
+4. Review the [backtest/strategy agenda](./backtest_strategy_review_agenda.md).
+5. Record decisions in the [strategy template](./strategy_decision_template.md).
+6. Confirm the [readiness checklist](./backtest_readiness_checklist.md).
+7. Close the open [mentor questions](./mentor_questions.md).
 
 ## Docs and Reports
 

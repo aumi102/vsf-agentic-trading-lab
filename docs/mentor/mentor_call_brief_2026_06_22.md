@@ -23,6 +23,7 @@ is one gated module. Nothing here is investment advice.
 
 ## Ready to Demo
 
+- local mentor dashboard: `python scripts/run_mentor_demo_ui.py`;
 - live demo package and call documents;
 - adjusted OHLC safety gates;
 - adjusted OHLC feed contract;
@@ -42,12 +43,11 @@ is one gated module. Nothing here is investment advice.
 
 ## Suggested Live Demo Route
 
-1. Start with this brief.
-2. Open `docs/reports/progress_report.md` only if more detail is needed.
-3. Show `docs/strategy/examples/strategy_contract_template.json`.
-4. Show the registry: `python scripts/list_strategy_adapter_registry.py`.
-5. Show the no-op adapter gate: an approved `noop` contract passes; any other
-   family blocks with `strategy_family_not_enabled:<family>`.
+1. Start the [local mentor demo UI](./mentor_demo_ui_runbook.md).
+2. Use this brief as the call outline.
+3. Open `docs/reports/progress_report.md` only if more detail is needed.
+4. Validate the pending strategy contract template in the dashboard.
+5. Show the registry, noop preview, and blocked real-family behavior.
 6. Ask the mentor to choose the first strategy family and contract assumptions.
 
 ## Decisions Needed From Mentor
