@@ -63,7 +63,7 @@ No production DB write, no production backtest, no broker execution.
 | Strategy adapter registry | Read-only catalogue of candidate adapter families (`noop`, `moving_average`, `momentum`, `breakout`, `mean_reversion`). Only `noop` is implemented/enabled (`interface_preview`); all others are disabled and `pending_mentor_approval`. `validate_family_enabled` blocks unknown/disabled families. Planning-only: not wired into the adapter execution path; no real strategy execution, Backtrader, optimizer, full VN100, performance metric, DB mutation, network fetch, or investment advice. CLI: `scripts/list_strategy_adapter_registry.py`. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1452 tests pass** |
+| Test suite | **1453 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -123,11 +123,11 @@ No production DB write, no production backtest, no broker execution.
 | Mentor live demo package manifest tests | 11 targeted tests |
 | Strategy contract validation tests | 30 targeted tests |
 | Strategy adapter interface tests | 20 targeted tests |
-| Strategy adapter registry tests | 12 targeted tests |
+| Strategy adapter registry tests | 13 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1452 |
+| Total tests passing | 1453 |
 
 ---
 

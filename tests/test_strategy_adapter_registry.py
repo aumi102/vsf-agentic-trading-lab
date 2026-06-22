@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from trading_agent.strategy.strategy_adapter_registry import (
+    REGISTRY_VERSION,
     get_strategy_adapter_family,
     list_strategy_adapters,
     validate_family_enabled,
@@ -21,6 +22,10 @@ EXPECTED_FAMILIES = {"noop", "moving_average", "momentum", "breakout", "mean_rev
 def test_registry_lists_all_expected_families() -> None:
     families = {entry["family"] for entry in list_strategy_adapters()}
     assert families == EXPECTED_FAMILIES
+
+
+def test_registry_version_is_v1() -> None:
+    assert REGISTRY_VERSION == "strategy_adapter_registry_v1"
 
 
 def test_noop_is_implemented_and_enabled() -> None:
@@ -89,6 +94,7 @@ def test_cli_output_json_works(tmp_path: Path) -> None:
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert {entry["family"] for entry in payload["families"]} == EXPECTED_FAMILIES
     assert payload["not_financial_advice"] is True
+    assert payload["registry_version"] == REGISTRY_VERSION
 
 
 def _run_cli(output: Path | None = None) -> subprocess.CompletedProcess[str]:

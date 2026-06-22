@@ -11,7 +11,10 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from trading_agent.strategy.strategy_adapter_registry import list_strategy_adapters
+from trading_agent.strategy.strategy_adapter_registry import (
+    REGISTRY_VERSION,
+    list_strategy_adapters,
+)
 
 
 def main() -> int:
@@ -22,6 +25,7 @@ def main() -> int:
     args = parser.parse_args()
     result = {
         "registry": "strategy_adapter_registry",
+        "registry_version": REGISTRY_VERSION,
         "families": list_strategy_adapters(),
         "not_financial_advice": True,
         "caveats": [

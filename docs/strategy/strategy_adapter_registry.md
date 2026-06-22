@@ -11,7 +11,8 @@ toc_max_heading_level: 3
 The registry is a static, read-only catalogue of strategy adapter families that
 are candidate implementation targets. It records which families exist, their
 status, and whether they are implemented and enabled. It runs no strategy,
-fetches no data, and mutates nothing.
+fetches no data, and mutates nothing. The registry is versioned
+(`registry_version=strategy_adapter_registry_v1`).
 
 ## Families
 

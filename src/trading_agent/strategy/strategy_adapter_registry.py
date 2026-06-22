@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 
+REGISTRY_VERSION = "strategy_adapter_registry_v1"
 PENDING_STATUS = "pending_mentor_approval"
 INTERFACE_PREVIEW_STATUS = "interface_preview"
 
