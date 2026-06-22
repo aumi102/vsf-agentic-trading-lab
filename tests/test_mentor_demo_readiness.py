@@ -22,6 +22,10 @@ def test_readiness_report_returns_ok() -> None:
     assert build_demo_readiness_report()["status"] == "ok"
 
 
+def test_every_readiness_check_is_ok() -> None:
+    assert all(check["status"] == "ok" for check in get_demo_readiness_checks())
+
+
 def test_checks_include_brief_exists() -> None:
     assert _checks()["brief_exists"]["status"] == "ok"
 

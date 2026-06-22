@@ -6,6 +6,9 @@ toc_max_heading_level: 3
 
 # Mentor Demo Final Readiness
 
+This is the final pre-call demo entry point; no additional feature setup is
+required before the mentor rehearsal.
+
 ## Run and Upload
 
 Run `python scripts/run_mentor_demo_ui.py`, then open
