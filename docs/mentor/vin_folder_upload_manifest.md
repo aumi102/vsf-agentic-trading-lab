@@ -6,6 +6,17 @@ toc_max_heading_level: 3
 
 # Vin Folder Upload Manifest
 
+## Recommended Minimal Upload
+
+For the call, upload just two files:
+
+1. `docs/mentor/mentor_call_brief_2026_06_22.md` (primary, mentor-facing);
+2. `docs/reports/progress_report.md` (optional detail).
+
+The detailed docs below remain in the repository and can be opened live during
+the call. Do not upload raw data, secrets, database files, or build/temp
+artifacts.
+
 ## Repository Docs
 
 | File | Status |

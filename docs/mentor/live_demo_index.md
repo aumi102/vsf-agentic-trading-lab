@@ -11,6 +11,8 @@ toc_max_heading_level: 3
 This is the single entry point for the mentor call. The product is an
 agent/tool system; backtesting is one gated module. The call should review the
 live system and jointly decide the first real adjusted-basis strategy contract.
+For the fastest entry point, start with the concise
+[mentor call brief](./mentor_call_brief_2026_06_22.md).
 
 ## Current Status
 

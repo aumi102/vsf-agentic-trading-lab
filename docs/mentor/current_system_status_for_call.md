@@ -37,4 +37,9 @@ suite. Backtesting remains one module of the product.
 5. Review strategy choices and complete the decision template.
 6. Agree the scope of the first gated Backtrader research PR.
 
+For a short, mentor-facing summary, see the
+[mentor call brief](./mentor_call_brief_2026_06_22.md). Recommended Vin upload is
+just that brief plus `docs/reports/progress_report.md`; detailed docs stay in the
+repository and can be opened live.
+
 All outputs remain research-only and not investment advice.
