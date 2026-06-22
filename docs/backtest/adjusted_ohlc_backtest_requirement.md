@@ -124,7 +124,13 @@ preview and prepares a backtest input contract for a research dry-run. It
 validates the adjusted feed plus explicit transaction-cost and slippage
 assumptions and encodes the slippage bands (HOSE/HSX +/-7%, UPCoM +/-15%). It is
 preparation only: no Backtrader, no optimizer, no full VN100, and no investment
-advice.
+advice. `docs/backtest/adjusted_ohlc_fixture_signal_dry_run.md` then consumes
+that preparation JSON and emits a tiny deterministic fixture signal preview
+(default all-cash `NO_POSITION`, optional synthetic alternating flag). It is
+fixture signal preview only: not a real strategy, not Backtrader, not an
+optimizer, not full VN100, and it reports no performance metrics by default and
+gives no investment advice. The next step after it is mentor review of the
+assumption and signal boundaries before any actual backtest engine integration.
 
 ## Corporate Action Data
 
