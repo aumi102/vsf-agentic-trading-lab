@@ -48,13 +48,13 @@ def load_json_object(path: str | Path, label: str) -> dict[str, Any]:
     try:
         raw = file_path.read_text(encoding="utf-8-sig")
     except FileNotFoundError:
-        return {"ok": False, "reason": f"{label}_missing:{file_path}", "payload": None}
+        return {"ok": False, "reason": f"{label}_missing", "payload": None}
     try:
         payload = json.loads(raw)
     except (json.JSONDecodeError, UnicodeDecodeError):
-        return {"ok": False, "reason": f"{label}_invalid_json", "payload": None}
+        return {"ok": False, "reason": f"json_invalid:{label}", "payload": None}
     if not isinstance(payload, dict):
-        return {"ok": False, "reason": f"{label}_must_be_object", "payload": None}
+        return {"ok": False, "reason": f"json_must_be_object:{label}", "payload": None}
     return {"ok": True, "reason": None, "payload": payload}
 
 
@@ -76,14 +76,16 @@ def validate_roundtrip_inputs(
         reasons.append(f"preparation_input_status_not_ready:{preparation.get('backtest_input_status')}")
     if preparation.get("price_basis") != SOURCE_PRICE_BASIS:
         reasons.append(f"preparation_price_basis_not_adjusted_ohlc:{preparation.get('price_basis')}")
+    if preparation.get("not_financial_advice") is not True:
+        reasons.append("preparation_not_financial_advice_missing")
     prep_symbols = _upper_set(preparation.get("represented_symbols"))
     for symbol in requested_symbols:
         if symbol not in prep_symbols:
-            reasons.append(f"requested_symbol_missing_from_preparation:{symbol}")
+            reasons.append(f"requested_symbol_missing:{symbol}")
 
     # --- Fixture signal (PR #50) ---
     if fixture_signal.get("status") != "ok":
-        reasons.append(f"fixture_signal_status_not_ok:{fixture_signal.get('status')}")
+        reasons.append(f"signal_status_not_ok:{fixture_signal.get('status')}")
     if fixture_signal.get("dry_run_stage") != SIGNAL_STAGE:
         reasons.append(f"fixture_signal_stage_invalid:{fixture_signal.get('dry_run_stage')}")
     if fixture_signal.get("price_basis") != SOURCE_PRICE_BASIS:
@@ -91,7 +93,7 @@ def validate_roundtrip_inputs(
     if fixture_signal.get("not_financial_advice") is not True:
         reasons.append("fixture_signal_not_financial_advice_missing")
     if fixture_signal.get("performance_metrics") is not None:
-        reasons.append("fixture_signal_performance_metrics_must_be_null")
+        reasons.append("signal_performance_metrics_must_be_null")
 
     signal_rows = fixture_signal.get("signal_rows")
     if not isinstance(signal_rows, list) or not signal_rows:
@@ -106,7 +108,7 @@ def validate_roundtrip_inputs(
     signal_symbols |= _upper_set(fixture_signal.get("represented_symbols"))
     for symbol in requested_symbols:
         if symbol not in signal_symbols:
-            reasons.append(f"requested_symbol_missing_from_signal:{symbol}")
+            reasons.append(f"requested_symbol_missing:{symbol}")
 
     for row in signal_rows:
         if not isinstance(row, dict):
@@ -123,7 +125,7 @@ def validate_roundtrip_inputs(
 
     # --- Fixture metrics (PR #51) ---
     if fixture_metrics.get("status") != "ok":
-        reasons.append(f"fixture_metrics_status_not_ok:{fixture_metrics.get('status')}")
+        reasons.append(f"metrics_status_not_ok:{fixture_metrics.get('status')}")
     if fixture_metrics.get("report_stage") != METRICS_STAGE:
         reasons.append(f"fixture_metrics_stage_invalid:{fixture_metrics.get('report_stage')}")
     if fixture_metrics.get("price_basis") != SOURCE_PRICE_BASIS:
@@ -131,11 +133,11 @@ def validate_roundtrip_inputs(
     if fixture_metrics.get("not_financial_advice") is not True:
         reasons.append("fixture_metrics_not_financial_advice_missing")
     if fixture_metrics.get("forbidden_performance_metrics_present") is not False:
-        reasons.append("fixture_metrics_forbidden_performance_metrics_present")
+        reasons.append("metrics_forbidden_performance_metrics_present")
     metrics_symbols = _upper_set(fixture_metrics.get("symbols"))
     for symbol in requested_symbols:
         if symbol not in metrics_symbols:
-            reasons.append(f"requested_symbol_missing_from_metrics:{symbol}")
+            reasons.append(f"requested_symbol_missing:{symbol}")
 
     # --- General ---
     try:
@@ -309,7 +311,7 @@ def _result(
         reason.startswith("forbidden_row_field_present:")
         or reason.startswith("forbidden_action_present:")
         or reason.endswith("_performance_metrics_must_be_null")
-        or reason == "fixture_metrics_forbidden_performance_metrics_present"
+        or reason == "metrics_forbidden_performance_metrics_present"
         for reason in reasons
     )
     caveats = [

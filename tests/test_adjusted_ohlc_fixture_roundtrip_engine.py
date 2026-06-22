@@ -163,21 +163,21 @@ def _alt_rows() -> list[dict[str, object]]:
 def test_missing_preparation_file_blocks(tmp_path: Path) -> None:
     result = _build(tmp_path, prep=tmp_path / "nope.json")
     assert result["status"] == "blocked"
-    assert any(str(r).startswith("preparation_missing:") for r in result["reasons"])
+    assert "preparation_missing" in result["reasons"]
 
 
 # 2
 def test_missing_signal_file_blocks(tmp_path: Path) -> None:
     result = _build(tmp_path, signal=tmp_path / "nope.json")
     assert result["status"] == "blocked"
-    assert any(str(r).startswith("fixture_signal_missing:") for r in result["reasons"])
+    assert "fixture_signal_missing" in result["reasons"]
 
 
 # 3
 def test_missing_metrics_file_blocks(tmp_path: Path) -> None:
     result = _build(tmp_path, metrics=tmp_path / "nope.json")
     assert result["status"] == "blocked"
-    assert any(str(r).startswith("fixture_metrics_missing:") for r in result["reasons"])
+    assert "fixture_metrics_missing" in result["reasons"]
 
 
 # 4
@@ -186,7 +186,15 @@ def test_invalid_json_blocks_cleanly(tmp_path: Path) -> None:
     bad.write_text("{not json", encoding="utf-8")
     result = _build(tmp_path, prep=bad)
     assert result["status"] == "blocked"
-    assert "preparation_invalid_json" in result["reasons"]
+    assert "json_invalid:preparation" in result["reasons"]
+
+
+def test_json_array_blocks_cleanly(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.json"
+    bad.write_text("[]", encoding="utf-8")
+    result = _build(tmp_path, prep=bad)
+    assert result["status"] == "blocked"
+    assert "json_must_be_object:preparation" in result["reasons"]
 
 
 # 5
@@ -210,7 +218,7 @@ def test_signal_status_not_ok_blocks(tmp_path: Path) -> None:
     signal = _write_signal(tmp_path, overrides={"status": "blocked"})
     result = _build(tmp_path, signal=signal)
     assert result["status"] == "blocked"
-    assert "fixture_signal_status_not_ok:blocked" in result["reasons"]
+    assert "signal_status_not_ok:blocked" in result["reasons"]
 
 
 # 8
@@ -218,7 +226,7 @@ def test_signal_performance_metrics_not_null_blocks(tmp_path: Path) -> None:
     signal = _write_signal(tmp_path, overrides={"performance_metrics": {"sharpe": 1.0}})
     result = _build(tmp_path, signal=signal)
     assert result["status"] == "blocked"
-    assert "fixture_signal_performance_metrics_must_be_null" in result["reasons"]
+    assert "signal_performance_metrics_must_be_null" in result["reasons"]
 
 
 # 9
@@ -226,7 +234,7 @@ def test_metrics_status_not_ok_blocks(tmp_path: Path) -> None:
     metrics = _write_metrics(tmp_path, overrides={"status": "blocked"})
     result = _build(tmp_path, metrics=metrics)
     assert result["status"] == "blocked"
-    assert "fixture_metrics_status_not_ok:blocked" in result["reasons"]
+    assert "metrics_status_not_ok:blocked" in result["reasons"]
 
 
 # 10
@@ -234,7 +242,7 @@ def test_metrics_forbidden_performance_present_blocks(tmp_path: Path) -> None:
     metrics = _write_metrics(tmp_path, overrides={"forbidden_performance_metrics_present": True})
     result = _build(tmp_path, metrics=metrics)
     assert result["status"] == "blocked"
-    assert "fixture_metrics_forbidden_performance_metrics_present" in result["reasons"]
+    assert "metrics_forbidden_performance_metrics_present" in result["reasons"]
 
 
 # 11
@@ -242,7 +250,7 @@ def test_requested_symbol_missing_across_inputs_blocks(tmp_path: Path) -> None:
     signal = _write_signal(tmp_path, symbols=("FPT", "VNM"), rows=[_signal_row("FPT"), _signal_row("VNM")])
     result = _build(tmp_path, signal=signal, symbols=["FPT", "VNM", "VCB"])
     assert result["status"] == "blocked"
-    assert "requested_symbol_missing_from_signal:VCB" in result["reasons"]
+    assert "requested_symbol_missing:VCB" in result["reasons"]
 
 
 # 12

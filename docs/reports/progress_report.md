@@ -58,7 +58,7 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC fixture round-trip engine | Fixture-only deterministic engine consumes the PR #49 preparation, PR #50 fixture signal, and PR #51 fixture metrics, and emits round-trip state-transition diagnostics only (`fixture_enter_count`, `fixture_exit_count`, `duplicate_enter_count`, `unmatched_exit_count`, `open_fixture_state_count`) plus row counts, action counts, dates, and echoed cost/slippage assumptions. Per-symbol `OUT`/`IN_FIXTURE` state over `NO_POSITION`/`FIXTURE_ENTER`/`FIXTURE_EXIT`. Blocks `BUY`/`SELL`/`HOLD`, non-null `performance_metrics`, and PnL/equity/return/sharpe/drawdown row fields. Computes no PnL/equity/returns/Sharpe/drawdown and no trade list. `not_financial_advice=true`. Renders Markdown. No engine call, Backtrader, optimizer, DB mutation, live fetch, or advice. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1348 tests pass** |
+| Test suite | **1349 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -113,11 +113,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC backtest dry-run preparation tests | 38 targeted tests |
 | Adjusted OHLC fixture signal dry-run tests | 26 targeted tests |
 | Adjusted OHLC fixture metrics report tests | 28 targeted tests |
-| Adjusted OHLC fixture round-trip engine tests | 32 targeted tests |
+| Adjusted OHLC fixture round-trip engine tests | 33 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1348 |
+| Total tests passing | 1349 |
 
 ---
 
