@@ -30,6 +30,9 @@ exit. No npm or external assets are required.
 
 Use the [decision capture guide](./mentor_demo_decision_capture.md) during the
 call. Form values stay in the browser and are not persisted by the server.
+The sample-fill values are examples only, blank number fields remain
+`null`/`not_ready`, and the copied talk track explains why every draft stays
+pending and non-executing.
 
 ## Talk Track
 
