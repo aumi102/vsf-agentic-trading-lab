@@ -106,6 +106,11 @@ python scripts/run_adjusted_ohlc_fixture_signal_dry_run.py --preparation-json re
 
 ## Next Safe Step
 
-The next step is a mentor review of the assumption and signal boundaries before
+The next step is `docs/backtest/adjusted_ohlc_fixture_metrics_report.md`, which
+consumes this fixture signal output and produces deterministic, clearly
+fixture-labeled diagnostic metrics (counts, dates, no-position ratio). It is
+fixture diagnostics only: not strategy performance, and it intentionally avoids
+Sharpe/Sortino/Profit Factor/Max Drawdown/PnL/equity curve. After that, a mentor
+review of the assumption, signal, and diagnostic boundaries is required before
 any actual backtest engine integration. Backtrader research work stays blocked
 until that review passes.
