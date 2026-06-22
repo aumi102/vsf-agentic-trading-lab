@@ -34,8 +34,12 @@ No adapter may run unless **all** of the following hold:
 - the prepared adjusted-OHLC input is ready.
 
 Today only `noop` is enabled, as an interface preview. Every other family stays
-disabled and pending a mentor-approved contract. The registry does not wire into
-the adapter execution path yet; wiring follows the mentor's family selection.
+disabled and pending a mentor-approved contract. The registry is wired into the
+adapter preview through the
+[strategy family enablement gate](./strategy_family_enablement_gate.md): an
+approved contract whose `strategy_family` is not enabled blocks with
+`strategy_family_not_enabled:<family>`. Enabling a real family stays
+mentor-gated.
 
 ## Boundaries
 

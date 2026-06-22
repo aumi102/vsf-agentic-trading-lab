@@ -23,8 +23,11 @@ PR #56 adds a no-op strategy adapter interface preview. It demonstrates approved
 contract and adjusted-input wiring only; a real adapter remains blocked.
 PR #57 adds a read-only strategy adapter registry listing candidate families
 (`noop` enabled as interface preview; all others disabled and
-`pending_mentor_approval`). No real strategy adapter is enabled until the mentor
-selects a family and a contract validates `ok`.
+`pending_mentor_approval`). PR #58 wires the registry into the adapter preview
+via a strategy family enablement gate: only an enabled family (`noop` today) can
+run; any other family blocks with `strategy_family_not_enabled:<family>`. No real
+strategy adapter is enabled until the mentor selects a family and a contract
+validates `ok`.
 
 Intentionally blocked: real Backtrader execution, strategy optimization, full
 VN100, production scheduling, broker execution, live trading, and investment

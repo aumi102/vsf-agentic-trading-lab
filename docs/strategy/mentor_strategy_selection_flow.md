@@ -15,7 +15,9 @@ every step.
    pending/placeholder value.
 3. **Validate the contract** and require `status=ok`.
 4. **Enable exactly one candidate adapter** in a later PR by flipping its
-   registry status; all other families stay disabled.
+   registry status; all other families stay disabled. The
+   [enablement gate](./strategy_family_enablement_gate.md) already enforces that
+   only an enabled family can run the adapter preview (only `noop` today).
 5. **Run the no-op / interface preview first** against the prepared adjusted-OHLC
    input to confirm wiring.
 6. **Implement the real signal-intent adapter** only after mentor approval.
