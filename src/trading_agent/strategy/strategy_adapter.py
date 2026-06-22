@@ -77,8 +77,9 @@ def _validate_prepared_input(prepared: dict[str, Any], symbols: list[str]) -> li
     if prepared.get("price_basis") != PRICE_BASIS:
         reasons.append(f"prepared_input_price_basis_not_adjusted_ohlc:{prepared.get('price_basis')}")
     prepared_symbols = set(_normalize_symbols(prepared.get("represented_symbols")))
-    if prepared_symbols != set(symbols):
-        reasons.append("prepared_input_symbols_mismatch")
+    for symbol in symbols:
+        if symbol not in prepared_symbols:
+            reasons.append(f"prepared_input_symbol_missing:{symbol}")
     rows = prepared.get("rows_preview")
     if not isinstance(rows, list) or not rows:
         reasons.append("prepared_input_rows_missing")

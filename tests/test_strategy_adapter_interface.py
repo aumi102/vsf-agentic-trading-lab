@@ -85,8 +85,28 @@ def test_raw_price_basis_blocks(tmp_path: Path) -> None:
     assert "prepared_input_price_basis_not_adjusted_ohlc:raw_ohlc" in result["reasons"]
 
 
-def test_symbols_mismatch_blocks(tmp_path: Path) -> None:
-    assert "prepared_input_symbols_mismatch" in _run(tmp_path, prepared=_prepared(represented_symbols=["FPT"]))["reasons"]
+def test_missing_contract_symbol_blocks_with_named_reason(tmp_path: Path) -> None:
+    reasons = _run(tmp_path, prepared=_prepared(represented_symbols=["FPT"]))["reasons"]
+    assert "prepared_input_symbol_missing:VNM" in reasons
+    assert "prepared_input_symbol_missing:VCB" in reasons
+
+
+def test_prepared_input_superset_is_ok_and_ignored(tmp_path: Path) -> None:
+    prepared = _prepared(
+        represented_symbols=SYMBOLS + ["HPG"],
+        rows_preview=[{"symbol": symbol, "datetime": "2026-01-02"} for symbol in SYMBOLS + ["HPG"]],
+    )
+    result = _run(tmp_path, prepared=prepared)
+    assert result["status"] == "ok"
+
+
+def test_output_rows_only_contain_contract_symbols(tmp_path: Path) -> None:
+    prepared = _prepared(
+        represented_symbols=SYMBOLS + ["HPG"],
+        rows_preview=[{"symbol": symbol, "datetime": "2026-01-02"} for symbol in SYMBOLS + ["HPG"]],
+    )
+    rows = _run(tmp_path, prepared=prepared)["signal_intent_rows"]
+    assert {row["symbol"] for row in rows} == set(SYMBOLS)
 
 
 def test_rows_missing_blocks(tmp_path: Path) -> None:

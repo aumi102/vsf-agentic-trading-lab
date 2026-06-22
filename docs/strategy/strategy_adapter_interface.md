@@ -9,7 +9,9 @@ toc_max_heading_level: 3
 ## Inputs
 
 - mentor-approved strategy contract JSON whose validator returns `status=ok`;
-- prepared adjusted OHLC input JSON with ready status, matching symbols, and rows.
+- prepared adjusted OHLC input JSON with ready status, covering every contract
+  symbol, and rows. Extra represented symbols are allowed but ignored; output
+  rows are emitted only for contract symbols.
 
 ## Output Contract
 
