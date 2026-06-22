@@ -20,6 +20,9 @@ agent/tool demo. Completed pieces are:
   freshness, and tool readiness.
 - Production ingestion dry-run control plan with allowlist, batch cap,
   countBack, rate-limit, and retention checks.
+- Mentor live-demo/backtest review package under `docs/mentor/`, including a Vin
+  upload manifest, exact runbook, strategy decision template, readiness gates,
+  and open questions for the next call.
 
 ## 2. Validated Commands
 
@@ -240,12 +243,12 @@ batch and rate controls.
 
 ## 12. Next Implementation Steps
 
-1. Place manually obtained FPT/VNM/VCB adjusted-price evidence under the ignored onboarding path.
-2. Generate a SHA-256 manifest, validation JSON, and dry-run Markdown report for that package.
-3. Use explicit local execute readiness only after reviewed local evidence and the report pass inspection.
-4. Audit adjusted OHLC execution outputs in strict mode before considering backtest feed planning.
-5. Review the adjusted OHLC backtest feed contract before implementing any Backtrader scaffold.
-6. Add ETL Docker/scheduler foundation for stable ingestion only.
-7. Add Backtrader research scaffold over a small subset after adjusted readiness passes.
-8. Produce VN100 strategy selection report.
-9. Only then consider broader scheduler, QuestDB, or realtime work.
+1. Upload the committed docs/reports listed in
+   `docs/mentor/vin_folder_upload_manifest.md` to the Vin folder.
+2. Run the call from `docs/mentor/live_system_demo_runbook.md`.
+3. Jointly complete the strategy decision template and readiness checklist;
+   do not finalize strategy logic without mentor review.
+4. Place manually obtained FPT/VNM/VCB adjusted-price evidence under the ignored onboarding path.
+5. Use explicit local execute readiness and strict audit only after reviewed evidence passes.
+6. Add a gated Backtrader research scaffold over a small subset only after mentor approval.
+7. Defer optimization, full VN100, production scheduling, and live trading.
