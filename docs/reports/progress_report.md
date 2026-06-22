@@ -56,9 +56,10 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC fixture signal dry-run | Fixture-only layer consumes the PR #49 preparation JSON and emits a tiny deterministic fixture signal preview (default `all_cash` → `NO_POSITION` per row; optional synthetic `alternating_fixture_signal`). Validates preparation status/input status/price basis, requested symbol coverage, cost/slippage assumptions, signal mode, and `max_rows`. `performance_metrics=null` and `not_financial_advice=true` always; no buy/sell/hold wording. Renders a Markdown report. Does not call any engine, run Backtrader, optimize, mutate a DB, fetch live data, or give advice. |
 | Adjusted OHLC fixture metrics report | Fixture-only diagnostics layer consumes the PR #50 fixture signal JSON and emits deterministic counts (`row_count`, `symbol_count`, `signal_action_counts`, `first_date`/`last_date`, `fixture_no_position_ratio`, `input_price_basis`). Blocks real actions (`BUY`/`SELL`/`HOLD`), non-null `performance_metrics`, and any PnL/equity/performance row field; sets `forbidden_performance_metrics_present`. Intentionally computes no Sharpe/Sortino/Profit Factor/Max Drawdown/PnL/equity/win rate/alpha. `not_financial_advice=true`. Renders Markdown. No engine call, Backtrader, optimizer, DB mutation, live fetch, or advice. |
 | Adjusted OHLC fixture round-trip engine | Fixture-only deterministic engine consumes the PR #49 preparation, PR #50 fixture signal, and PR #51 fixture metrics, and emits round-trip state-transition diagnostics only (`fixture_enter_count`, `fixture_exit_count`, `duplicate_enter_count`, `unmatched_exit_count`, `open_fixture_state_count`) plus row counts, action counts, dates, and echoed cost/slippage assumptions. Per-symbol `OUT`/`IN_FIXTURE` state over `NO_POSITION`/`FIXTURE_ENTER`/`FIXTURE_EXIT`. Blocks `BUY`/`SELL`/`HOLD`, non-null `performance_metrics`, and PnL/equity/return/sharpe/drawdown row fields. Computes no PnL/equity/returns/Sharpe/drawdown and no trade list. `not_financial_advice=true`. Renders Markdown. No engine call, Backtrader, optimizer, DB mutation, live fetch, or advice. |
+| Adjusted OHLC fixture cost diagnostics | Fixture-only layer consumes PR #49 preparation and PR #52 round-trip output, then attaches validated transaction-cost/slippage assumptions to fixture enter/exit event counts as bps-units diagnostics. Echoes exchange and slippage band. It never multiplies by price and computes no PnL, equity, returns, currency loss, strategy performance, or trade list. No Backtrader, optimizer, full VN100, DB mutation, live fetch, or investment advice. Mentor review is next before real adjusted-basis engine integration. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1349 tests pass** |
+| Test suite | **1379 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -114,10 +115,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC fixture signal dry-run tests | 26 targeted tests |
 | Adjusted OHLC fixture metrics report tests | 28 targeted tests |
 | Adjusted OHLC fixture round-trip engine tests | 33 targeted tests |
+| Adjusted OHLC fixture cost diagnostics tests | 30 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1349 |
+| Total tests passing | 1379 |
 
 ---
 

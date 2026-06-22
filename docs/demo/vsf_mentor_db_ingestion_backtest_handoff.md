@@ -165,8 +165,13 @@ adjusted-basis fixture round-trip engine emitting only state-transition
 diagnostics (enter/exit/duplicate/unmatched/open counts). It is fixture
 round-trip diagnostics only: not strategy performance, not Backtrader, not an
 optimizer, not full VN100, not investment advice, with no profitability metrics.
-The next step after it is mentor review before any real adjusted-basis engine
-integration.
+A fixture cost/slippage diagnostics layer
+(`docs/backtest/adjusted_ohlc_fixture_cost_diagnostics.md`) then attaches the
+validated assumptions to fixture transition counts as bps-units only. It is not
+PnL, returns, strategy performance, Backtrader, an optimizer, full VN100, or
+investment advice, and intentionally avoids price multiplication and trade
+lists. After PR #53, mentor review is required before any real adjusted-basis
+engine integration.
 
 ## 6. Proposed Backtrader Pipeline
 
