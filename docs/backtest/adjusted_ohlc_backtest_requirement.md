@@ -119,6 +119,12 @@ matches the DB and requested symbols, requires every requested symbol to have
 eligible adjusted rows, validates date and `max_rows` inputs instead of
 silently correcting them, keeps raw OHLC diagnostics-only, and emits
 `feed_contract_version=adjusted_ohlc_feed_v1` with `source_price_basis=adjusted_ohlc`.
+`docs/backtest/adjusted_ohlc_feed_to_backtest_dry_run.md` then consumes that feed
+preview and prepares a backtest input contract for a research dry-run. It
+validates the adjusted feed plus explicit transaction-cost and slippage
+assumptions and encodes the slippage bands (HOSE/HSX +/-7%, UPCoM +/-15%). It is
+preparation only: no Backtrader, no optimizer, no full VN100, and no investment
+advice.
 
 ## Corporate Action Data
 

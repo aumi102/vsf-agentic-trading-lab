@@ -140,7 +140,13 @@ evidence, unadjusted rows, readiness/validation/backtest gates, mutation flag,
 covered symbols, and DB path) matches the current request, requires every
 requested symbol to have eligible adjusted rows, and validates date and
 `max_rows` inputs instead of silently correcting them. Raw OHLC stays
-diagnostics-only and is never exposed as a trading price.
+diagnostics-only and is never exposed as a trading price. A dry-run preparation
+layer (`docs/backtest/adjusted_ohlc_feed_to_backtest_dry_run.md`) then converts
+that feed preview into a backtest input contract for a research dry-run,
+validating the adjusted feed plus explicit transaction-cost and slippage
+assumptions and encoding the slippage bands (HOSE/HSX +/-7%, UPCoM +/-15%). It is
+preparation only and still does not implement Backtrader, optimize a strategy,
+run full VN100, or give investment advice.
 
 ## 6. Proposed Backtrader Pipeline
 
