@@ -79,6 +79,30 @@ def test_ui_contains_decision_capture() -> None:
     assert "Mentor Decision Capture" in _script_module().build_dashboard_html()
 
 
+def test_client_draft_contains_required_contract_safety_fields() -> None:
+    html = _script_module().build_dashboard_html()
+    for field in (
+        "lookahead_policy",
+        "data_quality_gates",
+        "expected_outputs",
+        "caveats",
+        "mentor_approval_status: 'pending'",
+    ):
+        assert field in html
+
+
+def test_html_has_no_post_form() -> None:
+    html = _script_module().build_dashboard_html().lower()
+    assert '<form method="post"' not in html
+    assert "do_POST" not in SCRIPT_PATH.read_text(encoding="utf-8")
+
+
+def test_decision_template_route_is_not_ready() -> None:
+    status, _, body = _script_module().build_response("/api/decision-template")
+    assert status == 200
+    assert json.loads(body)["status"] == "not_ready"
+
+
 def test_decision_functions_have_no_file_writes() -> None:
     text = SOURCE_PATH.read_text(encoding="utf-8").lower()
     assert all(token not in text for token in ("write_text", "write_bytes", "open(", ".write("))

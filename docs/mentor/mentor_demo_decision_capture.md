@@ -23,6 +23,10 @@ The generated contract always keeps `mentor_approval_status=pending`. Even a
 complete form means only `draft_ready`; it does not authorize execution or
 enable a strategy family.
 
+The browser preview is not a canonical project contract. It becomes reviewable
+only after it is copied, checked with the mentor, and committed manually in a
+separate change.
+
 ## After Mentor Confirmation
 
 1. Manually update the reviewed contract and record approval.
