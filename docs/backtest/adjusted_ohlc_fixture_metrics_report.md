@@ -127,6 +127,12 @@ python scripts/report_adjusted_ohlc_fixture_metrics.py --fixture-signal-json rep
 
 ## Next Safe Step
 
-The next step is a mentor review of these assumption and diagnostic boundaries
-before any real adjusted-basis engine integration. Backtrader research work
-stays blocked until that review passes.
+The next step is `docs/backtest/adjusted_ohlc_fixture_roundtrip_engine.md`, a
+deterministic adjusted-basis fixture round-trip engine dry-run that consumes the
+PR #49 preparation, PR #50 fixture signal, and this fixture metrics report, and
+emits round-trip state-transition diagnostics only (enter/exit/duplicate/unmatched/
+open counts). It is fixture diagnostics only: not strategy performance, not
+Backtrader, not an optimizer, not full VN100, and it intentionally avoids all
+profitability/performance metrics. After that, a mentor review of these
+boundaries is required before any real adjusted-basis engine integration.
+Backtrader research work stays blocked until that review passes.

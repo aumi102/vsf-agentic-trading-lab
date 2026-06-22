@@ -134,8 +134,16 @@ then consumes that fixture signal output and produces deterministic, clearly
 fixture-labeled diagnostic metrics (counts, dates, no-position ratio). It is
 fixture diagnostics only: not strategy performance, not Backtrader, not an
 optimizer, not full VN100, not investment advice, and it intentionally avoids
-Sharpe/Sortino/Profit Factor/Max Drawdown/PnL/equity curve. The next step after
-it is mentor review before any real adjusted-basis engine integration.
+Sharpe/Sortino/Profit Factor/Max Drawdown/PnL/equity curve.
+`docs/backtest/adjusted_ohlc_fixture_roundtrip_engine.md` then consumes the
+preparation, fixture signal, and fixture metrics and runs a deterministic
+adjusted-basis fixture round-trip engine that emits only state-transition
+diagnostics (`fixture_enter_count`, `fixture_exit_count`, `duplicate_enter_count`,
+`unmatched_exit_count`, `open_fixture_state_count`). It is fixture round-trip
+diagnostics only: not strategy performance, not Backtrader, not an optimizer,
+not full VN100, not investment advice, and it intentionally avoids all
+profitability/performance metrics. The next step after it is mentor review before
+any real adjusted-basis engine integration.
 
 ## Corporate Action Data
 
