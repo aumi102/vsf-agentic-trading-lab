@@ -30,3 +30,11 @@ Adapters must not emit buy/sell/hold recommendation wording, trades, PnL,
 equity, returns, broker actions, or Backtrader execution. Raw OHLC cannot replace
 the prepared adjusted OHLC basis. PR #56 implements only `NO_SIGNAL` as an
 interface preview.
+
+## Registry
+
+A read-only [strategy adapter registry](./strategy_adapter_registry.md) lists the
+candidate families. It is planning-only and is **not** wired into this preview's
+execution path yet, so the preview stays family-independent. Wiring the registry
+into execution (so only an enabled family can run) is the next step after the
+mentor selects a family.
