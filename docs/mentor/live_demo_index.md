@@ -17,6 +17,8 @@ live system and jointly decide the first real adjusted-basis strategy contract.
 Implemented: cached-data agent demo, adjusted-price evidence gates, adjusted
 OHLC feed contract, dry-run preparation, fixture signal/metrics, fixture
 round-trip diagnostics, and fixture cost/slippage bps-units diagnostics.
+PR #55 adds a machine-readable strategy contract validator and mentor decision
+materials. The template remains pending and blocks real backtesting.
 
 Intentionally blocked: real Backtrader execution, strategy optimization, full
 VN100, production scheduling, broker execution, live trading, and investment
@@ -30,6 +32,7 @@ advice.
 4. Record decisions in the [strategy template](./strategy_decision_template.md).
 5. Confirm the [readiness checklist](./backtest_readiness_checklist.md).
 6. Close the open [mentor questions](./mentor_questions.md).
+7. Fill and validate `docs/strategy/examples/strategy_contract_template.json`.
 
 ## Docs and Reports
 
@@ -52,3 +55,5 @@ and `python scripts/list_mentor_demo_package.py` to list the package.
 The next implementation depends on mentor agreement about baseline strategy,
 universe, execution timing, costs, rebalance frequency, and risk rules. No
 strategy logic is finalized by this package.
+After approval, the next PR may implement one strategy adapter over adjusted
+OHLC; optimizer and full VN100 remain blocked.

@@ -6,6 +6,7 @@ toc_max_heading_level: 3
 
 # Backtest Readiness Checklist
 
+- [ ] Machine-readable strategy contract exists, validates, and is mentor-approved.
 - [ ] Adjusted OHLC readiness passes for every requested symbol and row.
 - [ ] Raw OHLC is retained as evidence and not used as trading price.
 - [ ] Adjustment factor/source/raw-path/method provenance is present.
@@ -22,3 +23,5 @@ toc_max_heading_level: 3
 - [ ] Output is labeled research-only and not investment advice.
 
 Any unchecked gate blocks the real adjusted-basis backtest.
+After approval, implement one strategy adapter only; optimizer and full VN100
+remain outside scope.
