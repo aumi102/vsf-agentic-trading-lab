@@ -27,12 +27,16 @@ exit. No npm or external assets are required.
 - `moving_average` blocked until mentor approval;
 - browser-only mentor decision capture and pending contract draft preview;
 - the decisions needed before one real family can be enabled.
+- final readiness checks and a copyable five-minute demo script.
 
 Use the [decision capture guide](./mentor_demo_decision_capture.md) during the
 call. Form values stay in the browser and are not persisted by the server.
 The sample-fill values are examples only, blank number fields remain
 `null`/`not_ready`, and the copied talk track explains why every draft stays
 pending and non-executing.
+
+Before the call, review the [final readiness guide](./mentor_demo_final_readiness.md)
+and use **Check Demo Readiness** in section 10.
 
 ## Talk Track
 

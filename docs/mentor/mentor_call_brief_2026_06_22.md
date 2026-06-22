@@ -25,6 +25,7 @@ is one gated module. Nothing here is investment advice.
 
 - local mentor dashboard: `python scripts/run_mentor_demo_ui.py`;
 - client-side mentor decision capture with a pending contract draft;
+- final readiness checks and a five-minute call script;
 - live demo package and call documents;
 - adjusted OHLC safety gates;
 - adjusted OHLC feed contract;
@@ -51,6 +52,7 @@ is one gated module. Nothing here is investment advice.
 5. Show the registry, noop preview, and blocked real-family behavior.
 6. Capture the mentor's family and assumptions in the local form; keep the
    generated contract pending until approval is recorded manually.
+7. Use Final Demo Readiness to confirm the command, uploads, checks, and talk route.
 
 ## Decisions Needed From Mentor
 
