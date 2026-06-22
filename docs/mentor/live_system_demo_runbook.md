@@ -38,6 +38,9 @@ The following commands are templates unless their local DB/audit/JSON inputs
 exist. Missing inputs should produce or be explained as explicit blocked states;
 never substitute raw OHLC as adjusted trading prices.
 
+For the call, prefer showing blocked states honestly over fabricating demo
+inputs. Every command below that depends on ignored/local inputs is template-only.
+
 ```bash
 python scripts/preview_adjusted_ohlc_backtest_feed.py --db-path path/to/local.sqlite --symbols FPT,VNM,VCB --start-date 2026-01-01 --end-date 2026-12-31 --audit-report reports/reviewed_evidence/adjusted_ohlc_audit.json --output-json reports/reviewed_evidence/feed_preview.json
 python scripts/prepare_adjusted_ohlc_backtest_dry_run.py --feed-preview reports/reviewed_evidence/feed_preview.json --symbols FPT,VNM,VCB --start-date 2026-01-01 --end-date 2026-12-31 --transaction-cost-bps 15 --slippage-bps 10 --exchange HOSE --output-json reports/reviewed_evidence/backtest_input_preview.json

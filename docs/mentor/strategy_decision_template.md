@@ -7,6 +7,7 @@ toc_max_heading_level: 3
 # Strategy Decision Template
 
 Complete and approve this before a real adjusted-basis strategy run.
+A strategy is not approved until this template has mentor-approved values.
 
 | Field | Mentor-approved value |
 |---|---|

@@ -30,6 +30,7 @@ PACKAGE_ENTRIES = (
     ("docs/reports/mentor_demo_report.md", "ready_to_upload", "Mentor demo report."),
     ("docs/reports/backtest_mvp_demo_report.md", "ready_to_upload", "Exploratory backtest report with caveats."),
     ("reports/reviewed_evidence/*.md", "external_only", "Ignored/generated reviewed-evidence reports; share externally only."),
+    ("data/raw/**", "blocked", "Real raw market data is blocked from this upload package."),
 )
 
 
@@ -37,9 +38,9 @@ def build_manifest(root: str | Path = ROOT) -> dict[str, Any]:
     base = Path(root)
     items = []
     for relative_path, intended_status, note in PACKAGE_ENTRIES:
-        external = intended_status == "external_only"
-        exists = False if external else (base / relative_path).is_file()
-        status = "external_only" if external else ("ready_to_upload" if exists else "missing")
+        virtual = intended_status in {"external_only", "blocked"}
+        exists = False if virtual else (base / relative_path).is_file()
+        status = intended_status if virtual else ("ready_to_upload" if exists else "missing")
         items.append({"path": relative_path, "exists": exists, "status": status, "note": note})
     return {
         "status": "ok" if all(item["status"] != "missing" for item in items) else "incomplete",

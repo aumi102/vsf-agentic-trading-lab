@@ -36,3 +36,6 @@ Run `python scripts/list_mentor_demo_package.py` before upload. Do not upload
 credentials, tokens, private paths, secrets, or unapproved raw data. Keep
 generated reports outside Git. This package does not claim production readiness
 or investment advice.
+
+Generated reports may be uploaded to the Vin folder only if intentionally
+generated for the call and reviewed; they remain outside Git.
