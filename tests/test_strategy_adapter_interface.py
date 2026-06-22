@@ -87,6 +87,29 @@ def test_unknown_family_blocks(tmp_path: Path) -> None:
     assert "unknown_family:does_not_exist" in result["reasons"]
 
 
+def test_breakout_family_blocks(tmp_path: Path) -> None:
+    result = _run(tmp_path, contract=_contract(strategy_family="breakout"))
+    assert "strategy_family_not_enabled:breakout" in result["reasons"]
+
+
+def test_mean_reversion_family_blocks(tmp_path: Path) -> None:
+    result = _run(tmp_path, contract=_contract(strategy_family="mean_reversion"))
+    assert "strategy_family_not_enabled:mean_reversion" in result["reasons"]
+
+
+def test_approved_noop_family_passes(tmp_path: Path) -> None:
+    result = _run(tmp_path, contract=_contract(strategy_family="noop"))
+    assert result["status"] == "ok"
+
+
+def test_enablement_gate_doc_has_valid_frontmatter() -> None:
+    text = Path("docs/strategy/strategy_family_enablement_gate.md").read_text(encoding="utf-8")
+    assert text.startswith("---\n")
+    closing = text.index("\n---", 4)
+    front = text[4:closing]
+    assert "title: strategy_family_enablement_gate" in front
+
+
 def test_pending_contract_blocks_before_family_check(tmp_path: Path) -> None:
     # A pending contract must block on contract readiness, not the family gate,
     # even if its family would otherwise be disabled.

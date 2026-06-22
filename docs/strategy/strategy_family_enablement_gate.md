@@ -13,7 +13,8 @@ The enablement gate wires the read-only
 [strategy adapter preview](./strategy_adapter_interface.md). After a contract
 validates `status=ok`, the adapter reads `strategy_family` and requires that the
 family be **enabled** in the registry before any preview rows are produced. It is
-an enablement gate only — it runs no strategy and computes no signals.
+an enablement gate only — it runs no strategy and computes no signals. **This gate
+is not a strategy implementation.**
 
 ## Why only enabled families can run
 
