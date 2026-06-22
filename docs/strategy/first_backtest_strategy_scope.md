@@ -24,3 +24,6 @@ toc_max_heading_level: 3
 
 PR #55 only prepares the contract foundation. A later PR may implement one
 mentor-approved strategy adapter over the adjusted OHLC feed.
+
+The no-op adapter preview is interface-only and does not satisfy this strategy
+implementation step. It emits no real signal logic or performance result.

@@ -59,9 +59,10 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC fixture round-trip engine | Fixture-only deterministic engine consumes the PR #49 preparation, PR #50 fixture signal, and PR #51 fixture metrics, and emits round-trip state-transition diagnostics only (`fixture_enter_count`, `fixture_exit_count`, `duplicate_enter_count`, `unmatched_exit_count`, `open_fixture_state_count`) plus row counts, action counts, dates, and echoed cost/slippage assumptions. Per-symbol `OUT`/`IN_FIXTURE` state over `NO_POSITION`/`FIXTURE_ENTER`/`FIXTURE_EXIT`. Blocks `BUY`/`SELL`/`HOLD`, non-null `performance_metrics`, and PnL/equity/return/sharpe/drawdown row fields. Computes no PnL/equity/returns/Sharpe/drawdown and no trade list. `not_financial_advice=true`. Renders Markdown. No engine call, Backtrader, optimizer, DB mutation, live fetch, or advice. |
 | Adjusted OHLC fixture cost diagnostics | Fixture-only layer consumes PR #49 preparation and PR #52 round-trip output, then attaches validated transaction-cost/slippage assumptions to fixture enter/exit event counts as bps-units diagnostics. Echoes exchange and slippage band. It never multiplies by price and computes no PnL, equity, returns, currency loss, strategy performance, or trade list. No Backtrader, optimizer, full VN100, DB mutation, live fetch, or investment advice. Mentor review is next before real adjusted-basis engine integration. |
 | Mentor-approved strategy contract foundation | Machine-readable JSON contract validation plus schema, baseline candidates, pending decision record, first-run scope, validation gates, and Backtrader scaffold plan. Only explicit approved contracts over adjusted OHLC can return ready; pending/rejected contracts remain `not_ready`. No strategy execution, Backtrader implementation, optimizer, full VN100, DB mutation, network fetch, performance claim, or investment advice. |
+| Strategy adapter interface preview | No-op adapter skeleton consumes an approved strategy contract and matching prepared adjusted-OHLC JSON, then emits `NO_SIGNAL` intent rows only. Validates contract readiness, input status/basis, per-symbol coverage (prepared input may be a superset; extra symbols ignored), and row coverage. Interface preview only: no real strategy logic, recommendation, trade, PnL/equity/returns, Backtrader, optimizer, DB mutation, network fetch, or investment advice. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1420 tests pass** |
+| Test suite | **1440 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -120,10 +121,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC fixture cost diagnostics tests | 30 targeted tests |
 | Mentor live demo package manifest tests | 11 targeted tests |
 | Strategy contract validation tests | 30 targeted tests |
+| Strategy adapter interface tests | 20 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1420 |
+| Total tests passing | 1440 |
 
 ---
 
