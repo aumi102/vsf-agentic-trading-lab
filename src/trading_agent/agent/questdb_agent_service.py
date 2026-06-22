@@ -7,6 +7,9 @@ reports data that QuestDB actually returns. Every response carries caveats/statu
 Supported intents:
   * db_health     - "how many rows are in QuestDB", "db status", "questdb health"
   * latest_ohlcv  - "show latest FPT data", "latest HPG", "HPG hôm nay thế nào"
+  * latest_features - "FPT features"
+  * latest_signal - "latest signal FPT", "FPT signal"
+  * symbol_summary - "summary FPT", "HPG hôm nay thế nào"
   * ohlcv_window  - "show FPT from 2020-01-01 to 2025-12-31", "OHLCV VNM 2021 to 2024"
   * ma_backtest   - "backtest MA strategy for FPT from 2020 to 2025", "ma20 ma50 HPG 2021 2024"
 """
@@ -18,6 +21,7 @@ from typing import Any
 import pandas as pd
 
 from trading_agent.strategies.simple_ma_cross import format_report, run_ma_cross_backtest
+from trading_agent.tools import questdb_feature_signal_tool as feature_signal_tool
 from trading_agent.tools import questdb_market_data_tool as tool
 
 SUPPORTED_EXAMPLES = [
@@ -25,6 +29,8 @@ SUPPORTED_EXAMPLES = [
     "show latest FPT data",
     "show FPT from 2020-01-01 to 2025-12-31",
     "backtest MA strategy for FPT from 2020 to 2025",
+    "summary FPT",
+    "latest signal FPT",
 ]
 
 # Tokens that are never ticker symbols.
@@ -34,6 +40,7 @@ _STOPWORDS = {
     "BACKTEST", "RUN", "GET", "LIST", "UNIVERSE", "SYMBOLS", "AND", "WITH", "A",
     "COUNT", "TOTAL", "HEALTH", "TABLE", "IS", "WHAT", "OHLCV", "WINDOW", "HISTORY",
     "CURRENT", "TODAY", "NOW", "QUOTE", "STATUS", "CROSS", "MOVING", "AVERAGE",
+    "SIGNAL", "SIGNALS", "FEATURE", "FEATURES", "SUMMARY", "SUMMARIZE", "USING",
     # common Vietnamese function words (ASCII forms)
     "HOM", "NAY", "NAO", "GIA", "THE", "CUA", "VE",
 }
@@ -91,9 +98,15 @@ def classify(query: str) -> str:
         return "db_health"
     if any(k in q for k in ("backtest", "ma strategy", "ma cross", "moving average")) or re.search(r"ma\d+", q):
         return "ma_backtest"
+    sym = extract_symbol(query)
+    if sym and any(k in q for k in ("summary", "summarize", "hôm nay thế nào", "hom nay the nao")):
+        return "symbol_summary"
+    if sym and "feature" in q:
+        return "latest_features"
+    if sym and "signal" in q:
+        return "latest_signal"
     has_range = bool(re.search(r"\d{4}-\d{2}-\d{2}", query)) or len(re.findall(r"\b20\d{2}\b", query)) >= 2 \
         or any(k in q for k in ("ohlcv", "window", "history", " from ", "between"))
-    sym = extract_symbol(query)
     if has_range and sym:
         return "ohlcv_window"
     if sym and _has_latest_keyword(query):
@@ -148,6 +161,60 @@ def answer_query(query: str, *, questdb_url: str = tool.DEFAULT_URL) -> dict[str
         return _result("ok", intent, query, "\n".join(md), tool_calls, {"health": row}, res["caveats"])
 
     symbol = extract_symbol(query)
+
+    if intent in {"latest_features", "latest_signal", "symbol_summary"}:
+        if not symbol:
+            return _unsupported(query, ["No ticker symbol found in the request."])
+        if intent == "latest_features":
+            res = _call(
+                tool_calls,
+                "get_latest_features",
+                {"symbol": symbol},
+                feature_signal_tool.get_latest_features(symbol, url=questdb_url),
+            )
+            if res["status"] != "ok" or not res["rows"]:
+                return _result("error", intent, query, f"No derived features for {symbol}.", tool_calls, {}, res["caveats"])
+            row = res["rows"][0]
+            md = (
+                f"**{symbol} latest features** ({str(row['trade_date'])[:10]})\n"
+                f"- adjusted close: {row.get('adjusted_close')} · return_1d: {row.get('return_1d')}\n"
+                f"- MA20: {row.get('ma20')} · MA50: {row.get('ma50')} · volatility20: {row.get('volatility20')}\n"
+                f"- feature version: `{row.get('feature_version')}` · quality: `{row.get('quality_status')}`"
+            )
+            return _result("ok", intent, query, md, tool_calls, {"features": row}, res["caveats"])
+        if intent == "latest_signal":
+            res = _call(
+                tool_calls,
+                "get_latest_signal",
+                {"symbol": symbol, "strategy_id": "ma20_ma50_v1"},
+                feature_signal_tool.get_latest_signal(symbol, url=questdb_url),
+            )
+            if res["status"] != "ok" or not res["rows"]:
+                return _result("error", intent, query, f"No derived signal for {symbol}.", tool_calls, {}, res["caveats"])
+            row = res["rows"][0]
+            md = (
+                f"**{symbol} latest deterministic signal** ({str(row['trade_date'])[:10]})\n"
+                f"- signal: **{row.get('signal')}** · score: {row.get('score')}\n"
+                f"- reason: `{row.get('reason_code')}` · execution: `{row.get('intended_execution')}`\n"
+                f"- strategy: `{row.get('strategy_id')}` · quality: `{row.get('quality_status')}`"
+            )
+            return _result("ok", intent, query, md, tool_calls, {"signal": row}, res["caveats"])
+
+        res = feature_signal_tool.get_symbol_summary(symbol, url=questdb_url)
+        tool_calls.extend(res.get("tool_calls", []))
+        if res["status"] not in {"ok", "partial"} or not res.get("data"):
+            return _result("error", intent, query, f"No summary data for {symbol}.", tool_calls, {}, res["caveats"])
+        data = res["data"]
+        latest = data.get("latest") or {}
+        features = data.get("features") or {}
+        signal = data.get("signal") or {}
+        md = (
+            f"**{symbol} market summary** ({str(latest.get('trade_date') or features.get('trade_date') or signal.get('trade_date'))[:10]})\n"
+            f"- close: {latest.get('close')} · adjusted close: {features.get('adjusted_close')} · volume: {latest.get('volume')}\n"
+            f"- MA20: {features.get('ma20')} · MA50: {features.get('ma50')} · volatility20: {features.get('volatility20')}\n"
+            f"- deterministic signal: **{signal.get('signal')}** · score: {signal.get('score')} · reason: `{signal.get('reason_code')}`"
+        )
+        return _result(res["status"], intent, query, md, tool_calls, data, res["caveats"])
 
     if intent == "latest_ohlcv":
         if not symbol:

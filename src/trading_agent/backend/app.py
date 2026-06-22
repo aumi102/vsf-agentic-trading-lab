@@ -9,6 +9,9 @@ Endpoints:
   GET  /health
   GET  /questdb/health
   GET  /market/latest/{symbol}
+  GET  /features/latest/{symbol}
+  GET  /signals/latest/{symbol}
+  GET  /market/summary/{symbol}
   GET  /market/ohlcv?symbol=&start_date=&end_date=&adjusted=&limit=
   POST /backtest/ma-cross
   POST /agent/chat
@@ -29,6 +32,7 @@ import pandas as pd
 from trading_agent.agent.deepagents_questdb_service import answer_query_deepagents
 from trading_agent.agent.questdb_agent_service import answer_query
 from trading_agent.strategies.simple_ma_cross import run_ma_cross_backtest
+from trading_agent.tools import questdb_feature_signal_tool as feature_signal_tool
 from trading_agent.tools import questdb_market_data_tool as tool
 
 SERVICE_NAME = "vsf-questdb-agent-backend"
@@ -84,6 +88,20 @@ def handle_latest(qurl: str, symbol: str) -> tuple[int, dict]:
     if res["row_count"] == 0:
         return 404, {"status": "not_found", "symbol": symbol.upper(), "rows": [], "caveats": res["caveats"]}
     return 200, {"status": "ok", "symbol": symbol.upper(), "latest": res["rows"][0], "caveats": res["caveats"]}
+
+
+def _handle_derived_latest(qurl: str, symbol: str, kind: str) -> tuple[int, dict]:
+    if kind == "features":
+        res = feature_signal_tool.get_latest_features(symbol, url=qurl)
+    elif kind == "signals":
+        res = feature_signal_tool.get_latest_signal(symbol, url=qurl)
+    else:
+        res = feature_signal_tool.get_symbol_summary(symbol, url=qurl)
+    if res["status"] == "error":
+        return 400, res
+    if res.get("row_count", 0) == 0:
+        return 404, res
+    return 200, res
 
 
 def handle_ohlcv(qurl: str, params: dict) -> tuple[int, dict]:
@@ -232,6 +250,15 @@ class AgentHTTPRequestHandler(BaseHTTPRequestHandler):
             m = re.match(r"^/market/latest/([^/?]+)$", path)
             if m:
                 self._send(*handle_latest(self._qurl, m.group(1))); return
+            m = re.match(r"^/features/latest/([^/?]+)$", path)
+            if m:
+                self._send(*_handle_derived_latest(self._qurl, m.group(1), "features")); return
+            m = re.match(r"^/signals/latest/([^/?]+)$", path)
+            if m:
+                self._send(*_handle_derived_latest(self._qurl, m.group(1), "signals")); return
+            m = re.match(r"^/market/summary/([^/?]+)$", path)
+            if m:
+                self._send(*_handle_derived_latest(self._qurl, m.group(1), "summary")); return
             if path == "/market/ohlcv":
                 self._send(*handle_ohlcv(self._qurl, parse_qs(parsed.query))); return
             if path == "/v1/models":
@@ -265,7 +292,8 @@ def serve(host: str = "127.0.0.1", port: int = 8010, questdb_url: str = tool.DEF
     httpd = ThreadingHTTPServer((host, port), AgentHTTPRequestHandler)
     httpd.questdb_url = questdb_url  # type: ignore[attr-defined]
     print(f"{SERVICE_NAME} listening on http://{host}:{port}  (QuestDB={questdb_url})")
-    print("endpoints: /health /questdb/health /market/latest/{sym} /market/ohlcv "
+    print("endpoints: /health /questdb/health /market/latest/{sym} /features/latest/{sym} "
+          "/signals/latest/{sym} /market/summary/{sym} /market/ohlcv "
           "/backtest/ma-cross /agent/chat /v1/models /v1/chat/completions")
     try:
         httpd.serve_forever()

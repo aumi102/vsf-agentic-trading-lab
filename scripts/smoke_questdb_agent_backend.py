@@ -3,8 +3,7 @@
 Start the backend first, then:
   python scripts\smoke_questdb_agent_backend.py --api-url http://127.0.0.1:8010
 
-Hits /health, /questdb/health, /market/latest/FPT, /agent/chat, /v1/models,
-/v1/chat/completions and prints PASS/FAIL per endpoint. Read-only.
+Hits health, market, derived feature/signal, agent, and OpenAI-compatible routes.
 """
 from __future__ import annotations
 
@@ -49,6 +48,12 @@ def main() -> int:
          lambda c, d: c == 200 and d.get("status") == "ok" and "row_count" in d),
         (f"GET  /market/latest/{args.symbol}", "GET", f"{base}/market/latest/{args.symbol}", None,
          lambda c, d: c in (200, 404)),
+        (f"GET  /features/latest/{args.symbol}", "GET", f"{base}/features/latest/{args.symbol}", None,
+         lambda c, d: c == 200 and d.get("status") == "ok" and d.get("data")),
+        (f"GET  /signals/latest/{args.symbol}", "GET", f"{base}/signals/latest/{args.symbol}", None,
+         lambda c, d: c == 200 and d.get("status") == "ok" and d.get("data")),
+        (f"GET  /market/summary/{args.symbol}", "GET", f"{base}/market/summary/{args.symbol}", None,
+         lambda c, d: c == 200 and d.get("status") == "ok" and d.get("data")),
         ("POST /agent/chat", "POST", f"{base}/agent/chat", {"message": "how many rows are in QuestDB"},
          lambda c, d: c == 200 and d.get("status") == "ok" and d.get("intent") == "db_health"),
         ("GET  /v1/models", "GET", f"{base}/v1/models", None,

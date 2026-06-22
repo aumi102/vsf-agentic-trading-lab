@@ -6,7 +6,7 @@ are not installed, or `OPENAI_API_KEY` is unset, ``answer_query_deepagents``
 returns a clean error envelope and the rule-based agent remains the fallback.
 
 Safety (strict):
-  * Only 4 read-only tools are exposed: health, latest, window, MA backtest.
+  * Only read-only QuestDB and deterministic backtest tools are exposed.
   * No write/ingest/DDL; QuestDB localhost reads only.
   * DeepAgents' built-in shell (`execute`) is inert on the default StateBackend,
     and its file tools operate on an in-memory virtual filesystem (sandboxed),
@@ -20,6 +20,7 @@ import re
 from typing import Any
 
 from trading_agent.strategies.simple_ma_cross import run_ma_cross_backtest
+from trading_agent.tools import questdb_feature_signal_tool as fst
 from trading_agent.tools import questdb_market_data_tool as mdt
 
 DEFAULT_MODEL = "gpt-4.1-mini"
@@ -30,7 +31,8 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SYSTEM_PROMPT = """You are the VSF trading data agent.
 RULES:
 - You can ONLY use the provided read-only tools: get_questdb_health, get_latest_ohlcv,
-  get_ohlcv_window, run_ma_backtest. Never use file, shell, or any other tools.
+  get_latest_features, get_latest_signal, get_symbol_summary, get_ohlcv_window,
+  run_ma_backtest. Never use file, shell, or any other tools.
 - Answer strictly from tool outputs. NEVER invent or estimate data that a tool did not return.
 - Always state the data source (QuestDB `daily_prices`) and include caveats.
 - Do NOT give real-money investment advice. This is research/analytics only.
@@ -51,7 +53,7 @@ def _validate_symbol(symbol: str) -> str | None:
 
 
 def _build_tools(questdb_url: str, tool_log: list[dict]):
-    """Create the 4 safe read-only LangChain tools, logging each invocation."""
+    """Create the safe read-only LangChain tools, logging each invocation."""
     from langchain_core.tools import tool
 
     def _log(name: str, args: dict, result: dict) -> None:
@@ -78,6 +80,38 @@ def _build_tools(questdb_url: str, tool_log: list[dict]):
         if res["status"] != "ok" or res["row_count"] == 0:
             return {"status": "no_data", "symbol": sym, "caveats": res["caveats"]}
         return {"status": "ok", "symbol": sym, "latest": res["rows"][0], "caveats": res["caveats"]}
+
+    @tool
+    def get_latest_features(symbol: str) -> dict:
+        """Return the latest deterministic feature snapshot for a ticker symbol."""
+        sym = _validate_symbol(symbol)
+        if not sym:
+            return {"status": "error", "caveats": [f"invalid symbol: {symbol!r}"]}
+        res = fst.get_latest_features(sym, url=questdb_url)
+        _log("get_latest_features", {"symbol": sym}, res)
+        return {"status": res["status"], "symbol": sym, "features": res.get("data"),
+                "caveats": res["caveats"]}
+
+    @tool
+    def get_latest_signal(symbol: str, strategy_id: str = "ma20_ma50_v1") -> dict:
+        """Return the latest deterministic strategy signal for a ticker symbol."""
+        sym = _validate_symbol(symbol)
+        if not sym:
+            return {"status": "error", "caveats": [f"invalid symbol: {symbol!r}"]}
+        res = fst.get_latest_signal(sym, strategy_id=strategy_id, url=questdb_url)
+        _log("get_latest_signal", {"symbol": sym, "strategy_id": strategy_id}, res)
+        return {"status": res["status"], "symbol": sym, "signal": res.get("data"),
+                "caveats": res["caveats"]}
+
+    @tool
+    def get_symbol_summary(symbol: str) -> dict:
+        """Combine latest OHLCV, derived features, and deterministic signal for a ticker."""
+        sym = _validate_symbol(symbol)
+        if not sym:
+            return {"status": "error", "caveats": [f"invalid symbol: {symbol!r}"]}
+        res = fst.get_symbol_summary(sym, url=questdb_url)
+        _log("get_symbol_summary", {"symbol": sym}, res)
+        return {"status": res["status"], **res.get("data", {}), "caveats": res["caveats"]}
 
     @tool
     def get_ohlcv_window(symbol: str, start_date: str, end_date: str,
@@ -131,7 +165,8 @@ def _build_tools(questdb_url: str, tool_log: list[dict]):
         return {"status": "ok", "symbol": sym, "params": bt["params"], "metrics": bt["metrics"],
                 "caveats": res["caveats"] + bt["caveats"]}
 
-    return [get_questdb_health, get_latest_ohlcv, get_ohlcv_window, run_ma_backtest]
+    return [get_questdb_health, get_latest_ohlcv, get_latest_features, get_latest_signal,
+            get_symbol_summary, get_ohlcv_window, run_ma_backtest]
 
 
 def _resolve_model_name(model: str | None) -> str:
@@ -158,6 +193,11 @@ def _coerce_text(content: Any) -> str:
                 parts.append(str(block))
         return "\n".join(p for p in parts if p)
     return str(content)
+
+
+def _safe_error(exc: Exception) -> str:
+    """Remove API credential fragments from provider exception messages."""
+    return re.sub(r"sk-[A-Za-z0-9_*\-]+", "sk-<redacted>", str(exc))
 
 
 def _result(status: str, query: str, answer_markdown: str,
@@ -210,8 +250,9 @@ def answer_query_deepagents(
         out = agent.invoke({"messages": [{"role": "user", "content": query}]},
                            {"recursion_limit": 25})
     except Exception as exc:
-        return _result("error", query, f"DeepAgents run failed: {exc}", tool_log,
-                       {"model": model_name}, [f"agent_error: {exc}"])
+        safe_error = _safe_error(exc)
+        return _result("error", query, f"DeepAgents run failed: {safe_error}", tool_log,
+                       {"model": model_name}, [f"agent_error: {safe_error}"])
 
     messages = out.get("messages", []) if isinstance(out, dict) else []
     answer = ""
