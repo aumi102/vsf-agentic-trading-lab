@@ -130,6 +130,8 @@ python scripts/run_adjusted_ohlc_fixture_roundtrip_engine.py --preparation-json 
 
 ## Next Safe Step
 
-The next step is a mentor review of these round-trip boundaries before any real
-adjusted-basis engine integration. Backtrader research work stays blocked until
-that review passes.
+PR #53 adds fixture cost/slippage bps-units diagnostics over these transition
+counts. It is not PnL, returns, strategy performance, Backtrader, an optimizer,
+full VN100, or investment advice, and intentionally avoids price multiplication
+and trade lists. After PR #53, mentor review is required before any real
+adjusted-basis engine integration.

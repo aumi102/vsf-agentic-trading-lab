@@ -142,8 +142,13 @@ diagnostics (`fixture_enter_count`, `fixture_exit_count`, `duplicate_enter_count
 `unmatched_exit_count`, `open_fixture_state_count`). It is fixture round-trip
 diagnostics only: not strategy performance, not Backtrader, not an optimizer,
 not full VN100, not investment advice, and it intentionally avoids all
-profitability/performance metrics. The next step after it is mentor review before
-any real adjusted-basis engine integration.
+profitability/performance metrics.
+`docs/backtest/adjusted_ohlc_fixture_cost_diagnostics.md` then attaches validated
+cost/slippage assumptions to fixture enter/exit counts as bps-units diagnostics
+only. It is not PnL, returns, strategy performance, Backtrader, an optimizer,
+full VN100, or investment advice, and intentionally avoids price multiplication
+and trade lists. After PR #53, mentor review is required before any real
+adjusted-basis engine integration.
 
 ## Corporate Action Data
 
