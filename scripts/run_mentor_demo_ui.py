@@ -17,6 +17,9 @@ if str(SRC) not in sys.path:
 
 from trading_agent.mentor_demo.demo_service import (
     build_demo_summary,
+    get_decision_example,
+    get_decision_field_schema,
+    get_decision_template,
     get_demo_status,
     get_upload_recommendation,
     list_registry_status,
@@ -38,6 +41,9 @@ API_ROUTES: dict[str, Callable[[], dict[str, Any]]] = {
     "/api/registry": list_registry_status,
     "/api/noop-preview": run_noop_adapter_preview,
     "/api/disabled-family": run_disabled_family_preview,
+    "/api/decision-fields": get_decision_field_schema,
+    "/api/decision-template": get_decision_template,
+    "/api/decision-example": get_decision_example,
 }
 
 
@@ -63,6 +69,10 @@ def build_dashboard_html() -> str:
     pre { min-height: 70px; overflow: auto; padding: 12px; border-radius: 8px; background: #07111f; color: #bcd3e9; white-space: pre-wrap; }
     ul { padding-left: 20px; }
     code { color: #8fe3c1; }
+    label { display: grid; gap: 5px; margin-bottom: 10px; color: #bcd3e9; }
+    input, select { width: 100%; box-sizing: border-box; border: 1px solid #385675; border-radius: 7px; padding: 9px; background: #07111f; color: #dce8f5; }
+    .decision-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px 14px; }
+    .wide { grid-column: 1 / -1; }
   </style>
 </head>
 <body>
@@ -80,6 +90,27 @@ def build_dashboard_html() -> str:
     <section><h2>6. Disabled Family Demo</h2><button onclick="loadSection('/api/disabled-family','disabled')">Run Disabled Family Demo</button><pre id="disabled">moving_average remains blocked.</pre></section>
     <section><h2>7. Mentor Decisions Needed</h2><ul><li>First strategy family</li><li>Universe</li><li>Execution price</li><li>Transaction cost and slippage</li><li>Rebalance and risk rule</li></ul></section>
     <section><h2>8. Caveats</h2><pre id="caveats">Research only. No real strategy execution. No production server.</pre></section>
+    <section class="wide"><h2>9. Mentor Decision Capture</h2>
+      <p>Local browser form only. The pending draft is not sent to or stored by the server.</p>
+      <div class="decision-form">
+        <label>Strategy family<select id="decision-family"><option>moving_average</option><option>momentum</option><option>breakout</option><option>mean_reversion</option></select></label>
+        <label>Universe<input id="decision-universe" placeholder="small-symbol research universe"></label>
+        <label>Symbols<input id="decision-symbols" placeholder="FPT, VNM, VCB"></label>
+        <label>Start date<input id="decision-start" type="date"></label>
+        <label>End date<input id="decision-end" type="date"></label>
+        <label>Execution price<input id="decision-execution" placeholder="next_adjusted_open"></label>
+        <label>Transaction cost bps<input id="decision-cost" type="number" min="0"></label>
+        <label>Slippage bps<input id="decision-slippage" type="number" min="0"></label>
+        <label>Exchange<select id="decision-exchange"><option>HOSE</option><option>HSX</option><option>UPCOM</option></select></label>
+        <label>Rebalance rule<input id="decision-rebalance"></label>
+        <label>Risk rule<input id="decision-risk"></label>
+        <label>Position sizing<input id="decision-sizing"></label>
+        <label>Max holding period<input id="decision-holding"></label>
+      </div>
+      <button onclick="copyPendingDraft()">Copy pending contract draft</button>
+      <button onclick="loadSection('/api/decision-example','decision-output')">Show Pending Example</button>
+      <pre id="decision-output">Draft remains pending until approval is recorded manually.</pre>
+    </section>
   </main>
   <script>
     async function loadSection(endpoint, target) {
@@ -97,6 +128,43 @@ def build_dashboard_html() -> str:
     fetch('/api/summary').then(response => response.json()).then(data => {
       document.getElementById('caveats').textContent = JSON.stringify(data.caveats, null, 2);
     });
+    function fieldValue(id) { return document.getElementById(id).value.trim(); }
+    function numberOrNull(id) { const value = fieldValue(id); return value === '' ? null : Number(value); }
+    function buildPendingDraft() {
+      const exchange = fieldValue('decision-exchange');
+      const exchangeBands = {HOSE: 700, HSX: 700, UPCOM: 1500};
+      return {
+        strategy_id: 'PENDING_MENTOR_DECISION_DRAFT',
+        strategy_family: fieldValue('decision-family'),
+        universe: fieldValue('decision-universe'),
+        symbols: fieldValue('decision-symbols').split(',').map(value => value.trim().toUpperCase()).filter(Boolean),
+        date_range: {start: fieldValue('decision-start'), end: fieldValue('decision-end')},
+        price_basis: 'adjusted_ohlc',
+        feature_inputs: ['PENDING_MENTOR_APPROVAL'],
+        entry_rule: 'PENDING_MENTOR_APPROVAL',
+        exit_rule: 'PENDING_MENTOR_APPROVAL',
+        rebalance_rule: fieldValue('decision-rebalance'),
+        execution_price: fieldValue('decision-execution'),
+        transaction_cost_bps: numberOrNull('decision-cost'),
+        slippage_bps: numberOrNull('decision-slippage'),
+        exchange: exchange,
+        slippage_band_bps: exchangeBands[exchange],
+        position_sizing: fieldValue('decision-sizing'),
+        risk_rule: fieldValue('decision-risk'),
+        max_holding_period: fieldValue('decision-holding'),
+        lookahead_policy: 'Inputs must be available before execution.',
+        data_quality_gates: ['adjusted_ohlc_ready', 'provenance_present', 'symbols_covered'],
+        expected_outputs: ['pending_contract_review'],
+        caveats: ['Draft only; mentor approval must be recorded manually before validation can return ok.', 'Not investment advice.'],
+        mentor_approval_status: 'pending'
+      };
+    }
+    async function copyPendingDraft() {
+      const draft = buildPendingDraft();
+      const text = JSON.stringify(draft, null, 2);
+      document.getElementById('decision-output').textContent = text;
+      if (navigator.clipboard) { await navigator.clipboard.writeText(text); }
+    }
   </script>
 </body>
 </html>
