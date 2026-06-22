@@ -61,7 +61,7 @@ No production DB write, no production backtest, no broker execution.
 | Mentor-approved strategy contract foundation | Machine-readable JSON contract validation plus schema, baseline candidates, pending decision record, first-run scope, validation gates, and Backtrader scaffold plan. Only explicit approved contracts over adjusted OHLC can return ready; pending/rejected contracts remain `not_ready`. No strategy execution, Backtrader implementation, optimizer, full VN100, DB mutation, network fetch, performance claim, or investment advice. |
 | Backtest MVP scaffold | Exploratory deterministic scaffold over cached SQLite store; included in mentor demo suite; report at `docs/reports/backtest_mvp_demo_report.md`. No LLM, broker execution, live trading, or network fetch. |
 | Mentor feedback capture | 2026-06-18 mentor feedback captured in `docs/demo/mentor_feedback_capture.md`; single handoff file: `docs/demo/vsf_mentor_db_ingestion_backtest_handoff.md`. |
-| Test suite | **1410 tests pass** |
+| Test suite | **1420 tests pass** |
 | Production DB write | **Blocked** |
 | Production backtest hardening | **Blocked** |
 
@@ -119,11 +119,11 @@ No production DB write, no production backtest, no broker execution.
 | Adjusted OHLC fixture round-trip engine tests | 33 targeted tests |
 | Adjusted OHLC fixture cost diagnostics tests | 30 targeted tests |
 | Mentor live demo package manifest tests | 11 targeted tests |
-| Strategy contract validation tests | 20 targeted tests |
+| Strategy contract validation tests | 30 targeted tests |
 | Mapping coverage gate (95%) | Not met — union peak 94.5% (IS); gap structural; all known groups sampled |
 | FA tests | 71 integration + 74 resolver + 54 firm-type |
 | Disclosure foundation tests | 154 targeted tests |
-| Total tests passing | 1410 |
+| Total tests passing | 1420 |
 
 ---
 

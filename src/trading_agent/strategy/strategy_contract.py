@@ -12,9 +12,11 @@ EXCHANGE_BANDS_BPS = {"HOSE": 700, "HSX": 700, "UPCOM": 1500}
 REQUIRED_FIELDS = (
     "strategy_id",
     "strategy_family",
+    "universe",
     "symbols",
     "date_range",
     "price_basis",
+    "feature_inputs",
     "entry_rule",
     "exit_rule",
     "rebalance_rule",
@@ -25,9 +27,15 @@ REQUIRED_FIELDS = (
     "slippage_band_bps",
     "position_sizing",
     "risk_rule",
+    "max_holding_period",
     "lookahead_policy",
+    "data_quality_gates",
+    "expected_outputs",
+    "caveats",
     "mentor_approval_status",
 )
+
+PLACEHOLDER_TOKENS = ("pending", "placeholder", "tbd", "todo", "n/a")
 
 
 def load_strategy_contract(path: str | Path) -> dict[str, Any]:
@@ -87,16 +95,28 @@ def validate_strategy_contract(contract: dict[str, Any]) -> list[str]:
     for field in (
         "strategy_id",
         "strategy_family",
+        "universe",
         "entry_rule",
         "exit_rule",
         "rebalance_rule",
         "execution_price",
         "position_sizing",
         "risk_rule",
+        "max_holding_period",
         "lookahead_policy",
     ):
         if field in contract and not str(contract.get(field) or "").strip():
             reasons.append(f"required_field_empty:{field}")
+
+    for field in ("feature_inputs", "data_quality_gates", "expected_outputs", "caveats"):
+        value = contract.get(field)
+        if field in contract and (not isinstance(value, list) or not value):
+            reasons.append(f"required_field_empty:{field}")
+
+    if approval == "approved":
+        for field in REQUIRED_FIELDS:
+            if field in contract and _contains_placeholder(contract[field]):
+                reasons.append(f"placeholder_value_present:{field}")
     return list(dict.fromkeys(reasons))
 
 
@@ -146,3 +166,14 @@ def _nonnegative_number(value: Any) -> int | float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
         return None
     return value
+
+
+def _contains_placeholder(value: Any) -> bool:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        return not normalized or any(token in normalized for token in PLACEHOLDER_TOKENS)
+    if isinstance(value, list):
+        return not value or any(_contains_placeholder(item) for item in value)
+    if isinstance(value, dict):
+        return not value or any(_contains_placeholder(item) for item in value.values())
+    return value is None

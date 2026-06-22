@@ -17,20 +17,26 @@ def _contract(**overrides: object) -> dict[str, object]:
     contract: dict[str, object] = {
         "strategy_id": "mentor_baseline_v1",
         "strategy_family": "moving_average",
+        "universe": "mentor_approved_small_symbol_research",
         "symbols": ["FPT", "VNM", "VCB"],
         "date_range": {"start": "2022-01-01", "end": "2025-12-31"},
         "price_basis": "adjusted_ohlc",
-        "entry_rule": "mentor-approved placeholder",
-        "exit_rule": "mentor-approved placeholder",
-        "rebalance_rule": "mentor-approved placeholder",
+        "feature_inputs": ["adjusted_close_lag_1", "adjusted_close_ma_20"],
+        "entry_rule": "enter intent when prior adjusted close crosses above prior MA20",
+        "exit_rule": "exit intent when prior adjusted close crosses below prior MA20",
+        "rebalance_rule": "evaluate after each completed daily bar",
         "execution_price": "next_adjusted_open",
         "transaction_cost_bps": 15,
         "slippage_bps": 10,
         "exchange": "HOSE",
         "slippage_band_bps": 700,
-        "position_sizing": "mentor-approved placeholder",
-        "risk_rule": "mentor-approved placeholder",
+        "position_sizing": "equal notional across represented symbols",
+        "risk_rule": "one long intent per symbol; no leverage",
+        "max_holding_period": "20 trading days",
         "lookahead_policy": "features use information available before execution",
+        "data_quality_gates": ["adjusted_ohlc_ready", "provenance_present", "symbols_covered"],
+        "expected_outputs": ["signal_intent_report", "assumptions", "caveats"],
+        "caveats": ["small-symbol research scope", "survivorship policy not generalized"],
         "mentor_approval_status": "approved",
     }
     contract.update(overrides)
@@ -96,8 +102,10 @@ def test_slippage_over_band_blocks(tmp_path: Path) -> None:
 
 
 def test_pending_approval_not_ready(tmp_path: Path) -> None:
-    result = _validate(tmp_path, mentor_approval_status="pending")
+    template = ROOT / "docs/strategy/examples/strategy_contract_template.json"
+    result = validate_strategy_contract_file(template)
     assert result["status"] == "not_ready"
+    assert "mentor_approval_not_approved:pending" in result["reasons"]
 
 
 def test_rejected_approval_not_ready(tmp_path: Path) -> None:
@@ -141,6 +149,54 @@ def test_no_db_mutation() -> None:
     assert all(token not in text for token in ("sqlite3", "insert into", "update ", "delete from", ".execute("))
 
 
+def test_missing_universe_blocks(tmp_path: Path) -> None:
+    _assert_missing_field_blocks(tmp_path, "universe")
+
+
+def test_missing_feature_inputs_blocks(tmp_path: Path) -> None:
+    _assert_missing_field_blocks(tmp_path, "feature_inputs")
+
+
+def test_missing_max_holding_period_blocks(tmp_path: Path) -> None:
+    _assert_missing_field_blocks(tmp_path, "max_holding_period")
+
+
+def test_missing_data_quality_gates_blocks(tmp_path: Path) -> None:
+    _assert_missing_field_blocks(tmp_path, "data_quality_gates")
+
+
+def test_missing_expected_outputs_blocks(tmp_path: Path) -> None:
+    _assert_missing_field_blocks(tmp_path, "expected_outputs")
+
+
+def test_missing_caveats_blocks(tmp_path: Path) -> None:
+    _assert_missing_field_blocks(tmp_path, "caveats")
+
+
+def test_approved_pending_entry_rule_blocks(tmp_path: Path) -> None:
+    assert "placeholder_value_present:entry_rule" in _validate(tmp_path, entry_rule="PENDING_MENTOR_APPROVAL")["reasons"]
+
+
+def test_approved_placeholder_exit_rule_blocks(tmp_path: Path) -> None:
+    assert "placeholder_value_present:exit_rule" in _validate(tmp_path, exit_rule="mentor placeholder")["reasons"]
+
+
+def test_approved_tbd_execution_price_blocks(tmp_path: Path) -> None:
+    assert "placeholder_value_present:execution_price" in _validate(tmp_path, execution_price="TBD")["reasons"]
+
+
+def test_docs_schema_includes_every_required_field() -> None:
+    schema = (ROOT / "docs/strategy/strategy_contract_schema.md").read_text(encoding="utf-8")
+    required = (
+        "strategy_id", "strategy_family", "universe", "symbols", "date_range", "price_basis",
+        "feature_inputs", "entry_rule", "exit_rule", "rebalance_rule", "execution_price",
+        "transaction_cost_bps", "slippage_bps", "exchange", "slippage_band_bps",
+        "position_sizing", "risk_rule", "max_holding_period", "lookahead_policy",
+        "data_quality_gates", "expected_outputs", "caveats", "mentor_approval_status",
+    )
+    assert all(f"`{field}`" in schema for field in required)
+
+
 def _run_cli(tmp_path: Path, contract: dict[str, object]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(SCRIPT), "--contract", str(_write(tmp_path, contract))],
@@ -154,3 +210,10 @@ def _run_cli(tmp_path: Path, contract: dict[str, object]) -> subprocess.Complete
 
 def _implementation_text() -> str:
     return SOURCE.read_text(encoding="utf-8") + SCRIPT.read_text(encoding="utf-8")
+
+
+def _assert_missing_field_blocks(tmp_path: Path, field: str) -> None:
+    contract = _contract()
+    contract.pop(field)
+    result = validate_strategy_contract_file(_write(tmp_path, contract))
+    assert f"required_field_missing:{field}" in result["reasons"]

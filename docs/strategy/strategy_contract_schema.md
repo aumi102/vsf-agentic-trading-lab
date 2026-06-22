@@ -12,6 +12,11 @@ A strategy contract freezes research assumptions before execution. No contract
 means no real backtest; mentor approval is required. Validation does not execute
 a strategy or imply expected performance.
 
+Every field below is required. For an `approved` contract, decisive values must
+not be empty or contain `PENDING`, `placeholder`, `TBD`, `TODO`, or `N/A`.
+Placeholder-bearing approved contracts are blocked with
+`placeholder_value_present:<field>`. Pending templates remain `not_ready`.
+
 ## Fields
 
 | Field | Requirement |
