@@ -19,8 +19,18 @@ def test_dashboard_has_copy_talk_track_button() -> None:
     assert "Copy Demo Talk Track" in _html()
 
 
+def test_talk_track_is_rendered_after_route_call() -> None:
+    html = _html()
+    assert "fetch('/api/talk-track')" in html
+    assert "textContent = payload.talk_track" in html
+
+
 def test_dashboard_uses_number_or_null() -> None:
     assert "numberOrNull" in _html()
+
+
+def test_blank_number_warning_is_visible_in_html() -> None:
+    assert "Required number fields are blank; values remain null" in _html()
 
 
 def test_cost_does_not_use_direct_number_conversion() -> None:

@@ -23,6 +23,7 @@ Use **Fill Sample Mentor Decision** only as an example; replace every sample
 assumption with the mentor's reviewed choice. Blank cost or slippage fields stay
 `null`, so the client preview remains `not_ready` instead of silently using zero.
 Use **Copy Demo Talk Track** to explain the non-execution boundaries.
+Sample values are examples only and must not be treated as approved assumptions.
 
 The generated contract always keeps `mentor_approval_status=pending`. Even a
 complete form means only `draft_ready`; it does not authorize execution or
