@@ -21,6 +21,7 @@ from typing import Any
 import pandas as pd
 
 from trading_agent.strategies.simple_ma_cross import format_report, run_ma_cross_backtest
+from trading_agent.tools import questdb_financial_report_tool as fa_tool
 from trading_agent.tools import questdb_feature_signal_tool as feature_signal_tool
 from trading_agent.tools import questdb_market_data_tool as tool
 
@@ -41,6 +42,8 @@ _STOPWORDS = {
     "COUNT", "TOTAL", "HEALTH", "TABLE", "IS", "WHAT", "OHLCV", "WINDOW", "HISTORY",
     "CURRENT", "TODAY", "NOW", "QUOTE", "STATUS", "CROSS", "MOVING", "AVERAGE",
     "SIGNAL", "SIGNALS", "FEATURE", "FEATURES", "SUMMARY", "SUMMARIZE", "USING",
+    "FINANCIAL", "REPORT", "REPORTS", "BALANCE", "SHEET", "INCOME", "STATEMENT",
+    "CASH", "FLOW", "EVENT", "EVENTS", "NEWS", "MONTH", "PAST",
     # common Vietnamese function words (ASCII forms)
     "HOM", "NAY", "NAO", "GIA", "THE", "CUA", "VE",
 }
@@ -86,17 +89,48 @@ def extract_ma_windows(query: str) -> tuple[int, int]:
 
 _LATEST_KEYWORDS = ("latest", "last", "current", "today", "hôm nay", "hom nay", "now", "price", "show", "quote")
 
+_FINANCIAL_REPORT_KEYWORDS = (
+    "financial report", "financial reports", "báo cáo tài chính", "bao cao tai chinh",
+    "balance sheet", "income statement", "cash flow", "thuyết minh", "thuyet minh",
+    "doanh thu", "revenue", "lợi nhuận", "loi nhuan", "profit", "tài sản", "tai san",
+    "asset", "assets", "nợ", "no", "liability", "liabilities", "vốn chủ", "von chu", "equity",
+)
+_EVENT_KEYWORDS = ("event", "events", "news", "tin tức", "tin tuc", "sự kiện", "su kien")
+_BACKTEST_KEYWORDS = ("backtest", "simulate", "strategy performance", "run strategy", "kiểm thử chiến lược", "kiem thu chien luoc")
+
 
 def _has_latest_keyword(query: str) -> bool:
     return any(k in query.lower() for k in _LATEST_KEYWORDS)
 
 
+def _has_any(query: str, keywords: tuple[str, ...]) -> bool:
+    q = query.lower()
+    return any(k in q for k in keywords)
+
+
+def _statement_type_from_query(query: str) -> str | None:
+    q = query.lower()
+    if "balance sheet" in q or any(k in q for k in ("tài sản", "tai san", "liability", "liabilities", "vốn chủ", "von chu")):
+        return "BALANCE_SHEET"
+    if "income statement" in q or any(k in q for k in ("doanh thu", "revenue", "lợi nhuận", "loi nhuan", "profit")):
+        return "INCOME_STATEMENT"
+    if "cash flow" in q:
+        return "CASH_FLOW"
+    if any(k in q for k in ("thuyết minh", "thuyet minh", "notes", "note")):
+        return "NOTE"
+    return None
+
+
 def classify(query: str) -> str:
     q = query.lower()
+    if _has_any(query, _EVENT_KEYWORDS):
+        return "event_unavailable"
+    if _has_any(query, _FINANCIAL_REPORT_KEYWORDS):
+        return "financial_report"
     if any(k in q for k in ("how many", "row count", "db status", "questdb health", "db health", "table health")) \
             or q.strip() in {"health", "status", "db", "questdb"}:
         return "db_health"
-    if any(k in q for k in ("backtest", "ma strategy", "ma cross", "moving average")) or re.search(r"ma\d+", q):
+    if _has_any(query, _BACKTEST_KEYWORDS):
         return "ma_backtest"
     sym = extract_symbol(query)
     if sym and any(k in q for k in ("summary", "summarize", "hôm nay thế nào", "hom nay the nao")):
@@ -161,6 +195,56 @@ def answer_query(query: str, *, questdb_url: str = tool.DEFAULT_URL) -> dict[str
         return _result("ok", intent, query, "\n".join(md), tool_calls, {"health": row}, res["caveats"])
 
     symbol = extract_symbol(query)
+
+    if intent == "event_unavailable":
+        return _result(
+            "unsupported",
+            intent,
+            query,
+            "Event/news data is unavailable: no event/news QuestDB table or tool is implemented yet. I will not use OHLCV as a proxy for events/news.",
+            [],
+            {},
+            ["event/news tool unavailable", "market price tools are disallowed for event/news questions"],
+        )
+
+    if intent == "financial_report":
+        if not symbol:
+            return _unsupported(query, ["No ticker symbol found in the financial-report request."])
+        statement_type = _statement_type_from_query(query)
+        if statement_type:
+            res = _call(
+                tool_calls,
+                "get_latest_financial_report",
+                {"symbol": symbol, "statement_type": statement_type},
+                fa_tool.get_latest_financial_report(symbol, statement_type, url=questdb_url),
+            )
+        else:
+            res = _call(
+                tool_calls,
+                "get_financial_report_summary",
+                {"symbol": symbol},
+                fa_tool.get_financial_report_summary(symbol, url=questdb_url),
+            )
+        if res.get("status") != "ok" or not res.get("rows"):
+            return _result(
+                "unavailable",
+                intent,
+                query,
+                f"Financial report data is unavailable for {symbol}. FA tables must be ingested before this question can be answered.",
+                tool_calls,
+                {},
+                res.get("caveats", []) + ["OHLCV/features/signals were not used as a substitute for financial reports"],
+            )
+        rows = res["rows"]
+        latest_date = str(rows[0].get("public_date") or rows[0].get("period_end_date") or "")[:10]
+        sections = sorted({str(row.get("statement_type")) for row in rows})
+        md = (
+            f"**{symbol} financial report data** ({latest_date})\n"
+            f"- statements: {', '.join(sections)}\n"
+            f"- metric rows returned: {len(rows):,}\n"
+            "- metric names may be blank where Vietcap IQ metric mapping is unverified"
+        )
+        return _result("ok", intent, query, md, tool_calls, {"rows": rows[:20], "returned": len(rows)}, res.get("caveats", []))
 
     if intent in {"latest_features", "latest_signal", "symbol_summary"}:
         if not symbol:

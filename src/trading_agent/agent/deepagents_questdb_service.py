@@ -20,6 +20,7 @@ import re
 from typing import Any
 
 from trading_agent.strategies.simple_ma_cross import run_ma_cross_backtest
+from trading_agent.tools import questdb_financial_report_tool as fa_tool
 from trading_agent.tools import questdb_feature_signal_tool as fst
 from trading_agent.tools import questdb_market_data_tool as mdt
 
@@ -31,11 +32,18 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SYSTEM_PROMPT = """You are the VSF trading data agent.
 RULES:
 - You can ONLY use the provided read-only tools: get_questdb_health, get_latest_ohlcv,
-  get_latest_features, get_latest_signal, get_symbol_summary, get_ohlcv_window,
-  run_ma_backtest. Never use file, shell, or any other tools.
+  get_latest_features, get_latest_signal, get_symbol_summary, get_latest_financial_report,
+  get_financial_metrics, get_financial_report_summary, get_ohlcv_window, and only when
+  explicitly requested, run_ma_backtest. Never use file, shell, or any other tools.
 - Answer strictly from tool outputs. NEVER invent or estimate data that a tool did not return.
 - Always state the data source (QuestDB `daily_prices`) and include caveats.
 - Do NOT give real-money investment advice. This is research/analytics only.
+- Do NOT use market price/OHLCV/features/signals as substitutes for financial reports.
+- Do NOT use latest features/signals to summarize an older historical window unless the user explicitly asks to compare current state.
+- If the user asks for event/news data, say unavailable because no event/news tool exists yet.
+- Resolve relative date ranges against available tool data and state exact dates; do not choose arbitrary months.
+- If requested data domain is unavailable, say unavailable.
+- Do not suggest or mention backtests unless the user explicitly asks for backtest/simulate/strategy performance.
 - For a backtest, state the assumptions explicitly: MA20/MA50 crossover (unless the user
   asked otherwise), prices are the source-reported/adjusted close (adjustment_status may be
   `adjusted_price_missing_warn`), the transaction cost in bps, long-only, and next-day-close
@@ -46,13 +54,27 @@ RULES:
 
 _MODEL_CACHE: dict[str, Any] = {}
 
+_FINANCIAL_REPORT_KEYWORDS = (
+    "financial report", "financial reports", "báo cáo tài chính", "bao cao tai chinh",
+    "balance sheet", "income statement", "cash flow", "thuyết minh", "thuyet minh",
+    "doanh thu", "revenue", "lợi nhuận", "loi nhuan", "profit", "tài sản", "tai san",
+    "asset", "assets", "nợ", "no", "liability", "liabilities", "vốn chủ", "von chu", "equity",
+)
+_EVENT_KEYWORDS = ("event", "events", "news", "tin tức", "tin tuc", "sự kiện", "su kien")
+_BACKTEST_KEYWORDS = ("backtest", "simulate", "strategy performance", "run strategy", "kiểm thử chiến lược", "kiem thu chien luoc")
+
 
 def _validate_symbol(symbol: str) -> str | None:
     sym = (symbol or "").strip().upper()
     return sym if _SYMBOL_RE.match(sym) else None
 
 
-def _build_tools(questdb_url: str, tool_log: list[dict]):
+def _has_any(query: str, keywords: tuple[str, ...]) -> bool:
+    q = query.lower()
+    return any(k in q for k in keywords)
+
+
+def _build_tools(questdb_url: str, tool_log: list[dict], allow_backtest: bool = True):
     """Create the safe read-only LangChain tools, logging each invocation."""
     from langchain_core.tools import tool
 
@@ -114,6 +136,37 @@ def _build_tools(questdb_url: str, tool_log: list[dict]):
         return {"status": res["status"], **res.get("data", {}), "caveats": res["caveats"]}
 
     @tool
+    def get_latest_financial_report(symbol: str, statement_type: str = "") -> dict:
+        """Return latest financial-report metrics for a ticker and optional statement type."""
+        sym = _validate_symbol(symbol)
+        if not sym:
+            return {"status": "error", "caveats": [f"invalid symbol: {symbol!r}"]}
+        st = statement_type or None
+        res = fa_tool.get_latest_financial_report(sym, st, url=questdb_url)
+        _log("get_latest_financial_report", {"symbol": sym, "statement_type": st}, res)
+        return {"status": res["status"], "symbol": sym, "rows": res.get("rows", [])[:50], "caveats": res["caveats"]}
+
+    @tool
+    def get_financial_metrics(symbol: str, statement_type: str, metric_codes: list[str] | None = None, limit: int = 50) -> dict:
+        """Return selected financial metrics for a ticker from QuestDB FA tables."""
+        sym = _validate_symbol(symbol)
+        if not sym:
+            return {"status": "error", "caveats": [f"invalid symbol: {symbol!r}"]}
+        res = fa_tool.get_financial_metrics(sym, statement_type, metric_codes=metric_codes, limit=limit, url=questdb_url)
+        _log("get_financial_metrics", {"symbol": sym, "statement_type": statement_type, "metric_codes": metric_codes}, res)
+        return {"status": res["status"], "symbol": sym, "rows": res.get("rows", []), "caveats": res["caveats"]}
+
+    @tool
+    def get_financial_report_summary(symbol: str) -> dict:
+        """Return a compact latest financial-report summary across FA tables for a ticker."""
+        sym = _validate_symbol(symbol)
+        if not sym:
+            return {"status": "error", "caveats": [f"invalid symbol: {symbol!r}"]}
+        res = fa_tool.get_financial_report_summary(sym, url=questdb_url)
+        _log("get_financial_report_summary", {"symbol": sym}, res)
+        return {"status": res["status"], "symbol": sym, "rows": res.get("rows", [])[:50], "caveats": res["caveats"]}
+
+    @tool
     def get_ohlcv_window(symbol: str, start_date: str, end_date: str,
                          adjusted: bool = True, limit: int = 2000) -> dict:
         """Return OHLCV bars for a symbol between start_date and end_date (YYYY-MM-DD).
@@ -165,8 +218,12 @@ def _build_tools(questdb_url: str, tool_log: list[dict]):
         return {"status": "ok", "symbol": sym, "params": bt["params"], "metrics": bt["metrics"],
                 "caveats": res["caveats"] + bt["caveats"]}
 
-    return [get_questdb_health, get_latest_ohlcv, get_latest_features, get_latest_signal,
-            get_symbol_summary, get_ohlcv_window, run_ma_backtest]
+    tools = [get_questdb_health, get_latest_ohlcv, get_latest_features, get_latest_signal,
+             get_symbol_summary, get_latest_financial_report, get_financial_metrics,
+             get_financial_report_summary, get_ohlcv_window]
+    if allow_backtest:
+        tools.append(run_ma_backtest)
+    return tools
 
 
 def _resolve_model_name(model: str | None) -> str:
@@ -200,6 +257,11 @@ def _safe_error(exc: Exception) -> str:
     return re.sub(r"sk-[A-Za-z0-9_*\-]+", "sk-<redacted>", str(exc))
 
 
+def _remove_backtest_suggestions(answer: str) -> str:
+    lines = [line for line in answer.splitlines() if "backtest" not in line.lower()]
+    return "\n".join(lines).strip() or answer
+
+
 def _result(status: str, query: str, answer_markdown: str,
             tool_calls: list[dict], data: dict, caveats: list[str]) -> dict[str, Any]:
     return {
@@ -228,6 +290,16 @@ def answer_query_deepagents(
     if not query:
         return _result("error", query, "Empty query.", [], {}, ["Provide a question."])
 
+    if _has_any(query, _EVENT_KEYWORDS):
+        return _result(
+            "unsupported",
+            query,
+            "Event/news data is unavailable: no event/news QuestDB table or tool is implemented yet. I will not use OHLCV as a proxy for events/news.",
+            [],
+            {},
+            ["event/news tool unavailable", "market price tools are disallowed for event/news questions"],
+        )
+
     ok, err = deepagents_available()
     if not ok:
         return _result("error", query,
@@ -242,9 +314,11 @@ def answer_query_deepagents(
     from deepagents import create_deep_agent
 
     model_name = _resolve_model_name(model)
+    allow_backtest = _has_any(query, _BACKTEST_KEYWORDS)
+    wants_financial = _has_any(query, _FINANCIAL_REPORT_KEYWORDS)
     tool_log: list[dict] = []
     try:
-        tools = _build_tools(questdb_url, tool_log)
+        tools = _build_tools(questdb_url, tool_log, allow_backtest=allow_backtest)
         llm = _get_chat_model(model_name, timeout_seconds)
         agent = create_deep_agent(model=llm, tools=tools, system_prompt=SYSTEM_PROMPT)
         out = agent.invoke({"messages": [{"role": "user", "content": query}]},
@@ -264,6 +338,18 @@ def answer_query_deepagents(
             break
     if not answer and messages:
         answer = _coerce_text(getattr(messages[-1], "content", ""))
+
+    if wants_financial and not any(call.get("tool", "").startswith("get_financial") for call in tool_log):
+        return _result(
+            "unavailable",
+            query,
+            "Financial report data is unavailable or no financial-report tool was used. I will not use OHLCV/features/signals as a substitute.",
+            tool_log,
+            {"model": model_name, "tool_log": tool_log},
+            ["financial-report guardrail triggered"],
+        )
+    if not allow_backtest and answer:
+        answer = _remove_backtest_suggestions(answer)
 
     caveats = ["mode=deepagents (LLM tool-calling)", f"model={model_name}",
                "answers are grounded in read-only QuestDB tool outputs; not investment advice"]
