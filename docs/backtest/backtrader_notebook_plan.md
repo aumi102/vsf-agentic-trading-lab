@@ -93,6 +93,17 @@ The runner reports:
 - closed trades
 - win rate when closed trades exist
 
+## Persisted result tables
+
+The research runner now has a companion persistence script that stores reproducible outputs in QuestDB `backtest_*` tables:
+
+```bat
+python scripts\run_backtrader_questdb_persist.py --symbols FPT,VNM,HPG --start-date 2020-01-01 --end-date 2025-12-31 --replace-run-table
+python scripts\questdb_backtest_status.py
+```
+
+See `docs/backtest/backtest_result_tables.md` for schemas, caveats, and the DeepAgents integration gate.
+
 ## Caveats
 
 - Adjusted OHLC fields are still source-unverified in the current data quality audit.
