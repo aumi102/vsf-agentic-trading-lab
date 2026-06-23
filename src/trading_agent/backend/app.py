@@ -13,7 +13,9 @@ Endpoints:
   GET  /signals/latest/{symbol}
   GET  /market/summary/{symbol}
   GET  /market/ohlcv?symbol=&start_date=&end_date=&adjusted=&limit=
-  POST /backtest/ma-cross
+  GET  /backtest/latest/{symbol}
+  GET  /backtest/comparison/{symbol}
+  GET  /backtest/equity/{symbol}/{strategy_id}?limit=
   POST /agent/chat
   GET  /v1/models
   POST /v1/chat/completions   (non-streaming only)
@@ -27,11 +29,9 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-import pandas as pd
-
 from trading_agent.agent.deepagents_questdb_service import answer_query_deepagents
 from trading_agent.agent.questdb_agent_service import answer_query
-from trading_agent.strategies.simple_ma_cross import run_ma_cross_backtest
+from trading_agent.tools import questdb_backtest_result_tool as backtest_result_tool
 from trading_agent.tools import questdb_feature_signal_tool as feature_signal_tool
 from trading_agent.tools import questdb_market_data_tool as tool
 
@@ -104,6 +104,36 @@ def _handle_derived_latest(qurl: str, symbol: str, kind: str) -> tuple[int, dict
     return 200, res
 
 
+def _status_to_http(res: dict) -> int:
+    if res.get("status") == "ok":
+        return 200
+    if res.get("status") == "unavailable":
+        return 404
+    return 400
+
+
+def handle_backtest_latest(qurl: str, symbol: str, params: dict | None = None) -> tuple[int, dict]:
+    strategy_id = None
+    if params:
+        strategy_id = (params.get("strategy_id", [None])[0] if params.get("strategy_id") else None)
+    res = backtest_result_tool.get_latest_backtest_metrics(symbol, strategy_id=strategy_id, url=qurl)
+    return _status_to_http(res), res
+
+
+def handle_backtest_comparison(qurl: str, symbol: str) -> tuple[int, dict]:
+    res = backtest_result_tool.get_backtest_strategy_comparison(symbol, url=qurl)
+    return _status_to_http(res), res
+
+
+def handle_backtest_equity(qurl: str, symbol: str, strategy_id: str, params: dict | None = None) -> tuple[int, dict]:
+    try:
+        limit = int((params or {}).get("limit", ["5000"])[0])
+    except ValueError:
+        limit = 5000
+    res = backtest_result_tool.get_backtest_equity_curve(symbol, strategy_id, limit=limit, url=qurl)
+    return _status_to_http(res), res
+
+
 def handle_ohlcv(qurl: str, params: dict) -> tuple[int, dict]:
     symbol = (params.get("symbol", [""])[0]).strip()
     start = (params.get("start_date", [""])[0]).strip()
@@ -133,24 +163,13 @@ def handle_ohlcv(qurl: str, params: dict) -> tuple[int, dict]:
 
 
 def handle_backtest(qurl: str, body: dict) -> tuple[int, dict]:
-    symbol = str(body.get("symbol", "")).strip()
-    start = str(body.get("start_date", "2020-01-01")).strip()
-    end = str(body.get("end_date", "2025-12-31")).strip()
-    fast = int(body.get("fast_window", 20))
-    slow = int(body.get("slow_window", 50))
-    cost_bps = float(body.get("transaction_cost_bps", 15))
-    if not symbol:
-        return 400, {"status": "error", "caveats": ["symbol is required"]}
-    res = tool.get_ohlcv_window(symbol, start, end, adjusted=True, url=qurl)
-    if res["status"] != "ok" or res["row_count"] == 0:
-        return 400, {"status": "error", "symbol": symbol.upper(),
-                     "caveats": res["caveats"] + [f"no data for {symbol} in {start}..{end}"]}
-    bt = run_ma_cross_backtest(pd.DataFrame(res["rows"]), fast=fast, slow=slow, cost_bps=cost_bps)
-    code = 200 if bt.get("status") == "ok" else 400
-    bt["symbol"] = symbol.upper()
-    bt.setdefault("caveats", [])
-    bt["caveats"] = res["caveats"] + bt["caveats"]
-    return code, bt
+    return 410, {
+        "status": "unsupported",
+        "caveats": [
+            "live Backtrader execution is disabled in the backend",
+            "use persisted result endpoints: /backtest/latest/{symbol}, /backtest/comparison/{symbol}, /backtest/equity/{symbol}/{strategy_id}",
+        ],
+    }
 
 
 def handle_agent_chat(qurl: str, body: dict, params: dict) -> tuple[int, dict]:
@@ -259,6 +278,15 @@ class AgentHTTPRequestHandler(BaseHTTPRequestHandler):
             m = re.match(r"^/market/summary/([^/?]+)$", path)
             if m:
                 self._send(*_handle_derived_latest(self._qurl, m.group(1), "summary")); return
+            m = re.match(r"^/backtest/latest/([^/?]+)$", path)
+            if m:
+                self._send(*handle_backtest_latest(self._qurl, m.group(1), parse_qs(parsed.query))); return
+            m = re.match(r"^/backtest/comparison/([^/?]+)$", path)
+            if m:
+                self._send(*handle_backtest_comparison(self._qurl, m.group(1))); return
+            m = re.match(r"^/backtest/equity/([^/?]+)/([^/?]+)$", path)
+            if m:
+                self._send(*handle_backtest_equity(self._qurl, m.group(1), m.group(2), parse_qs(parsed.query))); return
             if path == "/market/ohlcv":
                 self._send(*handle_ohlcv(self._qurl, parse_qs(parsed.query))); return
             if path == "/v1/models":
@@ -294,7 +322,8 @@ def serve(host: str = "127.0.0.1", port: int = 8010, questdb_url: str = tool.DEF
     print(f"{SERVICE_NAME} listening on http://{host}:{port}  (QuestDB={questdb_url})")
     print("endpoints: /health /questdb/health /market/latest/{sym} /features/latest/{sym} "
           "/signals/latest/{sym} /market/summary/{sym} /market/ohlcv "
-          "/backtest/ma-cross /agent/chat /v1/models /v1/chat/completions")
+          "/backtest/latest/{sym} /backtest/comparison/{sym} /backtest/equity/{sym}/{strategy} "
+          "/agent/chat /v1/models /v1/chat/completions")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

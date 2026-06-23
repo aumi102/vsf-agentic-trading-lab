@@ -11,16 +11,14 @@ Supported intents:
   * latest_signal - "latest signal FPT", "FPT signal"
   * symbol_summary - "summary FPT", "HPG hôm nay thế nào"
   * ohlcv_window  - "show FPT from 2020-01-01 to 2025-12-31", "OHLCV VNM 2021 to 2024"
-  * ma_backtest   - "backtest MA strategy for FPT from 2020 to 2025", "ma20 ma50 HPG 2021 2024"
+  * backtest_results - "backtest FPT", "compare backtest strategies FPT"
 """
 from __future__ import annotations
 
 import re
 from typing import Any
 
-import pandas as pd
-
-from trading_agent.strategies.simple_ma_cross import format_report, run_ma_cross_backtest
+from trading_agent.tools import questdb_backtest_result_tool as backtest_tool
 from trading_agent.tools import questdb_financial_report_tool as fa_tool
 from trading_agent.tools import questdb_feature_signal_tool as feature_signal_tool
 from trading_agent.tools import questdb_market_data_tool as tool
@@ -29,7 +27,8 @@ SUPPORTED_EXAMPLES = [
     "how many rows are in QuestDB",
     "show latest FPT data",
     "show FPT from 2020-01-01 to 2025-12-31",
-    "backtest MA strategy for FPT from 2020 to 2025",
+    "compare backtest strategies FPT",
+    "MA20/MA50 backtest FPT",
     "summary FPT",
     "latest signal FPT",
 ]
@@ -39,6 +38,7 @@ _STOPWORDS = {
     "MA", "FROM", "TO", "IN", "HOW", "MANY", "ROWS", "ROW", "ARE", "THE", "DATA",
     "SHOW", "LATEST", "LAST", "PRICE", "FOR", "OF", "QUESTDB", "DB", "STRATEGY",
     "BACKTEST", "RUN", "GET", "LIST", "UNIVERSE", "SYMBOLS", "AND", "WITH", "A",
+    "RESULT", "RESULTS", "COMPARE", "SIMULATE", "PERFORMANCE", "STRATEGY", "STRATEGIES",
     "COUNT", "TOTAL", "HEALTH", "TABLE", "IS", "WHAT", "OHLCV", "WINDOW", "HISTORY",
     "CURRENT", "TODAY", "NOW", "QUOTE", "STATUS", "CROSS", "MOVING", "AVERAGE",
     "SIGNAL", "SIGNALS", "FEATURE", "FEATURES", "SUMMARY", "SUMMARIZE", "USING",
@@ -96,7 +96,10 @@ _FINANCIAL_REPORT_KEYWORDS = (
     "asset", "assets", "nợ", "no", "liability", "liabilities", "vốn chủ", "von chu", "equity",
 )
 _EVENT_KEYWORDS = ("event", "events", "news", "tin tức", "tin tuc", "sự kiện", "su kien")
-_BACKTEST_KEYWORDS = ("backtest", "simulate", "strategy performance", "run strategy", "kiểm thử chiến lược", "kiem thu chien luoc")
+_BACKTEST_KEYWORDS = (
+    "backtest", "simulate", "strategy performance", "run strategy",
+    "kiểm thử chiến lược", "kiem thu chien luoc", "kết quả backtest", "ket qua backtest",
+)
 
 
 def _has_latest_keyword(query: str) -> bool:
@@ -131,7 +134,7 @@ def classify(query: str) -> str:
             or q.strip() in {"health", "status", "db", "questdb"}:
         return "db_health"
     if _has_any(query, _BACKTEST_KEYWORDS):
-        return "ma_backtest"
+        return "backtest_results"
     sym = extract_symbol(query)
     if sym and any(k in q for k in ("summary", "summarize", "hôm nay thế nào", "hom nay the nao")):
         return "symbol_summary"
@@ -169,6 +172,61 @@ def _call(tool_calls: list[dict], name: str, args: dict, result: dict) -> dict:
         "status": result.get("status"), "row_count": result.get("row_count"),
     })
     return result
+
+
+def _strategy_id_from_query(query: str) -> str | None:
+    q = query.lower()
+    if any(k in q for k in ("ma20", "ma50", "ma20/ma50", "ma 20", "ma 50", "moving average")):
+        return "ma20_ma50"
+    if any(k in q for k in ("buy hold", "buy-and-hold", "buy_hold", "hold baseline")):
+        return "buy_hold"
+    if "rsi" in q:
+        return "rsi_mean_reversion"
+    return None
+
+
+def _fmt(value: Any, decimals: int = 2) -> str:
+    if value in (None, ""):
+        return "n/a"
+    try:
+        return f"{float(value):,.{decimals}f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _fmt_pct(value: Any, decimals: int = 2) -> str:
+    text = _fmt(value, decimals)
+    return text if text == "n/a" else f"{text}%"
+
+
+def _format_backtest_answer(symbol: str, rows: list[dict[str, Any]], *, comparison: bool) -> str:
+    if not rows:
+        return f"No persisted backtest results found for {symbol}."
+    first = rows[0]
+    start = str(first.get("start_date") or "")[:10]
+    end = str(first.get("end_date") or "")[:10]
+    lines = [
+        f"**{symbol} persisted backtest results** ({start} .. {end})",
+        "- source: QuestDB persisted `backtest_runs` / `backtest_metrics`",
+        f"- source table: `{first.get('source_table')}` · code commit: `{first.get('code_commit')}`",
+        f"- commission: {_fmt(first.get('commission'), 4)} · slippage_bps: {_fmt(first.get('slippage_bps'), 2)}",
+        f"- adjusted_price_status: `{first.get('adjusted_price_status')}`",
+        "",
+        "| Strategy | Final value | Total return | Annualized | Max DD | Sharpe | Trades | Win rate |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for row in rows:
+        lines.append(
+            f"| `{row.get('strategy_id')}` | {_fmt(row.get('final_value'), 0)} | "
+            f"{_fmt_pct(row.get('total_return_pct'))} | {_fmt_pct(row.get('annualized_return_pct'))} | "
+            f"{_fmt_pct(row.get('max_drawdown_pct'))} | {_fmt(row.get('sharpe_ratio'))} | "
+            f"{int(row.get('closed_trades') or 0)} | {_fmt_pct(row.get('win_rate_pct'))} |"
+        )
+    lines.append("")
+    lines.append("Research-only persisted lookup; no live Backtrader execution was run by the agent.")
+    if not comparison:
+        lines.append("Use `compare backtest strategies <SYMBOL>` to see all persisted strategies for the symbol.")
+    return "\n".join(lines)
 
 
 def answer_query(query: str, *, questdb_url: str = tool.DEFAULT_URL) -> dict[str, Any]:
@@ -345,33 +403,38 @@ def answer_query(query: str, *, questdb_url: str = tool.DEFAULT_URL) -> dict[str
                 "sample_head": rows[:3], "sample_tail": rows[-3:]}
         return _result("ok", intent, query, md, tool_calls, data, res["caveats"] + caveats)
 
-    if intent == "ma_backtest":
+    if intent == "backtest_results":
         if not symbol:
             return _unsupported(query, ["No ticker symbol found in the request."])
-        start, end = extract_dates(query)
-        caveats = []
-        if not start or not end:
-            start, end = "2020-01-01", "2025-12-31"
-            caveats.append("No date range parsed; defaulted to 2020-01-01..2025-12-31.")
-        fast, slow = extract_ma_windows(query)
-        res = _call(tool_calls, "get_ohlcv_window",
-                    {"symbol": symbol, "start_date": start, "end_date": end, "adjusted": True},
-                    tool.get_ohlcv_window(symbol, start, end, adjusted=True, url=questdb_url))
-        if res["status"] != "ok" or res["row_count"] == 0:
-            return _result("error", intent, query, f"No data for {symbol} in {start}..{end} to backtest.",
-                           tool_calls, {}, res["caveats"] + caveats)
-        df = pd.DataFrame(res["rows"])
-        bt = run_ma_cross_backtest(df, fast=fast, slow=slow)
-        tool_calls.append({"tool": "run_ma_cross_backtest",
-                           "args": {"fast": fast, "slow": slow, "bars": res["row_count"]},
-                           "status": bt.get("status"), "row_count": res["row_count"]})
-        if bt.get("status") != "ok":
-            return _result("error", intent, query, f"Backtest error: {bt.get('caveats')}",
-                           tool_calls, {}, res["caveats"] + caveats + bt.get("caveats", []))
-        md = "```\n" + format_report(symbol, bt) + "\n```"
-        return _result("ok", intent, query, md, tool_calls,
-                       {"metrics": bt["metrics"], "params": bt["params"]},
-                       res["caveats"] + caveats + bt["caveats"])
+        strategy_id = _strategy_id_from_query(query)
+        wants_compare = strategy_id is None or "compare" in query.lower() or "strategies" in query.lower()
+        if wants_compare:
+            res = _call(
+                tool_calls,
+                "get_backtest_strategy_comparison",
+                {"symbol": symbol},
+                backtest_tool.get_backtest_strategy_comparison(symbol, url=questdb_url),
+            )
+        else:
+            res = _call(
+                tool_calls,
+                "get_latest_backtest_metrics",
+                {"symbol": symbol, "strategy_id": strategy_id},
+                backtest_tool.get_latest_backtest_metrics(symbol, strategy_id=strategy_id, url=questdb_url),
+            )
+        if res.get("status") != "ok" or not res.get("rows"):
+            return _result(
+                "unavailable",
+                intent,
+                query,
+                f"Persisted backtest result is unavailable for {symbol}. Run `scripts/run_backtrader_questdb_persist.py` first for this symbol/strategy.",
+                tool_calls,
+                {},
+                res.get("caveats", []),
+            )
+        rows = res["rows"]
+        md = _format_backtest_answer(symbol, rows, comparison=wants_compare)
+        return _result("ok", intent, query, md, tool_calls, {"rows": rows}, res.get("caveats", []))
 
     return _unsupported(query, ["Query intent not recognized."])
 

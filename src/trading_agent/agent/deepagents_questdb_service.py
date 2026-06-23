@@ -6,7 +6,7 @@ are not installed, or `OPENAI_API_KEY` is unset, ``answer_query_deepagents``
 returns a clean error envelope and the rule-based agent remains the fallback.
 
 Safety (strict):
-  * Only read-only QuestDB and deterministic backtest tools are exposed.
+  * Only read-only QuestDB tools are exposed.
   * No write/ingest/DDL; QuestDB localhost reads only.
   * DeepAgents' built-in shell (`execute`) is inert on the default StateBackend,
     and its file tools operate on an in-memory virtual filesystem (sandboxed),
@@ -19,7 +19,7 @@ import os
 import re
 from typing import Any
 
-from trading_agent.strategies.simple_ma_cross import run_ma_cross_backtest
+from trading_agent.tools import questdb_backtest_result_tool as bt_tool
 from trading_agent.tools import questdb_financial_report_tool as fa_tool
 from trading_agent.tools import questdb_feature_signal_tool as fst
 from trading_agent.tools import questdb_market_data_tool as mdt
@@ -34,7 +34,7 @@ RULES:
 - You can ONLY use the provided read-only tools: get_questdb_health, get_latest_ohlcv,
   get_latest_features, get_latest_signal, get_symbol_summary, get_latest_financial_report,
   get_financial_metrics, get_financial_report_summary, get_ohlcv_window, and only when
-  explicitly requested, run_ma_backtest. Never use file, shell, or any other tools.
+  explicitly requested, persisted backtest result lookup tools. Never use file, shell, or any other tools.
 - Answer strictly from tool outputs. NEVER invent or estimate data that a tool did not return.
 - Always state the data source (QuestDB `daily_prices`) and include caveats.
 - Do NOT give real-money investment advice. This is research/analytics only.
@@ -44,12 +44,13 @@ RULES:
 - Resolve relative date ranges against available tool data and state exact dates; do not choose arbitrary months.
 - If requested data domain is unavailable, say unavailable.
 - Do not suggest or mention backtests unless the user explicitly asks for backtest/simulate/strategy performance.
-- For a backtest, state the assumptions explicitly: MA20/MA50 crossover (unless the user
-  asked otherwise), prices are the source-reported/adjusted close (adjustment_status may be
-  `adjusted_price_missing_warn`), the transaction cost in bps, long-only, and next-day-close
-  execution (leak-free).
+- Use persisted backtest results only. Do NOT run live Backtrader or any live strategy simulation.
+- If a persisted backtest result is missing, say unavailable and tell the operator to run
+  `scripts/run_backtrader_questdb_persist.py` first for that symbol/strategy.
+- For backtest result lookups, state the persisted assumptions/caveats returned by the tool:
+  source table, start/end dates, commission, slippage_bps, adjusted_price_status, code_commit.
 - If the user's request is not supported by these tools, say it is unsupported and suggest
-  supported examples (DB health, latest <SYMBOL>, OHLCV window, MA backtest).
+  supported examples (DB health, latest <SYMBOL>, OHLCV window, persisted backtest comparison).
 - Keep answers concise and in markdown."""
 
 _MODEL_CACHE: dict[str, Any] = {}
@@ -61,7 +62,10 @@ _FINANCIAL_REPORT_KEYWORDS = (
     "asset", "assets", "nợ", "no", "liability", "liabilities", "vốn chủ", "von chu", "equity",
 )
 _EVENT_KEYWORDS = ("event", "events", "news", "tin tức", "tin tuc", "sự kiện", "su kien")
-_BACKTEST_KEYWORDS = ("backtest", "simulate", "strategy performance", "run strategy", "kiểm thử chiến lược", "kiem thu chien luoc")
+_BACKTEST_KEYWORDS = (
+    "backtest", "simulate", "strategy performance", "run strategy",
+    "kiểm thử chiến lược", "kiem thu chien luoc", "kết quả backtest", "ket qua backtest",
+)
 
 
 def _validate_symbol(symbol: str) -> str | None:
@@ -194,35 +198,42 @@ def _build_tools(questdb_url: str, tool_log: list[dict], allow_backtest: bool = 
         }
 
     @tool
-    def run_ma_backtest(symbol: str, start_date: str, end_date: str,
-                        fast_window: int = 20, slow_window: int = 50,
-                        transaction_cost_bps: float = 15.0) -> dict:
-        """Run a long-only MA crossover backtest (adjusted close) on QuestDB data and return metrics."""
+    def get_latest_backtest_metrics(symbol: str, strategy_id: str = "") -> dict:
+        """Return latest persisted backtest metrics for a ticker and optional strategy_id."""
         sym = _validate_symbol(symbol)
         if not sym:
             return {"status": "error", "caveats": [f"invalid symbol: {symbol!r}"]}
-        if not _DATE_RE.match(start_date or "") or not _DATE_RE.match(end_date or ""):
-            return {"status": "error", "caveats": ["dates must be YYYY-MM-DD"]}
-        res = mdt.get_ohlcv_window(sym, start_date, end_date, adjusted=True, url=questdb_url)
-        _log("run_ma_backtest", {"symbol": sym, "start_date": start_date, "end_date": end_date,
-                                 "fast_window": fast_window, "slow_window": slow_window,
-                                 "transaction_cost_bps": transaction_cost_bps}, res)
-        if res["status"] != "ok" or res["row_count"] == 0:
-            return {"status": "error", "symbol": sym,
-                    "caveats": res["caveats"] + [f"no data for {sym} in {start_date}..{end_date}"]}
-        import pandas as pd
-        bt = run_ma_cross_backtest(pd.DataFrame(res["rows"]), fast=int(fast_window),
-                                   slow=int(slow_window), cost_bps=float(transaction_cost_bps))
-        if bt.get("status") != "ok":
-            return {"status": "error", "symbol": sym, "caveats": res["caveats"] + bt.get("caveats", [])}
-        return {"status": "ok", "symbol": sym, "params": bt["params"], "metrics": bt["metrics"],
-                "caveats": res["caveats"] + bt["caveats"]}
+        sid = strategy_id or None
+        res = bt_tool.get_latest_backtest_metrics(sym, strategy_id=sid, url=questdb_url)
+        _log("get_latest_backtest_metrics", {"symbol": sym, "strategy_id": sid}, res)
+        return {"status": res["status"], "symbol": sym, "rows": res.get("rows", []), "caveats": res["caveats"]}
+
+    @tool
+    def get_backtest_strategy_comparison(symbol: str) -> dict:
+        """Return latest persisted backtest metric row per strategy for a ticker."""
+        sym = _validate_symbol(symbol)
+        if not sym:
+            return {"status": "error", "caveats": [f"invalid symbol: {symbol!r}"]}
+        res = bt_tool.get_backtest_strategy_comparison(sym, url=questdb_url)
+        _log("get_backtest_strategy_comparison", {"symbol": sym}, res)
+        return {"status": res["status"], "symbol": sym, "rows": res.get("rows", []), "caveats": res["caveats"]}
+
+    @tool
+    def get_backtest_equity_curve(symbol: str, strategy_id: str, limit: int = 5000) -> dict:
+        """Return bounded persisted equity curve rows for a ticker and strategy_id."""
+        sym = _validate_symbol(symbol)
+        if not sym:
+            return {"status": "error", "caveats": [f"invalid symbol: {symbol!r}"]}
+        safe_limit = max(1, min(int(limit), 5000))
+        res = bt_tool.get_backtest_equity_curve(sym, strategy_id=strategy_id, limit=safe_limit, url=questdb_url)
+        _log("get_backtest_equity_curve", {"symbol": sym, "strategy_id": strategy_id, "limit": safe_limit}, res)
+        return {"status": res["status"], "symbol": sym, "rows": res.get("rows", []), "caveats": res["caveats"]}
 
     tools = [get_questdb_health, get_latest_ohlcv, get_latest_features, get_latest_signal,
              get_symbol_summary, get_latest_financial_report, get_financial_metrics,
              get_financial_report_summary, get_ohlcv_window]
     if allow_backtest:
-        tools.append(run_ma_backtest)
+        tools.extend([get_latest_backtest_metrics, get_backtest_strategy_comparison, get_backtest_equity_curve])
     return tools
 
 

@@ -54,6 +54,13 @@ def main() -> int:
          lambda c, d: c == 200 and d.get("status") == "ok" and d.get("data")),
         (f"GET  /market/summary/{args.symbol}", "GET", f"{base}/market/summary/{args.symbol}", None,
          lambda c, d: c == 200 and d.get("status") == "ok" and d.get("data")),
+        (f"GET  /backtest/comparison/{args.symbol}", "GET", f"{base}/backtest/comparison/{args.symbol}", None,
+         lambda c, d: c == 200 and d.get("status") == "ok" and d.get("row_count", 0) >= 1),
+        (f"GET  /backtest/latest/{args.symbol}", "GET", f"{base}/backtest/latest/{args.symbol}", None,
+         lambda c, d: c == 200 and d.get("status") == "ok" and d.get("row_count", 0) >= 1),
+        ("POST /agent/chat persisted backtest", "POST", f"{base}/agent/chat", {"message": f"backtest {args.symbol}"},
+         lambda c, d: c == 200 and d.get("status") == "ok" and d.get("intent") == "backtest_results"
+         and any(call.get("tool") == "get_backtest_strategy_comparison" for call in d.get("tool_calls", []))),
         ("POST /agent/chat", "POST", f"{base}/agent/chat", {"message": "how many rows are in QuestDB"},
          lambda c, d: c == 200 and d.get("status") == "ok" and d.get("intent") == "db_health"),
         ("GET  /v1/models", "GET", f"{base}/v1/models", None,
