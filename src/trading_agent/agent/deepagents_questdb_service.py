@@ -268,6 +268,11 @@ def _safe_error(exc: Exception) -> str:
     return re.sub(r"sk-[A-Za-z0-9_*\-]+", "sk-<redacted>", str(exc))
 
 
+def _is_invalid_credential_error(message: str) -> bool:
+    text = message.lower()
+    return "invalid_api_key" in text or "incorrect api key" in text or "status': 401" in text or "status\": 401" in text
+
+
 def _remove_backtest_suggestions(answer: str) -> str:
     lines = [line for line in answer.splitlines() if "backtest" not in line.lower()]
     return "\n".join(lines).strip() or answer
@@ -336,8 +341,16 @@ def answer_query_deepagents(
                            {"recursion_limit": 25})
     except Exception as exc:
         safe_error = _safe_error(exc)
-        return _result("error", query, f"DeepAgents run failed: {safe_error}", tool_log,
-                       {"model": model_name}, [f"agent_error: {safe_error}"])
+        credential_hint = (
+            "OpenAI credential is invalid or stale in this process. Restart shell/backend after setting OPENAI_API_KEY."
+            if _is_invalid_credential_error(safe_error)
+            else ""
+        )
+        answer = f"DeepAgents run failed: {credential_hint or safe_error}"
+        caveats = [f"agent_error: {safe_error}"]
+        if credential_hint:
+            caveats.insert(0, credential_hint)
+        return _result("error", query, answer, tool_log, {"model": model_name}, caveats)
 
     messages = out.get("messages", []) if isinstance(out, dict) else []
     answer = ""
