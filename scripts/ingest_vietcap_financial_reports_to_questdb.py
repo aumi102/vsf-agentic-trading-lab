@@ -37,7 +37,8 @@ STATEMENTS = {
     "notes": ("NOTE", "fa_notes"),
     "note": ("NOTE", "fa_notes"),
 }
-FA_TABLES = {table for _, table in STATEMENTS.values()} | {"fa_raw_payloads"}
+FA_FACT_TABLES = {table for _, table in STATEMENTS.values()}
+FA_TABLES = FA_FACT_TABLES | {"fa_raw_payloads", "fa_ingest_runs"}
 RAW_ROOT = ROOT / "data/raw/vietcap_iq_financial_reports"
 SYMBOL_RE = re.compile(r"^[A-Z0-9]{1,12}$")
 
@@ -76,7 +77,29 @@ def _select_symbols(client, base_url: str, explicit: list[str], limit: int | Non
     return [str(row[0]) for row in rows if row]
 
 
+def _utc_timestamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
 def _ddl(table: str) -> str:
+    if table == "fa_ingest_runs":
+        return """CREATE TABLE IF NOT EXISTS fa_ingest_runs (
+            created_at TIMESTAMP,
+            run_id SYMBOL CAPACITY 4096 CACHE,
+            scope SYMBOL CAPACITY 256 CACHE,
+            symbols STRING,
+            statements STRING,
+            replace_mode SYMBOL CAPACITY 256 CACHE,
+            status SYMBOL CAPACITY 256 CACHE,
+            symbols_processed LONG,
+            raw_payload_rows LONG,
+            fa_balance_sheet_rows LONG,
+            fa_income_statement_rows LONG,
+            fa_cash_flow_rows LONG,
+            fa_notes_rows LONG,
+            failure_count LONG,
+            failure_json STRING
+        ) TIMESTAMP(created_at) PARTITION BY YEAR WAL"""
     if table == "fa_raw_payloads":
         return """CREATE TABLE IF NOT EXISTS fa_raw_payloads (
             crawled_at TIMESTAMP,
@@ -118,6 +141,13 @@ def _ensure_tables(client, base_url: str) -> None:
         qdb.exec_query(client, base_url, _ddl(table))
 
 
+def _replace_fa_tables(client, base_url: str) -> None:
+    print("REPLACING ONLY FA TABLES; daily_prices untouched")
+    for table in sorted(FA_TABLES):
+        qdb.exec_query(client, base_url, f"DROP TABLE IF EXISTS {table}")
+    _ensure_tables(client, base_url)
+
+
 def _period_end(fiscal_year: int, fiscal_quarter: int | None) -> str:
     if fiscal_quarter == 1:
         return f"{fiscal_year}-03-31T00:00:00.000000Z"
@@ -153,9 +183,14 @@ RAW_COLUMNS = [
     "crawled_at", "symbol", "statement_type", "source", "run_id", "raw_payload_ref",
     "metadata_ref", "http_status", "access_status", "content_hash", "quality_status",
 ]
+RUN_COLUMNS = [
+    "created_at", "run_id", "scope", "symbols", "statements", "replace_mode", "status",
+    "symbols_processed", "raw_payload_rows", "fa_balance_sheet_rows", "fa_income_statement_rows",
+    "fa_cash_flow_rows", "fa_notes_rows", "failure_count", "failure_json",
+]
 
 
-def _normalize_facts(facts: list[dict[str, Any]], table: str) -> list[dict[str, Any]]:
+def _normalize_facts(facts: list[dict[str, Any]], table: str, run_id: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for fact in facts:
         try:
@@ -191,11 +226,55 @@ def _normalize_facts(facts: list[dict[str, Any]], table: str) -> list[dict[str, 
             "currency": fact.get("currency") or "",
             "unit": fact.get("unit") or "",
             "source": "vietcap_iq",
-            "run_id": fact.get("source_run_id") or "",
+            "run_id": fact.get("source_run_id") or run_id,
             "raw_payload_ref": fact.get("source_payload_path") or "",
             "quality_status": "metric_mapping_unverified",
         })
     return rows
+
+
+def _run_row(
+    *,
+    run_id: str,
+    scope: str,
+    symbols: list[str],
+    statements: list[tuple[str, str, str]],
+    replace_mode: str,
+    status: str,
+    row_counts_by_table: dict[str, int],
+    raw_payload_rows: int,
+    failures: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "created_at": _utc_timestamp(),
+        "run_id": run_id,
+        "scope": scope,
+        "symbols": ",".join(symbols),
+        "statements": ",".join(section for _, section, _ in statements),
+        "replace_mode": replace_mode,
+        "status": status,
+        "symbols_processed": len(symbols),
+        "raw_payload_rows": raw_payload_rows,
+        "fa_balance_sheet_rows": row_counts_by_table.get("fa_balance_sheet", 0),
+        "fa_income_statement_rows": row_counts_by_table.get("fa_income_statement", 0),
+        "fa_cash_flow_rows": row_counts_by_table.get("fa_cash_flow", 0),
+        "fa_notes_rows": row_counts_by_table.get("fa_notes", 0),
+        "failure_count": len(failures),
+        "failure_json": json.dumps(failures, ensure_ascii=False),
+    }
+
+
+def _write_run_row(client, base_url: str, row: dict[str, Any]) -> None:
+    qdb.imp_csv(client, base_url, "fa_ingest_runs", _csv_bytes([row], RUN_COLUMNS), timeout_seconds=60.0)
+    qdb.wait_wal_applied(client, base_url, "fa_ingest_runs", attempts=120)
+
+
+def _final_status(failures: list[dict[str, Any]], row_counts_by_table: dict[str, int]) -> str:
+    if not failures:
+        return "complete"
+    if any(count > 0 for count in row_counts_by_table.values()):
+        return "partial"
+    return "failed"
 
 
 def _fetch_with_retry(symbol: str, section: str, run_id: str, output_root: Path, timeout: float, retries: int) -> dict[str, Any]:
@@ -228,7 +307,11 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
     parser.add_argument("--retries", type=int, default=2)
+    parser.add_argument("--replace-mode", choices=("append", "table", "run"), default="run")
+    parser.add_argument("--allow-table-replace", action="store_true")
     args = parser.parse_args()
+    if args.replace_mode == "table" and not args.allow_table_replace:
+        parser.error("--replace-mode table requires --allow-table-replace")
     try:
         explicit = _parse_symbols(args.symbols)
         statements = _parse_statements(args.statements)
@@ -239,43 +322,95 @@ def main() -> int:
     failures: list[dict[str, Any]] = []
     row_counts_by_table = {table: 0 for _, _, table in statements}
     raw_rows: list[dict[str, Any]] = []
+    scope = "explicit_symbols" if explicit else "limit_symbols"
     with qdb.open_client(timeout_seconds=300.0) as client:
         symbols = _select_symbols(client, base_url, explicit, args.limit_symbols)
         if not args.dry_run:
-            _ensure_tables(client, base_url)
-        for symbol in symbols:
-            for _, section, table in statements:
-                result = _fetch_with_retry(symbol, section, run_id, RAW_ROOT, args.timeout_seconds, args.retries)
-                raw_rows.append({
-                    "crawled_at": result.get("crawled_at") or datetime.now(timezone.utc).isoformat(),
-                    "symbol": symbol,
-                    "statement_type": section,
-                    "source": "vietcap_iq",
-                    "run_id": run_id,
-                    "raw_payload_ref": result.get("raw_path") or "",
-                    "metadata_ref": result.get("metadata_path") or "",
-                    "http_status": result.get("http_status") or "",
-                    "access_status": result.get("access_status") or "",
-                    "content_hash": result.get("content_hash") or "",
-                    "quality_status": "raw_verified" if result.get("access_status") == "verified" else "fetch_failed",
-                })
-                if result.get("access_status") != "verified" or not result.get("raw_path"):
-                    failures.append({"symbol": symbol, "section": section, "status": result.get("access_status"), "http": result.get("http_status"), "errors": result.get("errors")})
-                    continue
-                facts, errors, stats = parse_payload(result)
-                if errors:
-                    failures.extend({"symbol": symbol, "section": section, **err} for err in errors[:5])
-                rows = _normalize_facts(facts, table)
-                if not args.dry_run and rows:
-                    qdb.imp_csv(client, base_url, table, _csv_bytes(rows, FA_COLUMNS), timeout_seconds=180.0)
-                    qdb.wait_wal_applied(client, base_url, table, attempts=240)
-                row_counts_by_table[table] += len(rows)
-                print(f"symbol={symbol} section={section} facts={len(rows)} q_rows={stats.get('quarter_rows_read')} y_rows={stats.get('year_rows_read')}")
-        if not args.dry_run and raw_rows:
-            qdb.imp_csv(client, base_url, "fa_raw_payloads", _csv_bytes(raw_rows, RAW_COLUMNS), timeout_seconds=120.0)
-            qdb.wait_wal_applied(client, base_url, "fa_raw_payloads", attempts=240)
+            if args.replace_mode == "table":
+                _replace_fa_tables(client, base_url)
+            else:
+                _ensure_tables(client, base_url)
+                if args.replace_mode == "append":
+                    print("WARNING: replace_mode=append can duplicate rows on rerun; use replace_mode=run for run-scoped reads.")
+                else:
+                    print("replace_mode=run: appending a new run_id; FA tools will prefer the latest complete run.")
+            _write_run_row(client, base_url, _run_row(
+                run_id=run_id,
+                scope=scope,
+                symbols=symbols,
+                statements=statements,
+                replace_mode=args.replace_mode,
+                status="started",
+                row_counts_by_table=row_counts_by_table,
+                raw_payload_rows=0,
+                failures=[],
+            ))
+        try:
+            for symbol in symbols:
+                for _, section, table in statements:
+                    result = _fetch_with_retry(symbol, section, run_id, RAW_ROOT, args.timeout_seconds, args.retries)
+                    raw_rows.append({
+                        "crawled_at": result.get("crawled_at") or _utc_timestamp(),
+                        "symbol": symbol,
+                        "statement_type": section,
+                        "source": "vietcap_iq",
+                        "run_id": run_id,
+                        "raw_payload_ref": result.get("raw_path") or "",
+                        "metadata_ref": result.get("metadata_path") or "",
+                        "http_status": result.get("http_status") or "",
+                        "access_status": result.get("access_status") or "",
+                        "content_hash": result.get("content_hash") or "",
+                        "quality_status": "raw_verified" if result.get("access_status") == "verified" else "fetch_failed",
+                    })
+                    if result.get("access_status") != "verified" or not result.get("raw_path"):
+                        failures.append({"symbol": symbol, "section": section, "status": result.get("access_status"), "http": result.get("http_status"), "errors": result.get("errors")})
+                        continue
+                    facts, errors, stats = parse_payload(result)
+                    if errors:
+                        failures.extend({"symbol": symbol, "section": section, **err} for err in errors[:5])
+                    rows = _normalize_facts(facts, table, run_id)
+                    if not args.dry_run and rows:
+                        qdb.imp_csv(client, base_url, table, _csv_bytes(rows, FA_COLUMNS), timeout_seconds=180.0)
+                        qdb.wait_wal_applied(client, base_url, table, attempts=240)
+                    row_counts_by_table[table] += len(rows)
+                    print(f"symbol={symbol} section={section} facts={len(rows)} q_rows={stats.get('quarter_rows_read')} y_rows={stats.get('year_rows_read')}")
+            if not args.dry_run and raw_rows:
+                qdb.imp_csv(client, base_url, "fa_raw_payloads", _csv_bytes(raw_rows, RAW_COLUMNS), timeout_seconds=120.0)
+                qdb.wait_wal_applied(client, base_url, "fa_raw_payloads", attempts=240)
+        except Exception as exc:
+            failures.append({"phase": "ingest", "error": type(exc).__name__, "message": str(exc)})
+            if not args.dry_run:
+                _write_run_row(client, base_url, _run_row(
+                    run_id=run_id,
+                    scope=scope,
+                    symbols=symbols,
+                    statements=statements,
+                    replace_mode=args.replace_mode,
+                    status="failed",
+                    row_counts_by_table=row_counts_by_table,
+                    raw_payload_rows=len(raw_rows),
+                    failures=failures,
+                ))
+            print(f"run_id={run_id}")
+            print(f"symbols_processed={','.join(symbols)}")
+            print(f"failure={type(exc).__name__}: {exc}")
+            print(f"failures={json.dumps(failures, ensure_ascii=False)}")
+            return 2
+        if not args.dry_run:
+            _write_run_row(client, base_url, _run_row(
+                run_id=run_id,
+                scope=scope,
+                symbols=symbols,
+                statements=statements,
+                replace_mode=args.replace_mode,
+                status=_final_status(failures, row_counts_by_table),
+                row_counts_by_table=row_counts_by_table,
+                raw_payload_rows=len(raw_rows),
+                failures=failures,
+            ))
     print(f"run_id={run_id}")
     print(f"symbols_processed={','.join(symbols)}")
+    print(f"replace_mode={args.replace_mode}")
     suffix = "rows_prepared" if args.dry_run else "rows_inserted"
     for table, count in row_counts_by_table.items():
         print(f"{table}_{suffix}={count}")
