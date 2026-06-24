@@ -19,6 +19,7 @@ import os
 import re
 from typing import Any
 
+from trading_agent.agent import questdb_agent_service as rule_agent
 from trading_agent.tools import questdb_backtest_result_tool as bt_tool
 from trading_agent.tools import questdb_financial_report_tool as fa_tool
 from trading_agent.tools import questdb_feature_signal_tool as fst
@@ -65,7 +66,26 @@ _EVENT_KEYWORDS = ("event", "events", "news", "tin tức", "tin tuc", "sự ki�
 _BACKTEST_KEYWORDS = (
     "backtest", "simulate", "strategy performance", "run strategy",
     "kiểm thử chiến lược", "kiem thu chien luoc", "kết quả backtest", "ket qua backtest",
+    "compare backtest",
 )
+FINANCIAL_TOOL_NAMES = {
+    "get_latest_financial_report",
+    "get_financial_metrics",
+    "get_financial_report_summary",
+}
+MARKET_TOOL_NAMES = {
+    "get_questdb_health",
+    "get_latest_ohlcv",
+    "get_latest_features",
+    "get_latest_signal",
+    "get_symbol_summary",
+    "get_ohlcv_window",
+}
+BACKTEST_TOOL_NAMES = {
+    "get_latest_backtest_metrics",
+    "get_backtest_strategy_comparison",
+    "get_backtest_equity_curve",
+}
 
 
 def _validate_symbol(symbol: str) -> str | None:
@@ -78,7 +98,12 @@ def _has_any(query: str, keywords: tuple[str, ...]) -> bool:
     return any(k in q for k in keywords)
 
 
-def _build_tools(questdb_url: str, tool_log: list[dict], allow_backtest: bool = True):
+def _build_tools(
+    questdb_url: str,
+    tool_log: list[dict],
+    allow_backtest: bool = True,
+    allowed_tool_names: set[str] | None = None,
+):
     """Create the safe read-only LangChain tools, logging each invocation."""
     from langchain_core.tools import tool
 
@@ -234,6 +259,8 @@ def _build_tools(questdb_url: str, tool_log: list[dict], allow_backtest: bool = 
              get_financial_report_summary, get_ohlcv_window]
     if allow_backtest:
         tools.extend([get_latest_backtest_metrics, get_backtest_strategy_comparison, get_backtest_equity_curve])
+    if allowed_tool_names is not None:
+        tools = [t for t in tools if getattr(t, "name", "") in allowed_tool_names]
     return tools
 
 
@@ -279,11 +306,61 @@ def _remove_backtest_suggestions(answer: str) -> str:
 
 
 def _result(status: str, query: str, answer_markdown: str,
-            tool_calls: list[dict], data: dict, caveats: list[str]) -> dict[str, Any]:
+            tool_calls: list[dict], data: dict, caveats: list[str],
+            *, mode: str = MODE) -> dict[str, Any]:
     return {
-        "status": status, "mode": MODE, "query": query, "answer_markdown": answer_markdown,
+        "status": status, "mode": mode, "query": query, "answer_markdown": answer_markdown,
         "tool_calls": tool_calls, "data": data, "caveats": caveats,
     }
+
+
+def _classify_domain(query: str) -> str:
+    """Classify broad data domain before exposing tools to an LLM."""
+    q = query.lower()
+    if _has_any(query, _EVENT_KEYWORDS):
+        return "event_news"
+    if _has_any(query, _FINANCIAL_REPORT_KEYWORDS):
+        return "financial_report"
+    if any(k in q for k in ("how many", "row count", "db status", "questdb health", "db health", "table health")) \
+            or q.strip() in {"health", "status", "db", "questdb"}:
+        return "db_health"
+    if _has_any(query, _BACKTEST_KEYWORDS):
+        return "backtest"
+    if re.search(r"\d{4}-\d{2}-\d{2}", query) or len(re.findall(r"\b20\d{2}\b", query)) >= 2 \
+            or any(k in q for k in ("ohlcv", "window", "history", " from ", "between")):
+        return "ohlcv_window"
+    if re.search(r"\b(summary|summarize|latest|market summary)\s+[A-Z0-9]{1,10}\b", query, re.IGNORECASE):
+        return "market_summary"
+    if re.search(r"\b[A-Z0-9]{1,10}\s+(hôm nay thế nào|hom nay the nao)\b", query, re.IGNORECASE):
+        return "market_summary"
+    return "market_general"
+
+
+def _guarded_direct_answer(query: str, questdb_url: str, domain: str) -> dict[str, Any]:
+    """Use deterministic read-only tools for domains where routing must be exact."""
+    rule_result = rule_agent.answer_query(query, questdb_url=questdb_url)
+    caveats = [
+        "mode=deepagents_guarded_direct",
+        f"domain={domain}",
+        "deterministic pre-routing used for mentor demo; no LLM tool selection was needed",
+    ] + list(rule_result.get("caveats") or [])
+    return _result(
+        rule_result.get("status", "error"),
+        query,
+        rule_result.get("answer_markdown") or "",
+        list(rule_result.get("tool_calls") or []),
+        {
+            "domain": domain,
+            "intent": rule_result.get("intent"),
+            "data": rule_result.get("data") or {},
+        },
+        caveats,
+        mode="deepagents_guarded_direct",
+    )
+
+
+def _tool_names(tool_log: list[dict]) -> set[str]:
+    return {str(call.get("tool") or "") for call in tool_log}
 
 
 def deepagents_available() -> tuple[bool, str]:
@@ -306,15 +383,9 @@ def answer_query_deepagents(
     if not query:
         return _result("error", query, "Empty query.", [], {}, ["Provide a question."])
 
-    if _has_any(query, _EVENT_KEYWORDS):
-        return _result(
-            "unsupported",
-            query,
-            "Event/news data is unavailable: no event/news QuestDB table or tool is implemented yet. I will not use OHLCV as a proxy for events/news.",
-            [],
-            {},
-            ["event/news tool unavailable", "market price tools are disallowed for event/news questions"],
-        )
+    domain = _classify_domain(query)
+    if domain in {"event_news", "financial_report", "backtest", "market_summary", "ohlcv_window", "db_health"}:
+        return _guarded_direct_answer(query, questdb_url, domain)
 
     ok, err = deepagents_available()
     if not ok:
@@ -330,11 +401,16 @@ def answer_query_deepagents(
     from deepagents import create_deep_agent
 
     model_name = _resolve_model_name(model)
-    allow_backtest = _has_any(query, _BACKTEST_KEYWORDS)
+    allow_backtest = domain == "backtest"
     wants_financial = _has_any(query, _FINANCIAL_REPORT_KEYWORDS)
     tool_log: list[dict] = []
     try:
-        tools = _build_tools(questdb_url, tool_log, allow_backtest=allow_backtest)
+        tools = _build_tools(
+            questdb_url,
+            tool_log,
+            allow_backtest=allow_backtest,
+            allowed_tool_names=MARKET_TOOL_NAMES,
+        )
         llm = _get_chat_model(model_name, timeout_seconds)
         agent = create_deep_agent(model=llm, tools=tools, system_prompt=SYSTEM_PROMPT)
         out = agent.invoke({"messages": [{"role": "user", "content": query}]},
@@ -363,7 +439,17 @@ def answer_query_deepagents(
     if not answer and messages:
         answer = _coerce_text(getattr(messages[-1], "content", ""))
 
-    if wants_financial and not any(call.get("tool", "").startswith("get_financial") for call in tool_log):
+    used_tools = _tool_names(tool_log)
+    if domain in {"market_summary", "market_general", "ohlcv_window", "db_health"} and used_tools & (FINANCIAL_TOOL_NAMES | BACKTEST_TOOL_NAMES):
+        return _result(
+            "error",
+            query,
+            "Route violation: a market query attempted to use financial-report or backtest tools.",
+            tool_log,
+            {"model": model_name, "tool_log": tool_log, "domain": domain},
+            ["route_violation", "market queries may only use market/feature/signal tools"],
+        )
+    if wants_financial and not any(call.get("tool") in FINANCIAL_TOOL_NAMES for call in tool_log):
         return _result(
             "unavailable",
             query,
@@ -371,6 +457,15 @@ def answer_query_deepagents(
             tool_log,
             {"model": model_name, "tool_log": tool_log},
             ["financial-report guardrail triggered"],
+        )
+    if domain == "backtest" and not (used_tools & BACKTEST_TOOL_NAMES):
+        return _result(
+            "unavailable",
+            query,
+            "Persisted backtest results are unavailable or no persisted backtest lookup tool was used.",
+            tool_log,
+            {"model": model_name, "tool_log": tool_log, "domain": domain},
+            ["backtest guardrail triggered", "DeepAgents may only read persisted backtest result tables"],
         )
     if not allow_backtest and answer:
         answer = _remove_backtest_suggestions(answer)

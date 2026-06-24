@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -28,6 +29,47 @@ class CheckResult:
     exit_code: int
     command: list[str]
     output: str
+
+
+MARKET_DEEPAGENTS_TOOLS = {"get_symbol_summary", "get_latest_ohlcv", "get_latest_features", "get_latest_signal"}
+FINANCIAL_DEEPAGENTS_TOOLS = {"get_latest_financial_report", "get_financial_metrics", "get_financial_report_summary"}
+BACKTEST_DEEPAGENTS_TOOLS = {"get_latest_backtest_metrics", "get_backtest_strategy_comparison", "get_backtest_equity_curve"}
+LIVE_BACKTRADER_TOOL_NAMES = {"run_ma_backtest", "run_backtrader", "run_backtrader_questdb_demo", "run_backtrader_questdb_persist"}
+
+
+def _extract_tool_calls(output: str) -> set[str]:
+    tools: set[str] = set()
+    for line in output.splitlines():
+        match = re.match(r"\s*-\s+([A-Za-z0-9_]+)\s+args=", line)
+        if match:
+            tools.add(match.group(1))
+    return tools
+
+
+def _validate_deepagents_semantics(query: str, output: str) -> tuple[bool, str]:
+    lower = output.lower()
+    tools = _extract_tool_calls(output)
+    if "status: ok" not in lower:
+        return False, "DeepAgents status is not ok"
+    if query == "summary FPT":
+        if not (tools & MARKET_DEEPAGENTS_TOOLS):
+            return False, f"summary FPT did not use market summary tools; tools={sorted(tools)}"
+        disallowed = tools & (FINANCIAL_DEEPAGENTS_TOOLS | BACKTEST_DEEPAGENTS_TOOLS)
+        if disallowed:
+            return False, f"summary FPT used disallowed tools; tools={sorted(disallowed)}"
+        return True, "semantic route ok"
+    if query == "financial report FPT":
+        if not (tools & FINANCIAL_DEEPAGENTS_TOOLS):
+            return False, f"financial report FPT did not use FA tools; tools={sorted(tools)}"
+        return True, "semantic route ok"
+    if query == "compare backtest strategies FPT":
+        if "get_backtest_strategy_comparison" not in tools:
+            return False, f"backtest comparison did not use persisted comparison tool; tools={sorted(tools)}"
+        live = tools & LIVE_BACKTRADER_TOOL_NAMES
+        if live:
+            return False, f"backtest query used live Backtrader tool; tools={sorted(live)}"
+        return True, "semantic route ok"
+    return True, "no semantic route rule"
 
 
 def _run(name: str, command: list[str], *, expect_unsupported: bool = False) -> CheckResult:
@@ -56,10 +98,12 @@ def _run_deepagents(name: str, query: str) -> CheckResult:
     if output:
         print(output.strip())
     lower = output.lower()
-    if proc.returncode == 0:
-        status = "PASS"
-    elif "invalid_api_key" in lower or "incorrect api key" in lower or "401" in lower:
+    if "invalid_api_key" in lower or "incorrect api key" in lower or "401" in lower:
         status = "FAILED_CREDENTIAL"
+    elif proc.returncode == 0:
+        ok, reason = _validate_deepagents_semantics(query, output)
+        status = "PASS" if ok else "FAIL"
+        print(f"SEMANTIC_CHECK={status} reason={reason}")
     else:
         status = "FAIL"
     print(f"RESULT={status} exit_code={proc.returncode}")

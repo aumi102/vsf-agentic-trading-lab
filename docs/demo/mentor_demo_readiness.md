@@ -31,6 +31,15 @@ python scripts\run_mentor_demo_readiness.py --deepagents
 
 If the live DeepAgents check reports `FAILED_CREDENTIAL`, the API key in the current process is invalid or stale.
 
+## DeepAgents routing checks
+
+DeepAgents readiness validates semantic tool routing, not just successful process exit.
+
+- `summary FPT` must use market tools only: `get_symbol_summary`, or `get_latest_ohlcv` / `get_latest_features` / `get_latest_signal`.
+- `financial report FPT` must use FA tools only: `get_latest_financial_report`, `get_financial_metrics`, or `get_financial_report_summary`.
+- `compare backtest strategies FPT` must use persisted backtest lookup, especially `get_backtest_strategy_comparison`.
+- Backtest readiness must not expose or call live Backtrader execution.
+
 ## Backend demo commands
 
 Start backend on the default demo port:
