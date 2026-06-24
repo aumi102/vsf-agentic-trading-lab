@@ -35,6 +35,7 @@ Columns:
 - `start_cash DOUBLE`
 - `commission DOUBLE`
 - `slippage_bps DOUBLE`
+- `scenario_label SYMBOL`
 - `price_band_status SYMBOL`
 - `adjusted_price_status SYMBOL`
 - `status SYMBOL`
@@ -51,6 +52,8 @@ Columns:
 - `symbol SYMBOL`
 - `strategy_id SYMBOL`
 - `strategy_name SYMBOL`
+- `slippage_bps DOUBLE`
+- `scenario_label SYMBOL`
 - `start_value DOUBLE`
 - `final_value DOUBLE`
 - `total_return_pct DOUBLE`
@@ -72,6 +75,7 @@ Columns:
 - `symbol SYMBOL`
 - `strategy_id SYMBOL`
 - `strategy_name SYMBOL`
+- `scenario_label SYMBOL`
 - `portfolio_value DOUBLE`
 - `cash DOUBLE`
 
@@ -86,6 +90,7 @@ Columns:
 - `run_id SYMBOL`
 - `symbol SYMBOL`
 - `strategy_id SYMBOL`
+- `scenario_label SYMBOL`
 - `event_type SYMBOL`
 - `size DOUBLE`
 - `price DOUBLE`
@@ -113,6 +118,12 @@ Replace only backtest result tables:
 python scripts\run_backtrader_questdb_persist.py --symbols FPT,VNM,HPG --start-date 2020-01-01 --end-date 2025-12-31 --replace-run-table
 ```
 
+Run the current demo slippage scenarios:
+
+```bat
+python scripts\run_backtrader_questdb_persist.py --symbols FPT,VNM,HPG --start-date 2020-01-01 --end-date 2025-12-31 --replace-run-table --slippage-scenarios-bps 0,5,10,15
+```
+
 Inspect persisted results:
 
 ```bat
@@ -129,12 +140,28 @@ The persistence runner writes a reproducible QuestDB record:
 - metrics in `backtest_metrics`;
 - daily equity snapshots in `backtest_equity_curve`;
 - closed-trade event rows in `backtest_trades`.
+- scenario metadata in `slippage_bps` and `scenario_label`.
 
 ## Current strategy coverage
 
 - `buy_hold`
 - `ma20_ma50`
 - `rsi_mean_reversion`
+
+## Current slippage scenario coverage
+
+The latest demo run persists 3 symbols x 3 strategies x 4 slippage scenarios:
+
+- symbols: FPT, VNM, HPG;
+- slippage scenarios: 0, 5, 10, 15 bps;
+- `backtest_runs`: 36;
+- `backtest_metrics`: 36;
+- `backtest_equity_curve`: 53,964;
+- `backtest_trades`: 400.
+
+All current demo scenario rows have `price_band_status=price_band_guard_pass`.
+Agent/backtest comparison defaults remain stable because lookup tools prefer
+`slippage_bps=0.0` unless a slippage scenario is explicitly requested.
 
 ## Why this is not wired into DeepAgents yet
 
@@ -159,7 +186,7 @@ Required before DeepAgents integration:
   - HOSE/HSX: 700 bps;
   - HNX: 1000 bps;
   - UPCOM: 1500 bps.
-- FPT/VNM/HPG exchange metadata is now filled as `HOSE` from captured Vietcap IQ universe and HOSE listed-universe dry-run evidence.
+- Exchange metadata has been expanded from captured Vietcap IQ universe and HOSE listed-universe dry-run evidence. Current `securities` coverage is 1,556/1,556 symbols, with no source conflicts detected in the generated override file.
 - Current demo persisted runs show `price_band_guard_pass` for FPT/VNM/HPG.
 - Broader universe exchange metadata should not be assumed complete unless source-backed.
 - No tax, liquidity, corporate-action, or full execution-quality model is included.

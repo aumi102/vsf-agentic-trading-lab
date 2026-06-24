@@ -19,6 +19,7 @@ import re
 from typing import Any
 
 from trading_agent.tools import questdb_backtest_result_tool as backtest_tool
+from trading_agent.tools import questdb_event_news_tool as event_news_tool
 from trading_agent.tools import questdb_financial_report_tool as fa_tool
 from trading_agent.tools import questdb_feature_signal_tool as feature_signal_tool
 from trading_agent.tools import questdb_market_data_tool as tool
@@ -31,6 +32,7 @@ SUPPORTED_EXAMPLES = [
     "MA20/MA50 backtest FPT",
     "summary FPT",
     "latest signal FPT",
+    "latest news FPT",
 ]
 
 # Tokens that are never ticker symbols.
@@ -256,15 +258,47 @@ def answer_query(query: str, *, questdb_url: str = tool.DEFAULT_URL) -> dict[str
     symbol = extract_symbol(query)
 
     if intent == "event_unavailable":
-        return _result(
-            "unsupported",
-            intent,
-            query,
-            "Event/news data is unavailable: no event/news QuestDB table or tool is implemented yet. I will not use OHLCV as a proxy for events/news.",
-            [],
-            {},
-            ["event/news tool unavailable", "market price tools are disallowed for event/news questions"],
+        if not symbol:
+            return _result(
+                "unsupported",
+                intent,
+                query,
+                "Event/news data requires a ticker symbol. I will not use OHLCV as a proxy for events/news.",
+                [],
+                {},
+                ["event/news symbol missing", "market price tools are disallowed for event/news questions"],
+            )
+        res = _call(
+            tool_calls,
+            "get_symbol_event_news",
+            {"symbol": symbol, "limit": 5},
+            event_news_tool.get_symbol_event_news(symbol, limit=5, url=questdb_url),
         )
+        if res.get("status") != "ok" or not res.get("rows"):
+            return _result(
+                "unsupported",
+                intent,
+                query,
+                f"Event/news data is unavailable for {symbol}. I will not use OHLCV as a proxy for events/news.",
+                tool_calls,
+                {},
+                res.get("caveats", []) + ["market price tools are disallowed for event/news questions"],
+            )
+        rows = res["rows"]
+        lines = [
+            f"**{symbol} latest official disclosure/event records**",
+            "- source: QuestDB `event_news_items`",
+            "- scope: official disclosure records only, not general news",
+            "",
+            "| Date | Category | Title | Source |",
+            "|---|---|---|---|",
+        ]
+        for row in rows:
+            title = str(row.get("title") or "").replace("|", "\\|")
+            lines.append(
+                f"| {str(row.get('published_at') or '')[:10]} | `{row.get('category')}` | {title} | `{row.get('source')}` |"
+            )
+        return _result("ok", intent, query, "\n".join(lines), tool_calls, {"rows": rows}, res.get("caveats", []))
 
     if intent == "financial_report":
         if not symbol:

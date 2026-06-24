@@ -16,6 +16,7 @@ DEFAULT_URL = qdb.DEFAULT_QUESTDB_URL
 DEMO_SYMBOLS = ("FPT", "VNM", "HPG")
 FA_TABLES = ("fa_balance_sheet", "fa_income_statement", "fa_cash_flow", "fa_notes")
 BACKTEST_TABLES = ("backtest_runs", "backtest_metrics", "backtest_equity_curve", "backtest_trades")
+EVENT_NEWS_TABLES = ("event_news_raw_payloads", "event_news_items")
 
 
 @dataclass(frozen=True)
@@ -149,13 +150,23 @@ def adjusted_ohlc_gate(url: str = DEFAULT_URL) -> GateResult:
         columns = set(qdb.column_names(client, base, "daily_prices"))
         adjusted_cols = {"adjusted_open", "adjusted_high", "adjusted_low", "adjusted_close"}
         has_adjusted = sorted(adjusted_cols & columns)
-        evidence: dict[str, Any] = {"adjusted_columns_present": has_adjusted}
+        evidence: dict[str, Any] = {
+            "adjusted_columns_present": has_adjusted,
+            "source_verification_status": "not_checked",
+        }
         caveats: list[str] = []
         if "adjusted_close" in columns:
             equal_rows = int(_scalar(client, base, "SELECT count() FROM daily_prices WHERE adjusted_close = close", 0))
             total_rows = _count(client, base, "daily_prices")
             warn_rows = int(_scalar(client, base, "SELECT count() FROM daily_prices WHERE adjustment_status = 'adjusted_price_missing_warn'", 0))
-            evidence.update({"adjusted_close_equals_close_rows": equal_rows, "total_rows": total_rows, "adjusted_price_missing_warn_rows": warn_rows})
+            non_1_factor_rows = int(_scalar(client, base, "SELECT count() FROM daily_prices WHERE close != 0 AND adjusted_close IS NOT NULL AND abs(adjusted_close / close - 1.0) > 0.000001", 0))
+            evidence.update({
+                "adjusted_close_equals_close_rows": equal_rows,
+                "total_rows": total_rows,
+                "raw_equivalent_ratio": (equal_rows / total_rows) if total_rows else None,
+                "adjusted_price_missing_warn_rows": warn_rows,
+                "non_1_factor_rows": non_1_factor_rows,
+            })
             if equal_rows == total_rows or warn_rows > 0:
                 caveats.append("adjusted close appears unverified or equal to raw for current rows")
         if adjusted_cols.issubset(columns):
@@ -163,17 +174,34 @@ def adjusted_ohlc_gate(url: str = DEFAULT_URL) -> GateResult:
                 _, rows = qdb.exec_rows(
                     client,
                     base,
-                    "SELECT corr(high, adjusted_high), corr(close, adjusted_close) FROM daily_prices "
-                    "WHERE high > 0 AND close > 0 AND adjusted_high > 0 AND adjusted_close > 0",
+                    "SELECT corr(high, adjusted_high), corr(close, adjusted_close), "
+                    "max(abs(adjusted_open - open * (adjusted_close / close))), "
+                    "max(abs(adjusted_high - high * (adjusted_close / close))), "
+                    "max(abs(adjusted_low - low * (adjusted_close / close))) "
+                    "FROM daily_prices "
+                    "WHERE high > 0 AND close > 0 AND open > 0 AND low > 0 "
+                    "AND adjusted_high > 0 AND adjusted_close > 0 AND adjusted_open > 0 AND adjusted_low > 0",
                 )
                 if rows:
                     evidence["corr_high_adjusted_high"] = rows[0][0]
                     evidence["corr_close_adjusted_close"] = rows[0][1]
+                    max_errors = [float(value or 0.0) for value in rows[0][2:5]]
+                    evidence["max_factor_application_error"] = max(max_errors) if max_errors else None
+                    evidence["internal_consistency_status"] = "pass" if not max_errors or max(max_errors) <= 1e-6 else "fail"
+                    if evidence["internal_consistency_status"] == "fail":
+                        caveats.append("adjusted OHLC columns are inconsistent with adjusted_close / close factor math")
             except Exception as exc:
                 evidence["correlation_check_error"] = f"{type(exc).__name__}: {exc}"
                 caveats.append("QuestDB correlation check unavailable; inspected adjusted columns and status instead")
+        if evidence.get("adjusted_price_missing_warn_rows") or evidence.get("raw_equivalent_ratio") == 1.0:
+            evidence["source_verification_status"] = "source_adjustment_unverified_raw_equivalent"
+        elif evidence.get("non_1_factor_rows", 0):
+            evidence["source_verification_status"] = "internal_consistency_only_source_unverified"
+            caveats.append("non-1 adjusted factors exist but external corporate-action source verification is not established")
     if not {"adjusted_close"}.issubset(columns):
         return _gate("adjusted_ohlc_gate", "WARN", evidence, ["adjusted_close column missing"], "Derive adjusted OHLC from verified corporate-action factors.")
+    if evidence.get("internal_consistency_status") == "fail":
+        return _gate("adjusted_ohlc_gate", "FAIL", evidence, caveats, "Fix adjusted OHLC factor application before using adjusted data.", blocking=True)
     if caveats:
         return _gate("adjusted_ohlc_gate", "WARN", evidence, caveats, "Verify adjusted OHLC against corporate-action/vendor adjustment evidence.")
     return _gate("adjusted_ohlc_gate", "PASS", evidence, [], "Keep monitoring adjusted OHLC quality.")
@@ -255,19 +283,62 @@ def fa_tables_gate(url: str = DEFAULT_URL) -> GateResult:
 def fa_mapping_gate(url: str = DEFAULT_URL) -> GateResult:
     base = url.rstrip("/")
     breakdown: dict[str, dict[str, int]] = {}
+    mapping_coverage: dict[str, dict[str, Any]] = {}
+    mapping_table_exists = False
     with qdb.open_client() as client:
+        tables = _existing_tables(client, base)
+        mapping_table_exists = "fa_metric_mapping" in tables
+        mapping_rows = _count(client, base, "fa_metric_mapping") if mapping_table_exists else 0
+        mapping_consensus_rows = int(
+            _scalar(client, base, "SELECT count() FROM fa_metric_mapping WHERE quality_status = 'source_backed_consensus'", 0)
+        ) if mapping_table_exists else 0
         for table in FA_TABLES:
-            if table not in _existing_tables(client, base):
+            if table not in tables:
                 continue
             _, rows = qdb.exec_rows(client, base, f"SELECT quality_status, count() c FROM {table} GROUP BY quality_status")
             breakdown[table] = {str(row[0]): int(row[1]) for row in rows}
+            if mapping_table_exists:
+                total_codes = int(_scalar(client, base, f"SELECT count_distinct(metric_code) FROM {table}", 0))
+                mapped_codes = int(
+                    _scalar(
+                        client,
+                        base,
+                        "SELECT count_distinct(f.metric_code) "
+                        f"FROM {table} f JOIN fa_metric_mapping m "
+                        "ON f.metric_code = m.metric_code AND f.statement_type = m.statement_type "
+                        "WHERE m.quality_status = 'source_backed_consensus'",
+                        0,
+                    )
+                )
+                mapping_coverage[table] = {
+                    "fact_distinct_metric_codes": total_codes,
+                    "mapped_consensus_metric_codes": mapped_codes,
+                    "mapped_consensus_code_pct": (mapped_codes / total_codes * 100.0) if total_codes else 0.0,
+                }
     unverified = sum(counts.get("metric_mapping_unverified", 0) for counts in breakdown.values())
-    status = "WARN" if unverified else "PASS"
+    coverage_values = [float(row.get("mapped_consensus_code_pct") or 0.0) for row in mapping_coverage.values()]
+    min_coverage = min(coverage_values) if coverage_values else 0.0
+    status = "PASS" if mapping_table_exists and min_coverage >= 95.0 and not unverified else "WARN"
+    caveats: list[str] = []
+    if not mapping_table_exists:
+        caveats.append("fa_metric_mapping table is unavailable")
+    elif min_coverage < 95.0:
+        caveats.append("FA metric mapping exists but consensus coverage remains below production threshold")
+    if unverified:
+        caveats.append("FA fact rows still carry metric_mapping_unverified quality_status; tools enrich names at read time only")
     return _gate(
         "fa_mapping_gate",
         status,
-        {"quality_status_breakdown": breakdown, "metric_mapping_unverified_rows": unverified},
-        ["FA metric mapping is still unverified; raw opaque metric evidence is usable but names may be blank"] if unverified else [],
+        {
+            "quality_status_breakdown": breakdown,
+            "metric_mapping_unverified_rows": unverified,
+            "fa_metric_mapping_table_exists": mapping_table_exists,
+            "fa_metric_mapping_rows": mapping_rows if mapping_table_exists else 0,
+            "fa_metric_mapping_consensus_rows": mapping_consensus_rows if mapping_table_exists else 0,
+            "mapping_coverage": mapping_coverage,
+            "minimum_consensus_code_coverage_pct": min_coverage,
+        },
+        caveats,
         "Build and verify Vietcap metric-code mapping before claiming semantic FA metric names.",
     )
 
@@ -329,6 +400,68 @@ def backtest_execution_assumptions_gate(url: str = DEFAULT_URL) -> GateResult:
         caveats,
         "Fill exchange metadata and rerun persisted backtests; tune slippage assumptions after mentor approval.",
         blocking=status == "FAIL",
+    )
+
+
+def event_news_gate(url: str = DEFAULT_URL) -> GateResult:
+    base = url.rstrip("/")
+    evidence: dict[str, Any] = {}
+    caveats: list[str] = []
+    with qdb.open_client() as client:
+        tables = _existing_tables(client, base)
+        missing = [table for table in EVENT_NEWS_TABLES if table not in tables]
+        evidence["tables_present"] = {table: table in tables for table in EVENT_NEWS_TABLES}
+        if missing:
+            probe_doc = ROOT / "docs" / "data_sources" / "event_news_source_probe.md"
+            evidence["probe_doc_exists"] = probe_doc.exists()
+            return _gate(
+                "event_news_gate",
+                "WARN",
+                evidence,
+                ["event/news probe exists but QuestDB event_news tables are not ready"] if probe_doc.exists() else ["event/news ingestion remains unsupported"],
+                "Run controlled event/news source probe and only ingest if stable records are parsed.",
+            )
+        row_counts = {table: _count(client, base, table) for table in EVENT_NEWS_TABLES}
+        symbol_counts = {table: int(_scalar(client, base, f"SELECT count_distinct(symbol) FROM {table}", 0)) for table in EVENT_NEWS_TABLES}
+        quoted = ",".join(f"'{symbol}'" for symbol in DEMO_SYMBOLS)
+        _, demo_rows = qdb.exec_rows(
+            client,
+            base,
+            f"SELECT symbol, count() c FROM event_news_items WHERE symbol IN ({quoted}) GROUP BY symbol ORDER BY symbol",
+        )
+    demo_counts = {str(row[0]): int(row[1]) for row in demo_rows}
+    evidence.update({"row_counts": row_counts, "symbol_counts": symbol_counts, "demo_symbol_event_counts": demo_counts})
+    if not any(row_counts.values()):
+        return _gate("event_news_gate", "WARN", evidence, ["event/news tables exist but contain no rows"], "Ingest a small verified disclosure/event source run.")
+    if not any(symbol in demo_counts for symbol in DEMO_SYMBOLS):
+        return _gate("event_news_gate", "WARN", evidence, ["event/news rows exist but no demo symbols are covered"], "Ingest demo-symbol event records or keep event/news unsupported.")
+    missing_demo = [symbol for symbol in DEMO_SYMBOLS if symbol not in demo_counts]
+    if missing_demo:
+        caveats.append(f"event/news demo coverage is partial; missing {', '.join(missing_demo)}")
+
+    proc = _run_command([sys.executable, "scripts\\demo_agent_backend_cli.py", "latest news FPT"], timeout=60)
+    output = "\n".join(part for part in (proc.stdout, proc.stderr) if part)
+    evidence["agent_latest_news_exit_code"] = proc.returncode
+    evidence["agent_latest_news_uses_event_tool"] = "get_symbol_event_news" in output
+    evidence["agent_latest_news_uses_ohlcv_proxy"] = "get_latest_ohlcv" in output or "get_symbol_summary" in output
+    if evidence["agent_latest_news_uses_ohlcv_proxy"]:
+        return _gate(
+            "event_news_gate",
+            "FAIL",
+            evidence,
+            ["event/news query used market data proxy"],
+            "Fix agent routing so event/news queries use only event/news tools or return unsupported.",
+            blocking=True,
+        )
+    status = "PASS" if evidence["agent_latest_news_uses_event_tool"] else "WARN"
+    if status == "WARN":
+        caveats.append("event/news data exists but agent route did not use get_symbol_event_news")
+    return _gate(
+        "event_news_gate",
+        status,
+        evidence,
+        caveats,
+        "Expand event/news sources only after source schema and PIT semantics are stable.",
     )
 
 
@@ -413,6 +546,7 @@ GATES: tuple[tuple[str, Callable[[str], GateResult]], ...] = (
     ("fa_mapping_gate", fa_mapping_gate),
     ("backtest_tables_gate", backtest_tables_gate),
     ("backtest_execution_assumptions_gate", backtest_execution_assumptions_gate),
+    ("event_news_gate", event_news_gate),
     ("agent_guardrail_gate", agent_guardrail_gate),
     ("docker_packaging_gate", docker_packaging_gate),
 )

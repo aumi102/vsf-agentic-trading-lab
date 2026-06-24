@@ -12,11 +12,15 @@
   - `fa_raw_payloads` and `fa_ingest_runs` preserve run/source evidence.
 - FA ingestion is run-scoped, with latest-complete-run lookup to avoid duplicate append rows in tools.
 - Latest complete FA run: `20260624T044856Z`, `symbols_processed=53`, `failure_count=0`.
+- FA metric mapping has a source-backed partial mapping table:
+  - `fa_metric_mapping`: 1,957 rows;
+  - consensus mapping coverage by statement ranges from 69.2% to 92.7% of distinct metric codes in the current FA fact tables;
+  - tools enrich metric names only where consensus mappings exist.
 - DeepAgents routing bug is fixed:
   - market summary uses market tools only;
   - financial report uses FA tools only;
   - backtest queries use persisted backtest lookup only;
-  - event/news remains unsupported instead of using OHLCV as a proxy.
+  - event/news uses official disclosure records when available and never uses OHLCV as a proxy.
 - DeepAgents architecture and guardrails are documented.
 - Backtrader research notebook and runner exist with three strategies:
   - buy-and-hold;
@@ -26,8 +30,20 @@
   - `backtest_runs`, `backtest_metrics`, `backtest_equity_curve`, `backtest_trades`.
 - `backtest_trades` is now populated for closed trade events on demo strategies.
 - Backtest runs now record commission, slippage bps, and price-band guard status.
-- FPT/VNM/HPG exchange metadata is now filled as `HOSE` from captured Vietcap IQ universe and HOSE listed-universe dry-run evidence.
-- Demo backtest `price_band_status` now passes: `price_band_guard_pass`.
+- Exchange metadata is now source-backed for all current `securities` rows from captured Vietcap IQ universe and HOSE listed-universe dry-run evidence:
+  - 1,556/1,556 symbols covered;
+  - no conflicts detected in the generated override file.
+- Demo backtest `price_band_status` now passes across all persisted slippage scenarios: `price_band_guard_pass`.
+- Slippage scenarios are persisted for FPT/VNM/HPG:
+  - scenarios: 0, 5, 10, 15 bps;
+  - `backtest_runs`: 36;
+  - `backtest_metrics`: 36;
+  - `backtest_equity_curve`: 53,964;
+  - `backtest_trades`: 400.
+- Minimal event/news layer exists for official disclosure records:
+  - source probe parsed 22 official disclosure records;
+  - QuestDB event layer loaded 20 FPT disclosure rows;
+  - VNM/HPG still return unavailable until symbol-level event records are sourced.
 - Docker packaging has been added for a backend + QuestDB demo stack.
 - Docker build and backend-local runtime verification passed against host QuestDB.
 - Validation gates were added for the full architecture path:
@@ -41,15 +57,16 @@
 - Passing gates:
   - market table coverage;
   - feature/signal parity;
-  - exchange metadata for FPT/VNM/HPG;
+  - exchange metadata coverage and price-band mapping;
   - FA table coverage;
   - backtest table coverage;
+  - official-disclosure event layer guardrail;
   - agent guardrails;
   - Docker packaging.
 - Expected warning gates:
   - adjusted OHLC source is still unverified/equal to raw;
-  - FA metric-code mapping remains unverified;
-  - backtest execution assumptions still use `slippage_bps=0`.
+  - FA metric-code mapping is partial rather than complete;
+  - default backtest comparison still uses the simple `slippage_bps=0` scenario.
 
 ## Current FA expansion snapshot
 
@@ -81,13 +98,32 @@
 docker build --build-arg INSTALL_DEEPAGENTS=true -t vsf-agent-backend:demo-deepagents .
 ```
 
+## Current hardening snapshot
+
+- Adjusted OHLC audit:
+  - internal factor consistency: PASS;
+  - raw-equivalent ratio: 100% for audited samples;
+  - source verification: WARN because no corporate-action/vendor adjustment evidence has been attached.
+- FA mapping:
+  - table loaded: `fa_metric_mapping`;
+  - consensus rows: 1,858;
+  - conflict rows retained for audit: 99;
+  - FA fact tables remain untouched.
+- Event/news:
+  - official disclosure probe succeeded for FPT company IR;
+  - HOSE/HNX parent pages are not reliable structured sources yet;
+  - event/news remains source-scoped, not broad market news.
+- Exchange metadata:
+  - generated override rows: 1,556;
+  - QuestDB symbols found/updated: 1,556;
+  - conflicts skipped: 0.
+
 ## Remaining work
 
 - Run full FA universe or a verified VN100 scope after mentor approval.
-- Add event/news ingestion and tools.
-- Replace the current simple execution model with a stronger slippage/liquidity model.
+- Add broader event/news/disclosure sources beyond FPT official disclosure records.
+- Replace the current simple execution model with a stronger slippage/liquidity/market-impact model.
 - Validate adjusted OHLC against corporate-action or vendor adjustment evidence.
-- Extend source-backed exchange metadata beyond the demo symbols if broader price-band validation is needed.
 - Move batch jobs from local/manual commands into production scheduling.
 
 ## Exact demo commands
@@ -132,10 +168,18 @@ python scripts\demo_agent_backend_cli.py "summary 1 month events and financial r
 python scripts\demo_deepagents_questdb_cli.py "summary 1 month events and financial report from FPT"
 ```
 
+Official disclosure event lookup:
+
+```bat
+python scripts\demo_agent_backend_cli.py "latest news FPT"
+python scripts\demo_deepagents_questdb_cli.py "latest news FPT"
+```
+
 Backtest status:
 
 ```bat
 python scripts\questdb_backtest_status.py
+curl.exe -s http://127.0.0.1:8010/backtest/slippage-scenarios/FPT
 ```
 
 Exchange metadata update/check:
@@ -163,4 +207,4 @@ curl.exe -s http://127.0.0.1:8010/backtest/comparison/FPT
 
 ## Short message to mentor
 
-The local QuestDB-backed demo is ready for a controlled walkthrough. Market summaries, financial-report lookup, event/news guardrails, and persisted Backtrader results are available through rule-based agent, backend, and guarded DeepAgents routing. FA coverage has expanded from 3 smoke symbols to a controlled 53-symbol run with zero failures. FPT/VNM/HPG exchange metadata is source-backed as HOSE, so demo backtest price-band checks now pass. Validation gates still report WARN with no blocking failures because adjusted OHLC source validation, FA metric mapping, event/news ingestion, and the simple zero-slippage assumption remain open.
+The local QuestDB-backed demo is ready for a controlled walkthrough. Market summaries, financial-report lookup, official-disclosure event lookup, and persisted Backtrader results are available through rule-based agent, backend, and guarded DeepAgents routing. FA coverage has expanded from 3 smoke symbols to a controlled 53-symbol run with zero failures. Exchange metadata is source-backed for all 1,556 current securities, so price-band checks pass across the persisted 0/5/10/15 bps slippage scenarios. Validation gates still report WARN with no blocking failures because adjusted OHLC source validation, FA metric mapping completeness, broader event/news coverage, and the simple execution model remain open.

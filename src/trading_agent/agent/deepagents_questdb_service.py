@@ -21,6 +21,7 @@ from typing import Any
 
 from trading_agent.agent import questdb_agent_service as rule_agent
 from trading_agent.tools import questdb_backtest_result_tool as bt_tool
+from trading_agent.tools import questdb_event_news_tool as event_tool
 from trading_agent.tools import questdb_financial_report_tool as fa_tool
 from trading_agent.tools import questdb_feature_signal_tool as fst
 from trading_agent.tools import questdb_market_data_tool as mdt
@@ -41,7 +42,8 @@ RULES:
 - Do NOT give real-money investment advice. This is research/analytics only.
 - Do NOT use market price/OHLCV/features/signals as substitutes for financial reports.
 - Do NOT use latest features/signals to summarize an older historical window unless the user explicitly asks to compare current state.
-- If the user asks for event/news data, say unavailable because no event/news tool exists yet.
+- If the user asks for event/news data, use event/news disclosure records only when the event_news tool has data;
+  otherwise say unavailable. Never use OHLCV as a proxy for events/news.
 - Resolve relative date ranges against available tool data and state exact dates; do not choose arbitrary months.
 - If requested data domain is unavailable, say unavailable.
 - Do not suggest or mention backtests unless the user explicitly asks for backtest/simulate/strategy performance.
@@ -86,6 +88,7 @@ BACKTEST_TOOL_NAMES = {
     "get_backtest_strategy_comparison",
     "get_backtest_equity_curve",
 }
+EVENT_NEWS_TOOL_NAMES = {"get_symbol_event_news"}
 
 
 def _validate_symbol(symbol: str) -> str | None:
@@ -223,6 +226,17 @@ def _build_tools(
         }
 
     @tool
+    def get_symbol_event_news(symbol: str, limit: int = 5) -> dict:
+        """Return latest parsed official disclosure/event records for a ticker."""
+        sym = _validate_symbol(symbol)
+        if not sym:
+            return {"status": "error", "caveats": [f"invalid symbol: {symbol!r}"]}
+        safe_limit = max(1, min(int(limit), 50))
+        res = event_tool.get_symbol_event_news(sym, limit=safe_limit, url=questdb_url)
+        _log("get_symbol_event_news", {"symbol": sym, "limit": safe_limit}, res)
+        return {"status": res["status"], "symbol": sym, "rows": res.get("rows", []), "caveats": res["caveats"]}
+
+    @tool
     def get_latest_backtest_metrics(symbol: str, strategy_id: str = "") -> dict:
         """Return latest persisted backtest metrics for a ticker and optional strategy_id."""
         sym = _validate_symbol(symbol)
@@ -256,7 +270,7 @@ def _build_tools(
 
     tools = [get_questdb_health, get_latest_ohlcv, get_latest_features, get_latest_signal,
              get_symbol_summary, get_latest_financial_report, get_financial_metrics,
-             get_financial_report_summary, get_ohlcv_window]
+             get_financial_report_summary, get_ohlcv_window, get_symbol_event_news]
     if allow_backtest:
         tools.extend([get_latest_backtest_metrics, get_backtest_strategy_comparison, get_backtest_equity_curve])
     if allowed_tool_names is not None:

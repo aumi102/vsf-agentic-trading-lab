@@ -61,6 +61,57 @@ def _run_scope(url: str) -> tuple[str, list[str], str | None]:
     return "", ["fa_ingest_runs unavailable or has no complete run; query may include duplicate append rows"], None
 
 
+def _sql_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _enrich_metric_names(rows: list[dict[str, Any]], url: str, caveats: list[str]) -> list[dict[str, Any]]:
+    """Fill blank metric_name from source-backed fa_metric_mapping rows when available."""
+    if not rows:
+        return rows
+    if not _table_exists("fa_metric_mapping", url):
+        caveats.append("fa_metric_mapping unavailable; metric names may remain blank")
+        return rows
+    codes = sorted({str(row.get("metric_code") or "").strip() for row in rows if row.get("metric_code")})
+    if not codes:
+        return rows
+    code_filter = ",".join(_sql_quote(code) for code in codes)
+    sql = (
+        "SELECT statement_type, metric_code, metric_name_en, metric_name_vi, quality_status "
+        "FROM fa_metric_mapping "
+        "WHERE quality_status = 'source_backed_consensus' "
+        f"AND metric_code IN ({code_filter})"
+    )
+    res = market.query_questdb(sql, url=url)
+    if res.get("status") != "ok":
+        caveats.extend(res.get("caveats", []))
+        return rows
+    mapping = {
+        (str(row.get("statement_type") or ""), str(row.get("metric_code") or "")): row
+        for row in res.get("rows", [])
+    }
+    enriched = 0
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        key = (str(item.get("statement_type") or ""), str(item.get("metric_code") or ""))
+        mapped = mapping.get(key)
+        if mapped and not str(item.get("metric_name") or "").strip():
+            item["metric_name"] = mapped.get("metric_name_en") or mapped.get("metric_name_vi") or ""
+            item["metric_mapping_status"] = mapped.get("quality_status")
+            item["metric_name_source"] = "fa_metric_mapping"
+            enriched += 1
+        elif mapped:
+            item["metric_mapping_status"] = mapped.get("quality_status")
+            item["metric_name_source"] = item.get("metric_name_source") or "fa_fact_table"
+        else:
+            item["metric_mapping_status"] = item.get("quality_status") or "unmapped"
+        out.append(item)
+    if enriched:
+        caveats.append(f"metric names enriched from fa_metric_mapping for {enriched} rows")
+    return out
+
+
 def get_latest_financial_report(symbol: str, statement_type: str | None = None, url: str = DEFAULT_URL) -> dict[str, Any]:
     sym = _validate_symbol(symbol)
     if not sym:
@@ -96,6 +147,7 @@ def get_latest_financial_report(symbol: str, statement_type: str | None = None, 
     if not rows:
         caveats.append("financial report data not ingested for this symbol")
         return _envelope("unavailable", [], sqls, caveats)
+    rows = _enrich_metric_names(rows, url, caveats)
     out = _envelope("ok", rows, sqls, caveats)
     out["run_id"] = run_id
     out["tool_calls"] = [{"tool": "get_latest_financial_report", "args": {"symbol": sym, "statement_type": statement_type, "run_id": run_id}, "status": "ok", "row_count": len(rows)}]
@@ -122,7 +174,10 @@ def get_financial_metrics(symbol: str, statement_type: str, metric_codes: list[s
     res = market.query_questdb(sql, url=url)
     if res.get("status") != "ok" or not res.get("rows"):
         return _envelope("unavailable", [], sql, ["financial report data not ingested for this symbol"] + res.get("caveats", []))
-    out = _envelope("ok", res["rows"], sql, caveats + res.get("caveats", []))
+    rows = list(res["rows"])
+    caveats.extend(res.get("caveats", []))
+    rows = _enrich_metric_names(rows, url, caveats)
+    out = _envelope("ok", rows, sql, caveats)
     out["run_id"] = run_id
     out["tool_calls"] = [{"tool": "get_financial_metrics", "args": {"symbol": sym, "statement_type": statement_type, "run_id": run_id}, "status": "ok", "row_count": len(res["rows"])}]
     return out

@@ -9,9 +9,10 @@
 | `adjusted_ohlc_gate` | `WARN` | `False` | adjusted close appears unverified or equal to raw for current rows | Verify adjusted OHLC against corporate-action/vendor adjustment evidence. |
 | `exchange_metadata_gate` | `PASS` | `False` |  | Fill exchange metadata so price-band guard can pass. |
 | `fa_tables_gate` | `PASS` | `False` |  | Run FA ingestion in run-scoped mode and verify questdb_fa_status.py. |
-| `fa_mapping_gate` | `WARN` | `False` | FA metric mapping is still unverified; raw opaque metric evidence is usable but names may be blank | Build and verify Vietcap metric-code mapping before claiming semantic FA metric names. |
+| `fa_mapping_gate` | `WARN` | `False` | FA metric mapping exists but consensus coverage remains below production threshold<br>FA fact rows still carry metric_mapping_unverified quality_status; tools enrich names at read time only | Build and verify Vietcap metric-code mapping before claiming semantic FA metric names. |
 | `backtest_tables_gate` | `PASS` | `False` |  | Run scripts/run_backtrader_questdb_persist.py for the demo symbols. |
 | `backtest_execution_assumptions_gate` | `WARN` | `False` | slippage_bps is 0; slippage remains a simple demo assumption | Fill exchange metadata and rerun persisted backtests; tune slippage assumptions after mentor approval. |
+| `event_news_gate` | `PASS` | `False` | event/news demo coverage is partial; missing VNM, HPG | Expand event/news sources only after source schema and PIT semantics are stable. |
 | `agent_guardrail_gate` | `PASS` | `False` |  | Inspect run_mentor_demo_readiness.py output and fix routing/credential issues. |
 | `docker_packaging_gate` | `PASS` | `False` |  | Keep image build in CI or demo preflight. |
 
@@ -51,11 +52,16 @@
     "adjusted_low",
     "adjusted_open"
   ],
+  "source_verification_status": "source_adjustment_unverified_raw_equivalent",
   "adjusted_close_equals_close_rows": 4388880,
   "total_rows": 4388880,
+  "raw_equivalent_ratio": 1.0,
   "adjusted_price_missing_warn_rows": 4388880,
+  "non_1_factor_rows": 0,
   "corr_high_adjusted_high": 1.0,
-  "corr_close_adjusted_close": 1.0
+  "corr_close_adjusted_close": 1.0,
+  "max_factor_application_error": 0.0,
+  "internal_consistency_status": "pass"
 }
 ```
 
@@ -81,9 +87,9 @@
   "missing_demo_symbols": [],
   "unsupported_demo_symbols": [],
   "total_securities": 1556,
-  "exchange_non_null_count": 1551,
-  "exchange_coverage_pct": 99.67866323907455,
-  "broader_missing_exchange_count": 5
+  "exchange_non_null_count": 1556,
+  "exchange_coverage_pct": 100.0,
+  "broader_missing_exchange_count": 0
 }
 ```
 
@@ -126,7 +132,33 @@
       "metric_mapping_unverified": 557427
     }
   },
-  "metric_mapping_unverified_rows": 2475452
+  "metric_mapping_unverified_rows": 2475452,
+  "fa_metric_mapping_table_exists": true,
+  "fa_metric_mapping_rows": 1957,
+  "fa_metric_mapping_consensus_rows": 1858,
+  "mapping_coverage": {
+    "fa_balance_sheet": {
+      "fact_distinct_metric_codes": 331,
+      "mapped_consensus_metric_codes": 229,
+      "mapped_consensus_code_pct": 69.18429003021149
+    },
+    "fa_income_statement": {
+      "fact_distinct_metric_codes": 181,
+      "mapped_consensus_metric_codes": 153,
+      "mapped_consensus_code_pct": 84.5303867403315
+    },
+    "fa_cash_flow": {
+      "fact_distinct_metric_codes": 225,
+      "mapped_consensus_metric_codes": 177,
+      "mapped_consensus_code_pct": 78.66666666666666
+    },
+    "fa_notes": {
+      "fact_distinct_metric_codes": 1402,
+      "mapped_consensus_metric_codes": 1299,
+      "mapped_consensus_code_pct": 92.65335235378032
+    }
+  },
+  "minimum_consensus_code_coverage_pct": 69.18429003021149
 }
 ```
 
@@ -135,10 +167,10 @@
 ```json
 {
   "row_counts": {
-    "backtest_runs": 9,
-    "backtest_metrics": 9,
-    "backtest_equity_curve": 13491,
-    "backtest_trades": 100
+    "backtest_runs": 36,
+    "backtest_metrics": 36,
+    "backtest_equity_curve": 53964,
+    "backtest_trades": 400
   },
   "symbols": 3,
   "strategies": 3
@@ -155,8 +187,51 @@
       "slippage_bps": 0.0,
       "price_band_status": "price_band_guard_pass",
       "rows": 9
+    },
+    {
+      "commission": 0.001,
+      "slippage_bps": 5.0,
+      "price_band_status": "price_band_guard_pass",
+      "rows": 9
+    },
+    {
+      "commission": 0.001,
+      "slippage_bps": 10.0,
+      "price_band_status": "price_band_guard_pass",
+      "rows": 9
+    },
+    {
+      "commission": 0.001,
+      "slippage_bps": 15.0,
+      "price_band_status": "price_band_guard_pass",
+      "rows": 9
     }
   ]
+}
+```
+
+### event_news_gate
+
+```json
+{
+  "tables_present": {
+    "event_news_raw_payloads": true,
+    "event_news_items": true
+  },
+  "row_counts": {
+    "event_news_raw_payloads": 20,
+    "event_news_items": 20
+  },
+  "symbol_counts": {
+    "event_news_raw_payloads": 1,
+    "event_news_items": 1
+  },
+  "demo_symbol_event_counts": {
+    "FPT": 20
+  },
+  "agent_latest_news_exit_code": 0,
+  "agent_latest_news_uses_event_tool": true,
+  "agent_latest_news_uses_ohlcv_proxy": false
 }
 ```
 

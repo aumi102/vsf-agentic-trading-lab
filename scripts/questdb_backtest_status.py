@@ -35,6 +35,12 @@ def _print_symbol_strategy_summary(client, base: str, table: str, columns: set[s
     if "strategy_id" in columns:
         _, strategies = qdb.exec_rows(client, base, f"SELECT strategy_id, count() c FROM {table} ORDER BY strategy_id")
         print("  strategies=" + ", ".join(f"{row[0]}:{int(row[1]):,}" for row in strategies))
+    if "slippage_bps" in columns:
+        _, rows = qdb.exec_rows(client, base, f"SELECT slippage_bps, count() c FROM {table} GROUP BY slippage_bps ORDER BY slippage_bps")
+        print("  slippage_bps=" + ", ".join(f"{float(row[0] or 0):g}:{int(row[1]):,}" for row in rows))
+    if "scenario_label" in columns:
+        _, rows = qdb.exec_rows(client, base, f"SELECT scenario_label, count() c FROM {table} GROUP BY scenario_label ORDER BY scenario_label")
+        print("  scenarios=" + ", ".join(f"{row[0]}:{int(row[1]):,}" for row in rows))
 
 
 def _print_run_breakdowns(client, base: str, table: str, columns: set[str]) -> None:
@@ -62,20 +68,31 @@ def _print_run_breakdowns(client, base: str, table: str, columns: set[str]) -> N
 def _print_latest_metrics(client, base: str, existing: set[str]) -> None:
     if "backtest_metrics" not in existing:
         return
+    metric_columns = _columns(client, base, "backtest_metrics")
+    has_scenarios = {"slippage_bps", "scenario_label"}.issubset(metric_columns)
+    scenario_select = ", m.slippage_bps, m.scenario_label " if has_scenarios else " "
+    scenario_header = " | slippage_bps | scenario" if has_scenarios else ""
+    scenario_filter = "WHERE slippage_bps = 0.0 " if has_scenarios else ""
+    latest_run_limit = 9
     _, rows = qdb.exec_rows(
         client,
         base,
         "SELECT m.symbol, m.strategy_id, m.final_value, m.total_return_pct, m.annualized_return_pct, "
-        "m.max_drawdown_pct, m.sharpe_ratio, m.closed_trades, m.win_rate_pct, m.run_id "
+        "m.max_drawdown_pct, m.sharpe_ratio, m.closed_trades, m.win_rate_pct, m.run_id"
+        f"{scenario_select}"
         "FROM backtest_metrics m "
-        "JOIN (SELECT run_id FROM backtest_runs ORDER BY created_at DESC LIMIT 9) r ON m.run_id = r.run_id "
+        f"JOIN (SELECT run_id FROM backtest_runs {scenario_filter}ORDER BY created_at DESC LIMIT {latest_run_limit}) r ON m.run_id = r.run_id "
         "ORDER BY m.symbol, m.strategy_id",
     )
     if not rows:
         return
-    print("latest_metrics:")
-    print("  symbol | strategy | final_value | total_return_pct | annualized_return_pct | max_drawdown_pct | sharpe | trades | win_rate_pct")
+    label = "latest_default_metrics" if has_scenarios else "latest_metrics"
+    print(f"{label}:")
+    print("  symbol | strategy | final_value | total_return_pct | annualized_return_pct | max_drawdown_pct | sharpe | trades | win_rate_pct" + scenario_header)
     for row in rows:
+        extra = ""
+        if has_scenarios:
+            extra = f" | {float(row[10] or 0):g} | {row[11]}"
         print(
             "  "
             f"{row[0]} | {row[1]} | {float(row[2]):,.0f} | {float(row[3]):.2f} | "
@@ -83,6 +100,7 @@ def _print_latest_metrics(client, base: str, existing: set[str]) -> None:
             f"{'' if row[6] is None else f'{float(row[6]):.2f}'} | "
             f"{int(row[7]) if row[7] is not None else 0} | "
             f"{'' if row[8] is None else f'{float(row[8]):.2f}'}"
+            f"{extra}"
         )
 
 

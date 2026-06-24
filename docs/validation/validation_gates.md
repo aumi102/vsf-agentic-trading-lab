@@ -45,6 +45,7 @@ Overall status:
 | `fa_mapping_gate` | bronze parser / silver FA | Warns when Vietcap metric mapping is still opaque. |
 | `backtest_tables_gate` | backtest | Confirms persisted runs, metrics, equity, and trade rows exist. |
 | `backtest_execution_assumptions_gate` | backtest validation | Checks commission, slippage, and price-band status. |
+| `event_news_gate` | source probe / raw capture / agent answer | Confirms the official-disclosure event layer exists when available and verifies event/news prompts do not use OHLCV as a proxy. |
 | `agent_guardrail_gate` | agent answer | Runs readiness checks for market/FA/backtest/event routing. |
 | `docker_packaging_gate` | deployment packaging | Validates Docker files, compose config, and image build when Docker is available. |
 
@@ -53,13 +54,14 @@ Overall status:
 These warnings are known and should be stated to the mentor:
 
 - adjusted OHLC source remains unverified;
-- FA metric mapping is `metric_mapping_unverified`;
-- broader-universe exchange metadata may remain partial unless source-backed;
-- `slippage_bps=0` is explicit and within the demo symbols' HOSE price band, but still a simple assumption;
-- event/news ingestion is not implemented, and event/news queries remain unsupported by guardrail.
+- adjusted OHLC source remains unverified and current adjusted values are raw-equivalent;
+- FA metric mapping is partial: `fa_metric_mapping` exists, but consensus coverage is below the threshold for a full PASS;
+- `slippage_bps=0` remains the default demo comparison, while 5/10/15 bps scenario rows are persisted separately;
+- event/news uses a minimal official-disclosure layer for FPT only; this is not broad market news.
 
-For the current mentor demo, FPT/VNM/HPG exchange metadata is filled as `HOSE`
-from captured Vietcap IQ universe and HOSE listed-universe dry-run evidence.
+Current exchange metadata is source-backed from captured Vietcap IQ universe and
+HOSE listed-universe dry-run evidence for all 1,556 current `securities` rows.
 That allows `exchange_metadata_gate` and the persisted backtest
-`price_band_status` checks to pass for the demo scope without claiming full
-universe exchange coverage.
+`price_band_status` checks to pass for the current database scope. New symbols
+still require source-backed exchange evidence before the guard should be treated
+as complete.

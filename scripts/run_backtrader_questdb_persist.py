@@ -34,15 +34,15 @@ DEFAULT_OUT_DIR = Path("data/cache/backtrader")
 RUN_COLUMNS = [
     "created_at", "run_id", "symbol", "strategy_id", "strategy_name", "start_date", "end_date",
     "data_source", "source_table", "code_commit", "start_cash", "commission", "slippage_bps",
-    "price_band_status", "adjusted_price_status", "status", "caveats",
+    "scenario_label", "price_band_status", "adjusted_price_status", "status", "caveats",
 ]
 METRIC_COLUMNS = [
     "created_at", "run_id", "symbol", "strategy_id", "strategy_name", "start_value", "final_value",
     "total_return_pct", "annualized_return_pct", "max_drawdown_pct", "sharpe_ratio", "closed_trades",
-    "win_rate_pct", "quality_status",
+    "win_rate_pct", "slippage_bps", "scenario_label", "quality_status",
 ]
-EQUITY_COLUMNS = ["trade_date", "run_id", "symbol", "strategy_id", "strategy_name", "portfolio_value", "cash"]
-TRADE_COLUMNS = ["trade_date", "run_id", "symbol", "strategy_id", "event_type", "size", "price", "value", "pnl", "pnl_pct"]
+EQUITY_COLUMNS = ["trade_date", "run_id", "symbol", "strategy_id", "strategy_name", "scenario_label", "portfolio_value", "cash"]
+TRADE_COLUMNS = ["trade_date", "run_id", "symbol", "strategy_id", "scenario_label", "event_type", "size", "price", "value", "pnl", "pnl_pct"]
 
 
 def _utc_timestamp() -> str:
@@ -71,11 +71,12 @@ def _safe_run_id_part(value: str) -> str:
     return "".join(ch if ch.isalnum() else "_" for ch in value.upper()).strip("_")
 
 
-def _make_run_id(batch_id: str, symbol: str, strategy_id: str, start_date: str, end_date: str, commit: str) -> str:
+def _make_run_id(batch_id: str, symbol: str, strategy_id: str, start_date: str, end_date: str, commit: str, scenario_label: str) -> str:
     parts = [
         batch_id,
         _safe_run_id_part(symbol),
         _safe_run_id_part(strategy_id),
+        _safe_run_id_part(scenario_label),
         start_date.replace("-", ""),
         end_date.replace("-", ""),
         _safe_run_id_part(commit),
@@ -108,6 +109,7 @@ def _ddl(table: str) -> str:
             start_cash DOUBLE,
             commission DOUBLE,
             slippage_bps DOUBLE,
+            scenario_label SYMBOL CAPACITY 1024 CACHE,
             price_band_status SYMBOL CAPACITY 256 CACHE,
             adjusted_price_status SYMBOL CAPACITY 256 CACHE,
             status SYMBOL CAPACITY 256 CACHE,
@@ -128,6 +130,8 @@ def _ddl(table: str) -> str:
             sharpe_ratio DOUBLE,
             closed_trades LONG,
             win_rate_pct DOUBLE,
+            slippage_bps DOUBLE,
+            scenario_label SYMBOL CAPACITY 1024 CACHE,
             quality_status SYMBOL CAPACITY 256 CACHE
         ) TIMESTAMP(created_at) PARTITION BY YEAR WAL"""
     if table == "backtest_equity_curve":
@@ -137,6 +141,7 @@ def _ddl(table: str) -> str:
             symbol SYMBOL CAPACITY 4096 CACHE,
             strategy_id SYMBOL CAPACITY 1024 CACHE,
             strategy_name SYMBOL CAPACITY 1024 CACHE,
+            scenario_label SYMBOL CAPACITY 1024 CACHE,
             portfolio_value DOUBLE,
             cash DOUBLE
         ) TIMESTAMP(trade_date) PARTITION BY YEAR WAL"""
@@ -146,6 +151,7 @@ def _ddl(table: str) -> str:
             run_id SYMBOL CAPACITY 4096 CACHE,
             symbol SYMBOL CAPACITY 4096 CACHE,
             strategy_id SYMBOL CAPACITY 1024 CACHE,
+            scenario_label SYMBOL CAPACITY 1024 CACHE,
             event_type SYMBOL CAPACITY 256 CACHE,
             size DOUBLE,
             price DOUBLE,
@@ -163,7 +169,7 @@ def _ensure_tables(client, base_url: str) -> None:
 
 def _require_schema_compatible(client, base_url: str) -> None:
     columns = set(qdb.column_names(client, base_url, "backtest_runs"))
-    required = {"price_band_status"}
+    required = {"price_band_status", "scenario_label"}
     missing = sorted(required - columns)
     if missing:
         raise RuntimeError(
@@ -222,6 +228,35 @@ def _metric_value(value: float | None) -> float | str:
     return "" if value is None else value
 
 
+def _format_bps(value: float) -> str:
+    if float(value).is_integer():
+        return str(int(value))
+    return str(value).replace(".", "p")
+
+
+def _scenario_label(slippage_bps: float, explicit: str | None = None) -> str:
+    label = (explicit or "").strip()
+    if label:
+        return _safe_run_id_part(label).lower()
+    return f"slippage_{_format_bps(slippage_bps)}bps"
+
+
+def _parse_slippage_scenarios(value: str | None, fallback: float) -> list[float]:
+    if not value:
+        return [float(fallback)]
+    out: list[float] = []
+    for part in value.split(","):
+        text = part.strip()
+        if not text:
+            continue
+        parsed = float(text)
+        if parsed not in out:
+            out.append(parsed)
+    if not out:
+        raise ValueError("--slippage-scenarios-bps must contain at least one number")
+    return out
+
+
 def _result_rows(
     *,
     result: BacktestResult,
@@ -232,6 +267,7 @@ def _result_rows(
     start_cash: float,
     commission: float,
     slippage_bps: float,
+    scenario_label: str,
     price_band_guard: PriceBandGuardResult,
     adjusted_price_status: str,
     caveats: tuple[str, ...],
@@ -250,6 +286,7 @@ def _result_rows(
         "start_cash": start_cash,
         "commission": commission,
         "slippage_bps": slippage_bps,
+        "scenario_label": scenario_label,
         "price_band_status": price_band_guard.status,
         "adjusted_price_status": adjusted_price_status,
         "status": "complete",
@@ -269,6 +306,8 @@ def _result_rows(
         "sharpe_ratio": _metric_value(result.sharpe_ratio),
         "closed_trades": result.closed_trades,
         "win_rate_pct": _metric_value(result.win_rate_pct),
+        "slippage_bps": slippage_bps,
+        "scenario_label": scenario_label,
         "quality_status": _quality_status(result, adjusted_price_status),
     }
     equity_rows = [
@@ -278,6 +317,7 @@ def _result_rows(
             "symbol": result.symbol,
             "strategy_id": strategy_id,
             "strategy_name": strategy_id,
+            "scenario_label": scenario_label,
             "portfolio_value": row.get("value"),
             "cash": row.get("cash"),
         }
@@ -289,6 +329,7 @@ def _result_rows(
             "run_id": run_id,
             "symbol": result.symbol,
             "strategy_id": strategy_id,
+            "scenario_label": scenario_label,
             "event_type": row.get("event_type") or "closed_trade",
             "size": _metric_value(row.get("size")),
             "price": _metric_value(row.get("price")),
@@ -319,7 +360,9 @@ def persist_results(
     start_cash: float,
     commission: float,
     slippage_bps: float,
-    replace_run_table: bool,
+    slippage_scenarios_bps: list[float] | None = None,
+    scenario_label: str | None = None,
+    replace_run_table: bool = False,
 ) -> tuple[list[BacktestResult], dict[str, int]]:
     base = questdb_url.rstrip("/")
     code_commit = _code_commit()
@@ -331,10 +374,10 @@ def persist_results(
     trade_rows: list[dict[str, Any]] = []
     out_dir.mkdir(parents=True, exist_ok=True)
     symbol_exchanges = _load_symbol_exchanges(questdb_url, symbols)
+    scenarios = slippage_scenarios_bps or [slippage_bps]
 
     for symbol in symbols:
         exchange = symbol_exchanges.get(symbol, "UNKNOWN")
-        price_band_guard = evaluate_price_band_guard(exchange, slippage_bps)
         csv_path = out_dir / f"backtrader_{symbol}_{start_date}_{end_date}.csv"
         export_result = export_symbol_to_csv(
             symbol=symbol,
@@ -349,48 +392,56 @@ def persist_results(
             f"date_range={export_result.first_date}..{export_result.last_date} path={csv_path}"
         )
         print(f"adjusted_price_status={symbol}:{adjusted_price_status}")
-        print(f"price_band_status={symbol}:{price_band_guard.status} exchange={price_band_guard.exchange}")
         for caveat in export_result.caveats:
             print(f"caveat={symbol}: {caveat}")
-        for caveat in price_band_guard.caveats:
-            print(f"caveat={symbol}: {caveat}")
-        for strategy_id, strategy_cls in STRATEGIES.items():
-            result = run_one(
-                symbol=symbol,
-                strategy_name=strategy_id,
-                strategy_cls=strategy_cls,
-                csv_path=csv_path,
-                start_value=start_cash,
-                commission=commission,
-                slippage_bps=slippage_bps,
+        for scenario_slippage in scenarios:
+            label = _scenario_label(scenario_slippage, scenario_label if len(scenarios) == 1 else None)
+            price_band_guard = evaluate_price_band_guard(exchange, scenario_slippage)
+            print(
+                f"price_band_status={symbol}:{price_band_guard.status} "
+                f"exchange={price_band_guard.exchange} scenario={label}"
             )
-            run_id = _make_run_id(batch_id, symbol, strategy_id, start_date, end_date, code_commit)
-            created_at = _utc_timestamp()
-            caveats = tuple(export_result.caveats) + (
-                f"exchange={price_band_guard.exchange}",
-                f"price_band_status={price_band_guard.status}",
-                f"slippage_bps={slippage_bps}",
-                *price_band_guard.caveats,
-                "closed_trade_rows_are_aggregate_events_not_full_entry_exit_pairs",
-            )
-            run_row, metric_row, result_equity_rows, result_trade_rows = _result_rows(
-                result=result,
-                run_id=run_id,
-                strategy_id=strategy_id,
-                created_at=created_at,
-                code_commit=code_commit,
-                start_cash=start_cash,
-                commission=commission,
-                slippage_bps=slippage_bps,
-                price_band_guard=price_band_guard,
-                adjusted_price_status=adjusted_price_status,
-                caveats=caveats,
-            )
-            all_results.append(result)
-            run_rows.append(run_row)
-            metric_rows.append(metric_row)
-            equity_rows.extend(result_equity_rows)
-            trade_rows.extend(result_trade_rows)
+            for caveat in price_band_guard.caveats:
+                print(f"caveat={symbol}: {caveat}")
+            for strategy_id, strategy_cls in STRATEGIES.items():
+                result = run_one(
+                    symbol=symbol,
+                    strategy_name=strategy_id,
+                    strategy_cls=strategy_cls,
+                    csv_path=csv_path,
+                    start_value=start_cash,
+                    commission=commission,
+                    slippage_bps=scenario_slippage,
+                )
+                run_id = _make_run_id(batch_id, symbol, strategy_id, start_date, end_date, code_commit, label)
+                created_at = _utc_timestamp()
+                caveats = tuple(export_result.caveats) + (
+                    f"exchange={price_band_guard.exchange}",
+                    f"price_band_status={price_band_guard.status}",
+                    f"slippage_bps={scenario_slippage}",
+                    f"scenario_label={label}",
+                    *price_band_guard.caveats,
+                    "closed_trade_rows_are_aggregate_events_not_full_entry_exit_pairs",
+                )
+                run_row, metric_row, result_equity_rows, result_trade_rows = _result_rows(
+                    result=result,
+                    run_id=run_id,
+                    strategy_id=strategy_id,
+                    created_at=created_at,
+                    code_commit=code_commit,
+                    start_cash=start_cash,
+                    commission=commission,
+                    slippage_bps=scenario_slippage,
+                    scenario_label=label,
+                    price_band_guard=price_band_guard,
+                    adjusted_price_status=adjusted_price_status,
+                    caveats=caveats,
+                )
+                all_results.append(result)
+                run_rows.append(run_row)
+                metric_rows.append(metric_row)
+                equity_rows.extend(result_equity_rows)
+                trade_rows.extend(result_trade_rows)
 
     with qdb.open_client(timeout_seconds=300.0) as client:
         if replace_run_table:
@@ -420,12 +471,17 @@ def main() -> int:
     parser.add_argument("--start-cash", type=float, default=100_000_000.0)
     parser.add_argument("--commission", type=float, default=0.001)
     parser.add_argument("--slippage-bps", type=float, default=0.0)
+    parser.add_argument("--slippage-scenarios-bps", help="Comma-separated scenario slippage values, e.g. 0,5,10,15")
+    parser.add_argument("--scenario-label", help="Optional scenario label for single-scenario runs")
     parser.add_argument("--replace-run-table", action="store_true")
     args = parser.parse_args()
     try:
         validate_date(args.start_date, "start_date")
         validate_date(args.end_date, "end_date")
         symbols = parse_symbols(args.symbol or args.symbols)
+        scenarios = _parse_slippage_scenarios(args.slippage_scenarios_bps, args.slippage_bps)
+        if args.scenario_label and len(scenarios) > 1:
+            raise ValueError("--scenario-label can only be used with one slippage scenario")
         results, inserted = persist_results(
             questdb_url=args.questdb_url,
             symbols=symbols,
@@ -435,6 +491,8 @@ def main() -> int:
             start_cash=args.start_cash,
             commission=args.commission,
             slippage_bps=args.slippage_bps,
+            slippage_scenarios_bps=scenarios,
+            scenario_label=args.scenario_label,
             replace_run_table=args.replace_run_table,
         )
         print_results(results)

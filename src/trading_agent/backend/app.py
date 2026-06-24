@@ -12,9 +12,11 @@ Endpoints:
   GET  /features/latest/{symbol}
   GET  /signals/latest/{symbol}
   GET  /market/summary/{symbol}
+  GET  /events/latest/{symbol}?limit=
   GET  /market/ohlcv?symbol=&start_date=&end_date=&adjusted=&limit=
   GET  /backtest/latest/{symbol}
   GET  /backtest/comparison/{symbol}
+  GET  /backtest/slippage-scenarios/{symbol}
   GET  /backtest/equity/{symbol}/{strategy_id}?limit=
   POST /agent/chat
   GET  /v1/models
@@ -32,6 +34,7 @@ from urllib.parse import parse_qs, urlparse
 from trading_agent.agent.deepagents_questdb_service import answer_query_deepagents
 from trading_agent.agent.questdb_agent_service import answer_query
 from trading_agent.tools import questdb_backtest_result_tool as backtest_result_tool
+from trading_agent.tools import questdb_event_news_tool as event_news_tool
 from trading_agent.tools import questdb_feature_signal_tool as feature_signal_tool
 from trading_agent.tools import questdb_market_data_tool as tool
 
@@ -104,6 +107,15 @@ def _handle_derived_latest(qurl: str, symbol: str, kind: str) -> tuple[int, dict
     return 200, res
 
 
+def handle_event_news_latest(qurl: str, symbol: str, params: dict | None = None) -> tuple[int, dict]:
+    try:
+        limit = int((params or {}).get("limit", ["5"])[0])
+    except ValueError:
+        limit = 5
+    res = event_news_tool.get_symbol_event_news(symbol, limit=limit, url=qurl)
+    return _status_to_http(res), res
+
+
 def _status_to_http(res: dict) -> int:
     if res.get("status") == "ok":
         return 200
@@ -116,12 +128,56 @@ def handle_backtest_latest(qurl: str, symbol: str, params: dict | None = None) -
     strategy_id = None
     if params:
         strategy_id = (params.get("strategy_id", [None])[0] if params.get("strategy_id") else None)
-    res = backtest_result_tool.get_latest_backtest_metrics(symbol, strategy_id=strategy_id, url=qurl)
+    try:
+        slippage_bps = _float_param(params, "slippage_bps", 0.0)
+    except ValueError:
+        return 400, {"status": "error", "caveats": ["invalid slippage_bps"]}
+    scenario_label = _str_param(params, "scenario_label")
+    res = backtest_result_tool.get_latest_backtest_metrics(
+        symbol,
+        strategy_id=strategy_id,
+        slippage_bps=slippage_bps,
+        scenario_label=scenario_label,
+        url=qurl,
+    )
     return _status_to_http(res), res
 
 
-def handle_backtest_comparison(qurl: str, symbol: str) -> tuple[int, dict]:
-    res = backtest_result_tool.get_backtest_strategy_comparison(symbol, url=qurl)
+def _float_param(params: dict | None, key: str, default: float | None = 0.0) -> float | None:
+    if not params or key not in params:
+        return default
+    raw = params.get(key, [None])[0]
+    if raw in (None, "", "all"):
+        return None
+    return float(raw)
+
+
+def _str_param(params: dict | None, key: str) -> str | None:
+    if not params or key not in params:
+        return None
+    raw = params.get(key, [None])[0]
+    text = str(raw).strip() if raw is not None else ""
+    return text or None
+
+
+def handle_backtest_comparison(qurl: str, symbol: str, params: dict | None = None) -> tuple[int, dict]:
+    try:
+        slippage_bps = _float_param(params, "slippage_bps", 0.0)
+    except ValueError:
+        return 400, {"status": "error", "caveats": ["invalid slippage_bps"]}
+    scenario_label = _str_param(params, "scenario_label")
+    res = backtest_result_tool.get_backtest_strategy_comparison(
+        symbol,
+        slippage_bps=slippage_bps,
+        scenario_label=scenario_label,
+        url=qurl,
+    )
+    return _status_to_http(res), res
+
+
+def handle_backtest_slippage_scenarios(qurl: str, symbol: str, params: dict | None = None) -> tuple[int, dict]:
+    strategy_id = _str_param(params, "strategy_id")
+    res = backtest_result_tool.get_backtest_slippage_scenarios(symbol, strategy_id=strategy_id, url=qurl)
     return _status_to_http(res), res
 
 
@@ -130,7 +186,19 @@ def handle_backtest_equity(qurl: str, symbol: str, strategy_id: str, params: dic
         limit = int((params or {}).get("limit", ["5000"])[0])
     except ValueError:
         limit = 5000
-    res = backtest_result_tool.get_backtest_equity_curve(symbol, strategy_id, limit=limit, url=qurl)
+    try:
+        slippage_bps = _float_param(params, "slippage_bps", 0.0)
+    except ValueError:
+        return 400, {"status": "error", "caveats": ["invalid slippage_bps"]}
+    scenario_label = _str_param(params, "scenario_label")
+    res = backtest_result_tool.get_backtest_equity_curve(
+        symbol,
+        strategy_id,
+        limit=limit,
+        slippage_bps=slippage_bps,
+        scenario_label=scenario_label,
+        url=qurl,
+    )
     return _status_to_http(res), res
 
 
@@ -278,12 +346,18 @@ class AgentHTTPRequestHandler(BaseHTTPRequestHandler):
             m = re.match(r"^/market/summary/([^/?]+)$", path)
             if m:
                 self._send(*_handle_derived_latest(self._qurl, m.group(1), "summary")); return
+            m = re.match(r"^/events/latest/([^/?]+)$", path)
+            if m:
+                self._send(*handle_event_news_latest(self._qurl, m.group(1), parse_qs(parsed.query))); return
             m = re.match(r"^/backtest/latest/([^/?]+)$", path)
             if m:
                 self._send(*handle_backtest_latest(self._qurl, m.group(1), parse_qs(parsed.query))); return
             m = re.match(r"^/backtest/comparison/([^/?]+)$", path)
             if m:
-                self._send(*handle_backtest_comparison(self._qurl, m.group(1))); return
+                self._send(*handle_backtest_comparison(self._qurl, m.group(1), parse_qs(parsed.query))); return
+            m = re.match(r"^/backtest/slippage-scenarios/([^/?]+)$", path)
+            if m:
+                self._send(*handle_backtest_slippage_scenarios(self._qurl, m.group(1), parse_qs(parsed.query))); return
             m = re.match(r"^/backtest/equity/([^/?]+)/([^/?]+)$", path)
             if m:
                 self._send(*handle_backtest_equity(self._qurl, m.group(1), m.group(2), parse_qs(parsed.query))); return
@@ -321,8 +395,9 @@ def serve(host: str = "127.0.0.1", port: int = 8010, questdb_url: str = tool.DEF
     httpd.questdb_url = questdb_url  # type: ignore[attr-defined]
     print(f"{SERVICE_NAME} listening on http://{host}:{port}  (QuestDB={questdb_url})")
     print("endpoints: /health /questdb/health /market/latest/{sym} /features/latest/{sym} "
-          "/signals/latest/{sym} /market/summary/{sym} /market/ohlcv "
-          "/backtest/latest/{sym} /backtest/comparison/{sym} /backtest/equity/{sym}/{strategy} "
+          "/signals/latest/{sym} /market/summary/{sym} /events/latest/{sym} /market/ohlcv "
+          "/backtest/latest/{sym} /backtest/comparison/{sym} /backtest/slippage-scenarios/{sym} "
+          "/backtest/equity/{sym}/{strategy} "
           "/agent/chat /v1/models /v1/chat/completions")
     try:
         httpd.serve_forever()
