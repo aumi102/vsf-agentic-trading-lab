@@ -8,6 +8,7 @@ ingestion; it only serves read-only queries against QuestDB.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -29,7 +30,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description="Run the QuestDB agent backend (stdlib HTTP).")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8010)
-    p.add_argument("--questdb-url", default=tool.DEFAULT_URL)
+    p.add_argument("--questdb-url", default=os.environ.get("QUESTDB_URL", tool.DEFAULT_URL))
     args = p.parse_args()
     serve(host=args.host, port=args.port, questdb_url=args.questdb_url)
     return 0

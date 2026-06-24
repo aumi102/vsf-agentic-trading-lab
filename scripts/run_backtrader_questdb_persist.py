@@ -26,6 +26,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from export_questdb_ohlcv_for_backtrader import export_symbol_to_csv, parse_symbols, validate_date  # noqa: E402
 from run_backtrader_questdb_demo import STRATEGIES, BacktestResult, print_results, run_one  # noqa: E402
+from trading_agent.backtest.slippage_guard import PriceBandGuardResult, evaluate_price_band_guard  # noqa: E402
 from trading_agent.storage import questdb_client as qdb  # noqa: E402
 
 BACKTEST_TABLES = ["backtest_runs", "backtest_metrics", "backtest_equity_curve", "backtest_trades"]
@@ -33,7 +34,7 @@ DEFAULT_OUT_DIR = Path("data/cache/backtrader")
 RUN_COLUMNS = [
     "created_at", "run_id", "symbol", "strategy_id", "strategy_name", "start_date", "end_date",
     "data_source", "source_table", "code_commit", "start_cash", "commission", "slippage_bps",
-    "adjusted_price_status", "status", "caveats",
+    "price_band_status", "adjusted_price_status", "status", "caveats",
 ]
 METRIC_COLUMNS = [
     "created_at", "run_id", "symbol", "strategy_id", "strategy_name", "start_value", "final_value",
@@ -107,6 +108,7 @@ def _ddl(table: str) -> str:
             start_cash DOUBLE,
             commission DOUBLE,
             slippage_bps DOUBLE,
+            price_band_status SYMBOL CAPACITY 256 CACHE,
             adjusted_price_status SYMBOL CAPACITY 256 CACHE,
             status SYMBOL CAPACITY 256 CACHE,
             caveats STRING
@@ -159,11 +161,46 @@ def _ensure_tables(client, base_url: str) -> None:
         qdb.exec_query(client, base_url, _ddl(table))
 
 
+def _require_schema_compatible(client, base_url: str) -> None:
+    columns = set(qdb.column_names(client, base_url, "backtest_runs"))
+    required = {"price_band_status"}
+    missing = sorted(required - columns)
+    if missing:
+        raise RuntimeError(
+            "Existing backtest_runs schema is missing columns "
+            f"{missing}. Rerun with --replace-run-table to rebuild only backtest result tables."
+        )
+
+
 def _replace_tables(client, base_url: str) -> None:
     print("REPLACING ONLY BACKTEST RESULT TABLES; market and FA tables untouched")
     for table in BACKTEST_TABLES:
         qdb.exec_query(client, base_url, f"DROP TABLE IF EXISTS {table}")
     _ensure_tables(client, base_url)
+
+
+def _sql_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _load_symbol_exchanges(questdb_url: str, symbols: list[str]) -> dict[str, str]:
+    base = questdb_url.rstrip("/")
+    quoted = ",".join(_sql_quote(symbol) for symbol in symbols)
+    sql = f"SELECT symbol, exchange FROM securities WHERE symbol IN ({quoted})"
+    exchanges = {symbol: "UNKNOWN" for symbol in symbols}
+    with qdb.open_client(timeout_seconds=60.0) as client:
+        try:
+            _, rows = qdb.exec_rows(client, base, sql)
+        except Exception:
+            return exchanges
+    for row in rows:
+        if not row:
+            continue
+        symbol = str(row[0] or "").upper()
+        exchange = str(row[1] or "UNKNOWN").upper()
+        if symbol:
+            exchanges[symbol] = exchange
+    return exchanges
 
 
 def _adjusted_status(caveats: tuple[str, ...]) -> str:
@@ -195,9 +232,10 @@ def _result_rows(
     start_cash: float,
     commission: float,
     slippage_bps: float,
+    price_band_guard: PriceBandGuardResult,
     adjusted_price_status: str,
     caveats: tuple[str, ...],
-) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     run_row = {
         "created_at": created_at,
         "run_id": run_id,
@@ -212,6 +250,7 @@ def _result_rows(
         "start_cash": start_cash,
         "commission": commission,
         "slippage_bps": slippage_bps,
+        "price_band_status": price_band_guard.status,
         "adjusted_price_status": adjusted_price_status,
         "status": "complete",
         "caveats": json.dumps(list(caveats), ensure_ascii=False),
@@ -244,7 +283,22 @@ def _result_rows(
         }
         for row in result.equity_curve
     ]
-    return run_row, metric_row, equity_rows
+    trade_rows = [
+        {
+            "trade_date": _date_ts(str(row.get("trade_date"))),
+            "run_id": run_id,
+            "symbol": result.symbol,
+            "strategy_id": strategy_id,
+            "event_type": row.get("event_type") or "closed_trade",
+            "size": _metric_value(row.get("size")),
+            "price": _metric_value(row.get("price")),
+            "value": _metric_value(row.get("value")),
+            "pnl": _metric_value(row.get("pnl")),
+            "pnl_pct": _metric_value(row.get("pnl_pct")),
+        }
+        for row in result.trades
+    ]
+    return run_row, metric_row, equity_rows, trade_rows
 
 
 def _import_rows(client, base_url: str, table: str, rows: list[dict[str, Any]], columns: list[str]) -> int:
@@ -274,9 +328,13 @@ def persist_results(
     run_rows: list[dict[str, Any]] = []
     metric_rows: list[dict[str, Any]] = []
     equity_rows: list[dict[str, Any]] = []
+    trade_rows: list[dict[str, Any]] = []
     out_dir.mkdir(parents=True, exist_ok=True)
+    symbol_exchanges = _load_symbol_exchanges(questdb_url, symbols)
 
     for symbol in symbols:
+        exchange = symbol_exchanges.get(symbol, "UNKNOWN")
+        price_band_guard = evaluate_price_band_guard(exchange, slippage_bps)
         csv_path = out_dir / f"backtrader_{symbol}_{start_date}_{end_date}.csv"
         export_result = export_symbol_to_csv(
             symbol=symbol,
@@ -291,7 +349,10 @@ def persist_results(
             f"date_range={export_result.first_date}..{export_result.last_date} path={csv_path}"
         )
         print(f"adjusted_price_status={symbol}:{adjusted_price_status}")
+        print(f"price_band_status={symbol}:{price_band_guard.status} exchange={price_band_guard.exchange}")
         for caveat in export_result.caveats:
+            print(f"caveat={symbol}: {caveat}")
+        for caveat in price_band_guard.caveats:
             print(f"caveat={symbol}: {caveat}")
         for strategy_id, strategy_cls in STRATEGIES.items():
             result = run_one(
@@ -301,10 +362,18 @@ def persist_results(
                 csv_path=csv_path,
                 start_value=start_cash,
                 commission=commission,
+                slippage_bps=slippage_bps,
             )
             run_id = _make_run_id(batch_id, symbol, strategy_id, start_date, end_date, code_commit)
             created_at = _utc_timestamp()
-            run_row, metric_row, result_equity_rows = _result_rows(
+            caveats = tuple(export_result.caveats) + (
+                f"exchange={price_band_guard.exchange}",
+                f"price_band_status={price_band_guard.status}",
+                f"slippage_bps={slippage_bps}",
+                *price_band_guard.caveats,
+                "closed_trade_rows_are_aggregate_events_not_full_entry_exit_pairs",
+            )
+            run_row, metric_row, result_equity_rows, result_trade_rows = _result_rows(
                 result=result,
                 run_id=run_id,
                 strategy_id=strategy_id,
@@ -313,24 +382,27 @@ def persist_results(
                 start_cash=start_cash,
                 commission=commission,
                 slippage_bps=slippage_bps,
+                price_band_guard=price_band_guard,
                 adjusted_price_status=adjusted_price_status,
-                caveats=export_result.caveats,
+                caveats=caveats,
             )
             all_results.append(result)
             run_rows.append(run_row)
             metric_rows.append(metric_row)
             equity_rows.extend(result_equity_rows)
+            trade_rows.extend(result_trade_rows)
 
     with qdb.open_client(timeout_seconds=300.0) as client:
         if replace_run_table:
             _replace_tables(client, base)
         else:
             _ensure_tables(client, base)
+            _require_schema_compatible(client, base)
         inserted = {
             "backtest_runs": _import_rows(client, base, "backtest_runs", run_rows, RUN_COLUMNS),
             "backtest_metrics": _import_rows(client, base, "backtest_metrics", metric_rows, METRIC_COLUMNS),
             "backtest_equity_curve": _import_rows(client, base, "backtest_equity_curve", equity_rows, EQUITY_COLUMNS),
-            "backtest_trades": 0,
+            "backtest_trades": _import_rows(client, base, "backtest_trades", trade_rows, TRADE_COLUMNS),
         }
         qdb.wait_wal_applied(client, base, "backtest_trades", attempts=60)
     return all_results, inserted
@@ -368,7 +440,8 @@ def main() -> int:
         print_results(results)
         for table in BACKTEST_TABLES:
             print(f"{table}_rows_inserted={inserted.get(table, 0)}")
-        print("caveat=backtest_trades table is created but trade-level extraction is TODO")
+        if inserted.get("backtest_trades", 0) == 0:
+            print("caveat=backtest_trades has no rows because no strategies closed trades in this run")
     except Exception as exc:
         print(f"error={type(exc).__name__}: {exc}", file=sys.stderr)
         return 2

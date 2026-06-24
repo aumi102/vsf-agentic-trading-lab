@@ -9,6 +9,7 @@ Allowed:
 - read `backtest_runs`
 - read `backtest_metrics`
 - read `backtest_equity_curve`
+- read `backtest_trades` in future endpoints when needed
 
 Disallowed:
 
@@ -73,8 +74,9 @@ Run scripts/run_backtrader_questdb_persist.py first for this symbol/strategy.
 ## Caveats disclosed by tools
 
 - Adjusted OHLC source remains unverified for the current persisted runs.
-- `slippage_bps=0`; slippage is not modeled.
-- `backtest_trades` is currently empty; trade-level extraction is TODO.
+- `slippage_bps` is explicit; default demo runs use `0` bps.
+- `price_band_status` is persisted; current demo runs are conservative because exchange metadata is unknown.
+- `backtest_trades` contains aggregate closed-trade events, not a full entry/exit fill ledger.
 - Backtests are research-only and not investment advice.
 
 ## Next step
@@ -83,6 +85,6 @@ Before broader DeepAgents exposure:
 
 - add strategy registry metadata;
 - add persisted-result version selection;
-- populate `backtest_trades`;
+- add a trade endpoint if mentor wants trade-level lookup in the backend;
 - add explicit date/scope filters to lookup tools;
 - keep live Backtrader execution as an offline/manual runner only.

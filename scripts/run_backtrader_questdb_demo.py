@@ -94,6 +94,53 @@ class EquityCurveAnalyzer(bt.Analyzer):
         return self.rows
 
 
+class ClosedTradeAnalyzer(bt.Analyzer):
+    """Capture one compact row per closed Backtrader trade.
+
+    Backtrader's ``Trade`` object exposes aggregate closed-trade fields reliably,
+    but not a fully normalized entry/exit pair without enabling deeper history.
+    This analyzer records the available closed-trade event data and leaves fields
+    blank only when Backtrader does not expose them.
+    """
+
+    def start(self) -> None:
+        self.rows: list[dict[str, Any]] = []
+
+    def notify_trade(self, trade) -> None:  # type: ignore[no-untyped-def]
+        if not getattr(trade, "isclosed", False):
+            return
+        dtclose = getattr(trade, "dtclose", None)
+        if dtclose:
+            trade_date = bt.num2date(dtclose).date().isoformat()
+        else:
+            trade_date = self.strategy.datas[0].datetime.date(0).isoformat()
+        price = _float_or_none(getattr(trade, "price", None))
+        value = _float_or_none(getattr(trade, "value", None))
+        pnl = _float_or_none(getattr(trade, "pnlcomm", None))
+        if pnl is None:
+            pnl = _float_or_none(getattr(trade, "pnl", None))
+        size = _float_or_none(getattr(trade, "size", None))
+        if size == 0.0:
+            size = None
+        if value == 0.0:
+            value = None
+        if (size is None or size == 0.0) and value and price:
+            size = abs(value) / price
+        pnl_pct = (pnl / abs(value) * 100.0) if pnl is not None and value not in (None, 0.0) else None
+        self.rows.append({
+            "trade_date": trade_date,
+            "event_type": "closed_trade",
+            "size": size,
+            "price": price,
+            "value": value,
+            "pnl": pnl,
+            "pnl_pct": pnl_pct,
+        })
+
+    def get_analysis(self) -> list[dict[str, Any]]:
+        return self.rows
+
+
 STRATEGIES: dict[str, type[bt.Strategy]] = {
     "buy_hold": BuyAndHoldStrategy,
     "ma20_ma50": MA20MA50CrossoverStrategy,
@@ -117,6 +164,17 @@ class BacktestResult:
     win_rate_pct: float | None
     csv_path: Path
     equity_curve: list[dict[str, Any]]
+    trades: list[dict[str, Any]]
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if math.isnan(number) else number
 
 
 def _load_csv_date_range(path: Path) -> tuple[str, str]:
@@ -171,17 +229,21 @@ def run_one(
     csv_path: Path,
     start_value: float,
     commission: float,
+    slippage_bps: float = 0.0,
 ) -> BacktestResult:
     start_date, end_date = _load_csv_date_range(csv_path)
     cerebro = bt.Cerebro(stdstats=False)
     cerebro.broker.setcash(start_value)
     cerebro.broker.setcommission(commission=commission)
+    if slippage_bps:
+        cerebro.broker.set_slippage_perc(slippage_bps / 10_000.0)
     cerebro.adddata(_make_data_feed(csv_path), name=symbol)
     cerebro.addstrategy(strategy_cls)
     cerebro.addanalyzer(bt.analyzers.DrawDown, _name="drawdown")
     cerebro.addanalyzer(bt.analyzers.SharpeRatio_A, _name="sharpe", riskfreerate=0.0)
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
     cerebro.addanalyzer(EquityCurveAnalyzer, _name="equity")
+    cerebro.addanalyzer(ClosedTradeAnalyzer, _name="closed_trade_events")
     results = cerebro.run()
     strategy = results[0]
     final_value = float(cerebro.broker.getvalue())
@@ -207,6 +269,7 @@ def run_one(
         win_rate_pct=win_rate,
         csv_path=csv_path,
         equity_curve=strategy.analyzers.equity.get_analysis(),
+        trades=strategy.analyzers.closed_trade_events.get_analysis(),
     )
 
 
@@ -289,6 +352,7 @@ def main() -> int:
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
     parser.add_argument("--start-cash", type=float, default=100_000_000.0)
     parser.add_argument("--commission", type=float, default=0.001)
+    parser.add_argument("--slippage-bps", type=float, default=0.0)
     args = parser.parse_args()
     try:
         validate_date(args.start_date, "start_date")
@@ -319,6 +383,7 @@ def main() -> int:
                     csv_path=csv_path,
                     start_value=args.start_cash,
                     commission=args.commission,
+                    slippage_bps=args.slippage_bps,
                 ))
         print_results(results)
         summary_path = out_dir / "backtrader_summary.csv"

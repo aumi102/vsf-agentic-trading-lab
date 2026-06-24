@@ -54,6 +54,9 @@ def _print_run_breakdowns(client, base: str, table: str, columns: set[str]) -> N
     if "quality_status" in columns:
         _, rows = qdb.exec_rows(client, base, f"SELECT quality_status, count() c FROM {table} ORDER BY c DESC")
         print("  quality_status=" + ", ".join(f"{row[0]}:{int(row[1]):,}" for row in rows))
+    if "price_band_status" in columns:
+        _, rows = qdb.exec_rows(client, base, f"SELECT price_band_status, count() c FROM {table} ORDER BY c DESC")
+        print("  price_band_status=" + ", ".join(f"{row[0]}:{int(row[1]):,}" for row in rows))
 
 
 def _print_latest_metrics(client, base: str, existing: set[str]) -> None:
@@ -83,6 +86,31 @@ def _print_latest_metrics(client, base: str, existing: set[str]) -> None:
         )
 
 
+def _print_latest_trades(client, base: str, existing: set[str]) -> None:
+    if "backtest_trades" not in existing:
+        return
+    _, rows = qdb.exec_rows(
+        client,
+        base,
+        "SELECT trade_date, symbol, strategy_id, event_type, size, price, value, pnl, pnl_pct "
+        "FROM backtest_trades ORDER BY trade_date DESC, run_id DESC LIMIT 5",
+    )
+    if not rows:
+        return
+    print("latest_trades:")
+    print("  trade_date | symbol | strategy | event | size | price | value | pnl | pnl_pct")
+    for row in rows:
+        print(
+            "  "
+            f"{str(row[0])[:10]} | {row[1]} | {row[2]} | {row[3]} | "
+            f"{'' if row[4] is None else f'{float(row[4]):,.0f}'} | "
+            f"{'' if row[5] is None else f'{float(row[5]):,.2f}'} | "
+            f"{'' if row[6] is None else f'{float(row[6]):,.2f}'} | "
+            f"{'' if row[7] is None else f'{float(row[7]):,.2f}'} | "
+            f"{'' if row[8] is None else f'{float(row[8]):.2f}'}"
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Show QuestDB backtest result table status.")
     parser.add_argument("--questdb-url", default=qdb.DEFAULT_QUESTDB_URL)
@@ -101,6 +129,7 @@ def main() -> int:
             _print_symbol_strategy_summary(client, base, table, columns)
             _print_run_breakdowns(client, base, table, columns)
         _print_latest_metrics(client, base, existing)
+        _print_latest_trades(client, base, existing)
     return 0
 
 

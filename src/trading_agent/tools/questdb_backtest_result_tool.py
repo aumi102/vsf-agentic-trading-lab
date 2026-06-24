@@ -68,6 +68,10 @@ def _row_caveats(rows: list[dict[str, Any]]) -> list[str]:
         caveats.extend(_decode_caveats(row.get("caveats")))
         if row.get("adjusted_price_status") == "source_adjustment_unverified":
             caveats.append("adjusted OHLC source remains unverified; backtest is research-only")
+        if row.get("price_band_status") == "exchange_unknown_price_band_guard_not_fully_verified":
+            caveats.append("exchange unknown; price-band guard is not fully verified")
+        elif row.get("price_band_status") == "slippage_bps_exceeds_exchange_price_band":
+            caveats.append("slippage_bps exceeds configured exchange price band")
         if row.get("slippage_bps") in (0, 0.0, "0", "0.0"):
             caveats.append("slippage_bps is 0; slippage is not modeled")
     return list(dict.fromkeys(caveats))
@@ -82,7 +86,7 @@ def _metric_join_sql(symbol: str, strategy_id: str | None = None) -> str:
     return (
         "SELECT r.created_at, r.run_id, r.symbol, r.strategy_id, r.strategy_name, "
         "r.start_date, r.end_date, r.data_source, r.source_table, r.code_commit, "
-        "r.start_cash, r.commission, r.slippage_bps, r.adjusted_price_status, r.status AS run_status, "
+        "r.start_cash, r.commission, r.slippage_bps, r.price_band_status, r.adjusted_price_status, r.status AS run_status, "
         "r.caveats, m.start_value, m.final_value, m.total_return_pct, m.annualized_return_pct, "
         "m.max_drawdown_pct, m.sharpe_ratio, m.closed_trades, m.win_rate_pct, m.quality_status "
         "FROM backtest_runs r JOIN backtest_metrics m ON r.run_id = m.run_id "
@@ -163,7 +167,7 @@ def get_backtest_equity_curve(symbol: str, strategy_id: str, limit: int = 5000, 
     safe_limit = max(1, min(int(limit), 5000))
     run_sql = (
         "SELECT created_at, run_id, symbol, strategy_id, strategy_name, start_date, end_date, data_source, "
-        "source_table, code_commit, start_cash, commission, slippage_bps, adjusted_price_status, status AS run_status, caveats "
+        "source_table, code_commit, start_cash, commission, slippage_bps, price_band_status, adjusted_price_status, status AS run_status, caveats "
         "FROM backtest_runs "
         f"WHERE symbol = '{sym}' AND strategy_id = '{sid}' "
         "ORDER BY created_at DESC LIMIT 1"

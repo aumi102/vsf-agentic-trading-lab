@@ -35,6 +35,7 @@ Columns:
 - `start_cash DOUBLE`
 - `commission DOUBLE`
 - `slippage_bps DOUBLE`
+- `price_band_status SYMBOL`
 - `adjusted_price_status SYMBOL`
 - `status SYMBOL`
 - `caveats STRING`
@@ -76,7 +77,8 @@ Columns:
 
 ### `backtest_trades`
 
-Created for the future trade ledger. Trade-level extraction is still TODO.
+One row per closed Backtrader trade event where the strategy closes a position.
+This is an aggregate closed-trade event ledger, not a full entry/exit fill ledger.
 
 Columns:
 
@@ -126,7 +128,7 @@ The persistence runner writes a reproducible QuestDB record:
 - run metadata in `backtest_runs`;
 - metrics in `backtest_metrics`;
 - daily equity snapshots in `backtest_equity_curve`;
-- reserved trade table in `backtest_trades`.
+- closed-trade event rows in `backtest_trades`.
 
 ## Current strategy coverage
 
@@ -152,7 +154,9 @@ Required before DeepAgents integration:
 - Adjusted OHLC source remains unverified in current data quality checks.
 - Persisted rows include `adjusted_price_status`; current demo data is expected to show `source_adjustment_unverified`.
 - Commission is a simple flat broker commission parameter.
-- Slippage is currently recorded as `0` bps and not modeled.
-- No tax, liquidity, price-limit, corporate-action, or execution-quality model is included.
-- `backtest_trades` exists but trade-level extraction is TODO.
+- Slippage is explicit in `slippage_bps`; default demo runs use `0` bps.
+- `price_band_status` records whether slippage is within known exchange bands.
+- Current demo runs show `exchange_unknown_price_band_guard_not_fully_verified` because `securities.exchange` is null for FPT/VNM/HPG.
+- No tax, liquidity, corporate-action, or full execution-quality model is included.
+- `backtest_trades` captures closed trade events; Backtrader does not expose every normalized entry/exit field in this first version.
 - These results are not production strategy validation and are not investment advice.

@@ -210,6 +210,7 @@ def _format_backtest_answer(symbol: str, rows: list[dict[str, Any]], *, comparis
         "- source: QuestDB persisted `backtest_runs` / `backtest_metrics`",
         f"- source table: `{first.get('source_table')}` · code commit: `{first.get('code_commit')}`",
         f"- commission: {_fmt(first.get('commission'), 4)} · slippage_bps: {_fmt(first.get('slippage_bps'), 2)}",
+        f"- price_band_status: `{first.get('price_band_status') or 'not_recorded'}`",
         f"- adjusted_price_status: `{first.get('adjusted_price_status')}`",
         "",
         "| Strategy | Final value | Total return | Annualized | Max DD | Sharpe | Trades | Win rate |",

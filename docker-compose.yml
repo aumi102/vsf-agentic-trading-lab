@@ -1,0 +1,26 @@
+services:
+  questdb:
+    image: questdb/questdb:latest
+    ports:
+      - "9000:9000"
+      - "8812:8812"
+    volumes:
+      - questdb_data:/var/lib/questdb
+
+  vsf-agent-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - questdb
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      QUESTDB_URL: http://questdb:9000
+      VSF_DEEPAGENTS_MODEL: ${VSF_DEEPAGENTS_MODEL:-gpt-4.1-mini}
+    ports:
+      - "8010:8010"
+
+volumes:
+  questdb_data:
