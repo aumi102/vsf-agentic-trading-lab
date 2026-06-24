@@ -1,0 +1,13 @@
+services:
+  vsf-agent-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      QUESTDB_URL: http://host.docker.internal:9000
+      VSF_DEEPAGENTS_MODEL: ${VSF_DEEPAGENTS_MODEL:-gpt-4.1-mini}
+    ports:
+      - "8010:8010"

@@ -7,12 +7,16 @@ ENV QUESTDB_URL=http://questdb:9000
 ENV VSF_DEEPAGENTS_MODEL=gpt-4.1-mini
 
 WORKDIR /app
+ARG INSTALL_DEEPAGENTS=false
 
 RUN python -m pip install --no-cache-dir --upgrade pip
 
-COPY requirements.txt requirements.txt
-COPY requirements-research.txt requirements-research.txt
-RUN python -m pip install --no-cache-dir -r requirements.txt -r requirements-research.txt
+COPY requirements-backend.txt requirements-backend.txt
+COPY requirements-deepagents.txt requirements-deepagents.txt
+RUN python -m pip install --no-cache-dir --retries 10 --timeout 120 -r requirements-backend.txt \
+    && if [ "$INSTALL_DEEPAGENTS" = "true" ]; then \
+        python -m pip install --no-cache-dir --retries 10 --timeout 120 -r requirements-deepagents.txt; \
+    fi
 
 COPY src src
 COPY scripts scripts

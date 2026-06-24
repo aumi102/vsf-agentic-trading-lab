@@ -1,0 +1,54 @@
+# Candidate FA expansion universe derived from QuestDB `securities`.
+# This is NOT a VN100 list. It is the first 50 symbols ordered by symbol
+# from the current securities dimension, intended for controlled run-scoped
+# FA ingestion preflight/expansion.
+A32
+AAA
+AAH
+AAM
+AAN
+AAS
+AAT
+AAV
+ABB
+ABC
+ABI
+ABR
+ABS
+ABT
+ABW
+ACB
+ACC
+ACE
+ACG
+ACL
+ACM
+ACS
+ACV
+ADC
+ADG
+ADP
+ADS
+AFX
+AG1
+AGF
+AGG
+AGM
+AGP
+AGR
+AGX
+AIC
+AIG
+ALC
+ALT
+ALV
+AMC
+AME
+AMP
+AMS
+AMV
+ANT
+ANV
+APC
+APF
+APG

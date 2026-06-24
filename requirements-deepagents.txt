@@ -1,0 +1,5 @@
+# Optional Docker build dependencies for live DeepAgents fallback mode.
+# The guarded mentor demo routes are direct/read-only and do not require these.
+deepagents
+langchain
+langchain-openai
