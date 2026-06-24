@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from trading_agent.backtest.slippage_guard import evaluate_price_band_guard, normalize_exchange
 from trading_agent.storage import questdb_client as qdb
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -188,13 +189,41 @@ def exchange_metadata_gate(url: str = DEFAULT_URL) -> GateResult:
         known = int(_scalar(client, base, "SELECT count() FROM securities WHERE exchange IS NOT NULL AND exchange != 'UNKNOWN' AND exchange != ''", 0))
         _, demo_rows = qdb.exec_rows(client, base, f"SELECT symbol, exchange FROM securities WHERE symbol IN ({quoted}) ORDER BY symbol")
     demo = {str(row[0]): row[1] for row in demo_rows}
-    missing_demo = [symbol for symbol in DEMO_SYMBOLS if not demo.get(symbol) or str(demo.get(symbol)).upper() == "UNKNOWN"]
-    status = "WARN" if missing_demo or known < total else "PASS"
+    normalized_demo = {symbol: normalize_exchange(demo.get(symbol)) for symbol in DEMO_SYMBOLS}
+    price_band_status = {
+        symbol: evaluate_price_band_guard(normalized_demo.get(symbol), 0.0).status
+        for symbol in DEMO_SYMBOLS
+    }
+    missing_demo = [symbol for symbol in DEMO_SYMBOLS if normalized_demo.get(symbol) == "UNKNOWN"]
+    unsupported_demo = [
+        symbol for symbol, guard_status in price_band_status.items()
+        if guard_status != "price_band_guard_pass"
+    ]
+    missing_broader = max(total - known, 0)
+    broad_missing_threshold = max(50, int(total * 0.05))
+    status = "PASS"
+    caveats: list[str] = []
+    if missing_demo or unsupported_demo:
+        status = "WARN"
+        caveats.append(f"demo symbols missing/unsupported exchange: {', '.join(sorted(set(missing_demo + unsupported_demo)))}")
+    elif missing_broader > broad_missing_threshold:
+        status = "WARN"
+        caveats.append(f"broader universe has {missing_broader} missing exchange values")
     return _gate(
         "exchange_metadata_gate",
         status,
-        {"securities_rows": total, "known_exchange_rows": known, "known_exchange_pct": (known / total * 100.0) if total else 0.0, "demo_symbols": demo},
-        [f"demo symbols missing exchange: {', '.join(missing_demo)}"] if missing_demo else [],
+        {
+            "demo_symbols_checked": list(DEMO_SYMBOLS),
+            "demo_symbol_exchanges": normalized_demo,
+            "demo_price_band_status": price_band_status,
+            "missing_demo_symbols": missing_demo,
+            "unsupported_demo_symbols": unsupported_demo,
+            "total_securities": total,
+            "exchange_non_null_count": known,
+            "exchange_coverage_pct": (known / total * 100.0) if total else 0.0,
+            "broader_missing_exchange_count": missing_broader,
+        },
+        caveats,
         "Fill exchange metadata so price-band guard can pass.",
     )
 
@@ -281,11 +310,15 @@ def backtest_execution_assumptions_gate(url: str = DEFAULT_URL) -> GateResult:
         ]
     }
     statuses = {str(row[2]) for row in rows}
+    slippage_values = [float(row[1] or 0) for row in rows]
     caveats: list[str] = []
     status = "PASS"
     if "exchange_unknown_price_band_guard_not_fully_verified" in statuses:
         status = "WARN"
         caveats.append("exchange metadata missing; price-band guard cannot be fully verified")
+    if any(value == 0.0 for value in slippage_values):
+        status = "WARN" if status == "PASS" else status
+        caveats.append("slippage_bps is 0; slippage remains a simple demo assumption")
     if "slippage_bps_exceeds_exchange_price_band" in statuses:
         status = "FAIL"
         caveats.append("slippage exceeds exchange price-band guard")

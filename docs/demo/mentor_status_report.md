@@ -26,6 +26,8 @@
   - `backtest_runs`, `backtest_metrics`, `backtest_equity_curve`, `backtest_trades`.
 - `backtest_trades` is now populated for closed trade events on demo strategies.
 - Backtest runs now record commission, slippage bps, and price-band guard status.
+- FPT/VNM/HPG exchange metadata is now filled as `HOSE` from captured Vietcap IQ universe and HOSE listed-universe dry-run evidence.
+- Demo backtest `price_band_status` now passes: `price_band_guard_pass`.
 - Docker packaging has been added for a backend + QuestDB demo stack.
 - Docker build and backend-local runtime verification passed against host QuestDB.
 - Validation gates were added for the full architecture path:
@@ -39,13 +41,13 @@
 - Passing gates:
   - market table coverage;
   - feature/signal parity;
+  - exchange metadata for FPT/VNM/HPG;
   - FA table coverage;
   - backtest table coverage;
   - agent guardrails;
   - Docker packaging.
 - Expected warning gates:
   - adjusted OHLC source is still unverified/equal to raw;
-  - demo symbols are missing exchange metadata, so price-band guard is conservative;
   - FA metric-code mapping remains unverified;
   - backtest execution assumptions still use `slippage_bps=0`.
 
@@ -85,7 +87,7 @@ docker build --build-arg INSTALL_DEEPAGENTS=true -t vsf-agent-backend:demo-deepa
 - Add event/news ingestion and tools.
 - Replace the current simple execution model with a stronger slippage/liquidity model.
 - Validate adjusted OHLC against corporate-action or vendor adjustment evidence.
-- Confirm exchange metadata for demo symbols so price-band checks can pass instead of remaining `exchange_unknown_price_band_guard_not_fully_verified`.
+- Extend source-backed exchange metadata beyond the demo symbols if broader price-band validation is needed.
 - Move batch jobs from local/manual commands into production scheduling.
 
 ## Exact demo commands
@@ -136,6 +138,13 @@ Backtest status:
 python scripts\questdb_backtest_status.py
 ```
 
+Exchange metadata update/check:
+
+```bat
+python scripts\update_questdb_exchange_metadata.py
+python scripts\check_price_band_guard.py --symbols FPT,VNM,HPG --slippage-bps 10
+```
+
 Validation gates:
 
 ```bat
@@ -154,4 +163,4 @@ curl.exe -s http://127.0.0.1:8010/backtest/comparison/FPT
 
 ## Short message to mentor
 
-The local QuestDB-backed demo is ready for a controlled walkthrough. Market summaries, financial-report lookup, event/news guardrails, and persisted Backtrader results are available through rule-based agent, backend, and guarded DeepAgents routing. FA coverage has expanded from 3 smoke symbols to a controlled 53-symbol run with zero failures. Validation gates now report WARN with no blocking failures, and Docker backend packaging/build/runtime checks pass against host QuestDB. Remaining caveats are explicit: adjusted OHLC source is unverified, FA metric mapping is unverified, event/news ingestion is not implemented, and price-band checks remain conservative until exchange metadata is filled.
+The local QuestDB-backed demo is ready for a controlled walkthrough. Market summaries, financial-report lookup, event/news guardrails, and persisted Backtrader results are available through rule-based agent, backend, and guarded DeepAgents routing. FA coverage has expanded from 3 smoke symbols to a controlled 53-symbol run with zero failures. FPT/VNM/HPG exchange metadata is source-backed as HOSE, so demo backtest price-band checks now pass. Validation gates still report WARN with no blocking failures because adjusted OHLC source validation, FA metric mapping, event/news ingestion, and the simple zero-slippage assumption remain open.

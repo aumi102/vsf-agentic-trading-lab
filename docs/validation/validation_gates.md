@@ -40,7 +40,7 @@ Overall status:
 | `market_table_coverage` | silver canonical table | Confirms `daily_prices` exists, has rows/symbols, and has a latest date. |
 | `feature_signal_parity` | gold features / signal | Confirms `feature_snapshots` and `signals` remain close to `daily_prices` coverage. |
 | `adjusted_ohlc_gate` | silver canonical price quality | Checks adjusted OHLC column presence and warns when adjusted prices are source-unverified. |
-| `exchange_metadata_gate` | security master | Checks `securities.exchange`, especially FPT/VNM/HPG for price-band guard readiness. |
+| `exchange_metadata_gate` | security master | Checks `securities.exchange`, especially source-backed FPT/VNM/HPG metadata for price-band guard readiness. |
 | `fa_tables_gate` | raw/bronze/silver FA | Confirms FA tables and latest complete FA run exist. |
 | `fa_mapping_gate` | bronze parser / silver FA | Warns when Vietcap metric mapping is still opaque. |
 | `backtest_tables_gate` | backtest | Confirms persisted runs, metrics, equity, and trade rows exist. |
@@ -54,6 +54,12 @@ These warnings are known and should be stated to the mentor:
 
 - adjusted OHLC source remains unverified;
 - FA metric mapping is `metric_mapping_unverified`;
-- exchange metadata is missing for FPT/VNM/HPG, so price-band guard cannot fully pass;
-- `slippage_bps=0` is explicit but still a simple assumption;
+- broader-universe exchange metadata may remain partial unless source-backed;
+- `slippage_bps=0` is explicit and within the demo symbols' HOSE price band, but still a simple assumption;
 - event/news ingestion is not implemented, and event/news queries remain unsupported by guardrail.
+
+For the current mentor demo, FPT/VNM/HPG exchange metadata is filled as `HOSE`
+from captured Vietcap IQ universe and HOSE listed-universe dry-run evidence.
+That allows `exchange_metadata_gate` and the persisted backtest
+`price_band_status` checks to pass for the demo scope without claiming full
+universe exchange coverage.

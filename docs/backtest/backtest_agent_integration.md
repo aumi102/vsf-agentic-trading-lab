@@ -75,7 +75,9 @@ Run scripts/run_backtrader_questdb_persist.py first for this symbol/strategy.
 
 - Adjusted OHLC source remains unverified for the current persisted runs.
 - `slippage_bps` is explicit; default demo runs use `0` bps.
-- `price_band_status` is persisted; current demo runs are conservative because exchange metadata is unknown.
+- `price_band_status` is persisted; current FPT/VNM/HPG demo runs show `price_band_guard_pass`.
+- Demo symbol exchange metadata is source-backed as `HOSE` from captured Vietcap IQ universe and HOSE listed-universe dry-run evidence.
+- Broader universe exchange metadata remains partial unless separately source-backed.
 - `backtest_trades` contains aggregate closed-trade events, not a full entry/exit fill ledger.
 - Backtests are research-only and not investment advice.
 

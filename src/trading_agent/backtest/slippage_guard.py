@@ -7,6 +7,7 @@ from dataclasses import dataclass
 EXCHANGE_PRICE_BANDS_BPS = {
     "HOSE": 700,
     "HSX": 700,
+    "HNX": 1000,
     "UPCOM": 1500,
 }
 

@@ -1,0 +1,4 @@
+symbol,exchange,source,confidence,notes
+FPT,HOSE,vietcap_iq_universe_dry_run_20260604T101513Z_and_hose_listed_universe_all_pages_20260603T080254Z,high,"source-backed demo symbol; Vietcap symbol_universe.csv and HOSE listed universe both show HOSE"
+VNM,HOSE,vietcap_iq_universe_dry_run_20260604T101513Z_and_hose_listed_universe_all_pages_20260603T080254Z,high,"source-backed demo symbol; Vietcap symbol_universe.csv and HOSE listed universe both show HOSE"
+HPG,HOSE,vietcap_iq_universe_dry_run_20260604T101513Z_and_hose_listed_universe_all_pages_20260603T080254Z,high,"source-backed demo symbol; Vietcap symbol_universe.csv and HOSE listed universe both show HOSE"

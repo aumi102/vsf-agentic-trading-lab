@@ -155,8 +155,21 @@ Required before DeepAgents integration:
 - Persisted rows include `adjusted_price_status`; current demo data is expected to show `source_adjustment_unverified`.
 - Commission is a simple flat broker commission parameter.
 - Slippage is explicit in `slippage_bps`; default demo runs use `0` bps.
-- `price_band_status` records whether slippage is within known exchange bands.
-- Current demo runs show `exchange_unknown_price_band_guard_not_fully_verified` because `securities.exchange` is null for FPT/VNM/HPG.
+- `price_band_status` records whether slippage is within known exchange bands:
+  - HOSE/HSX: 700 bps;
+  - HNX: 1000 bps;
+  - UPCOM: 1500 bps.
+- FPT/VNM/HPG exchange metadata is now filled as `HOSE` from captured Vietcap IQ universe and HOSE listed-universe dry-run evidence.
+- Current demo persisted runs show `price_band_guard_pass` for FPT/VNM/HPG.
+- Broader universe exchange metadata should not be assumed complete unless source-backed.
 - No tax, liquidity, corporate-action, or full execution-quality model is included.
 - `backtest_trades` captures closed trade events; Backtrader does not expose every normalized entry/exit field in this first version.
 - These results are not production strategy validation and are not investment advice.
+
+Optional slippage guard checks:
+
+```bat
+python scripts\check_price_band_guard.py --symbols FPT,VNM,HPG --slippage-bps 5
+python scripts\check_price_band_guard.py --symbols FPT,VNM,HPG --slippage-bps 10
+python scripts\check_price_band_guard.py --symbols FPT,VNM,HPG --slippage-bps 15
+```
