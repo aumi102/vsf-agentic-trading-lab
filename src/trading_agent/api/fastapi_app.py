@@ -27,6 +27,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from trading_agent.agent.deepagents_questdb_service import answer_query_deepagents
 from trading_agent.agent.questdb_agent_service import answer_query
 from trading_agent.backend import app as legacy
+from trading_agent.backtest import simple_engine as se
 from trading_agent.observability import next_actions as na
 from trading_agent.observability import pipeline_trace as pt
 from trading_agent.storage import questdb_pgwire_client as pg
@@ -63,6 +64,8 @@ MENU = [
      "description": "Persisted Backtrader strategy comparison (no live run)."},
     {"id": "slippage", "label": "Slippage scenarios FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/backtest/FPT/slippage",
      "description": "Persisted 0/5/10/15 bps slippage scenarios."},
+    {"id": "simple_engine", "label": "SimpleEngine vs Backtrader FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/backtest/FPT/simple-engine",
+     "description": "Transparent self-implemented engine vs persisted Backtrader."},
     {"id": "events_fpt", "label": "Latest disclosure FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/events/FPT",
      "description": "Official disclosure records for FPT."},
     {"id": "events_vnm", "label": "Event guardrail VNM", "group": "Guardrails", "method": "GET", "path": "/api/demo/events/VNM",
@@ -127,8 +130,7 @@ def _envelope_from_query(query: str, *, mode: str, url: str, deep: bool = False)
     start = time.perf_counter()
     result = answer_query_deepagents(query, questdb_url=url) if deep else answer_query(query, questdb_url=url)
     elapsed_ms = (time.perf_counter() - start) * 1000.0
-    intent = str(result.get("intent") or "unsupported")
-    domain = pt.INTENT_TO_DOMAIN.get(intent, "system")
+    domain, intent = pt.derive_domain(query, result)
     trace = pt.trace_from_rule_result(query, result, query_mode=mode.upper())
     timing = _timed_probe(domain, _symbol_of(query) or DEMO_SYMBOL, mode, url)
     states = na.compute_next_actions(url=url)["states"]
@@ -174,6 +176,27 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
 
     def _json(code: int, payload: dict) -> JSONResponse:
         return JSONResponse(status_code=code, content=payload)
+
+    @app.exception_handler(Exception)
+    async def _demo_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        """Return a structured JSON error so the browser never sees raw 500 text."""
+        import sys
+        import traceback
+
+        path = request.url.path
+        print(f"[demo-error] {path}: {type(exc).__name__}: {exc}", file=sys.stderr)
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "error_type": type(exc).__name__,
+                "message": _redact(str(exc))[:600],
+                "path": path,
+                "caveats": ["demo endpoint failed; see server logs"],
+                "next_action": "fix missing optional dependency or import side-effect",
+            },
+        )
 
     # ---- browser UI --------------------------------------------------------
     @app.get("/", response_class=HTMLResponse)
@@ -230,6 +253,11 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
     async def demo_slippage(symbol: str, request: Request) -> dict:
         mode = _resolve_mode(request)
         return await asyncio.to_thread(_build_slippage, symbol.upper(), mode, url)
+
+    @app.get("/api/demo/backtest/{symbol}/simple-engine")
+    async def demo_simple_engine(symbol: str, request: Request) -> dict:
+        mode = _resolve_mode(request)
+        return await asyncio.to_thread(_build_simple_engine, symbol.upper(), mode, url)
 
     @app.get("/api/demo/backtest/{symbol}")
     async def demo_backtest(symbol: str, request: Request) -> dict:
@@ -473,6 +501,76 @@ def _build_slippage(symbol: str, mode: str, url: str) -> dict[str, Any]:
     }
 
 
+def _build_simple_engine(symbol: str, mode: str, url: str, *, strategy: str = "ma20_ma50", slippage_bps: float = 0.0) -> dict[str, Any]:
+    """Run the transparent SimpleEngine and compare to persisted Backtrader (read-only)."""
+    start = time.perf_counter()
+    try:
+        bars, data_caveats = se.load_bars_from_questdb(symbol, "2020-01-01", "2025-12-31", adjusted=True, url=url)
+        exchange = se.fetch_exchange(symbol, url=url)
+        out = se.run_simple_backtest(bars, symbol=symbol, strategy=strategy, slippage_bps=slippage_bps, exchange=exchange)
+    except Exception as exc:
+        return {
+            "action": f"simple-engine {symbol}", "domain": "backtest", "status": "error",
+            "error_type": type(exc).__name__, "message": str(exc)[:300],
+            "caveats": ["SimpleEngine could not load/run for this symbol"],
+        }
+    persisted_res = backtest_tool.get_latest_backtest_metrics(symbol, strategy_id=strategy, slippage_bps=slippage_bps, url=url)
+    persisted = persisted_res["rows"][0] if persisted_res.get("status") == "ok" and persisted_res.get("rows") else None
+    elapsed_ms = (time.perf_counter() - start) * 1000.0
+
+    sm = out.metrics
+    keys = [
+        ("final_value", "final_value"), ("total_return_pct", "total_return_pct"),
+        ("annualized_return_pct", "annualized_return_pct"), ("max_drawdown_pct", "max_drawdown_pct"),
+        ("sharpe_ratio", "sharpe_ratio"), ("closed_trades", "closed_trades"), ("win_rate_pct", "win_rate_pct"),
+    ]
+    comparison = [
+        {"metric": label, "simple_engine": sm.get(skey), "backtrader": (persisted.get(skey) if persisted else None)}
+        for label, skey in keys
+    ]
+    answer = (
+        f"**SimpleEngine vs persisted Backtrader — {symbol} {strategy} @ {slippage_bps:g} bps**\n"
+        f"- execution: next-bar-open · target 0.95 · commission 0.001 · fractional shares\n"
+        f"- SimpleEngine final value {sm.get('final_value')}, total return {sm.get('total_return_pct')}%\n"
+        "- differences are expected/explainable: SimpleEngine sizes from close[t] and fills at open[t+1]; "
+        "Sharpe differs by definition; trade counting differs (long round trips vs Backtrader closed trades)."
+    )
+    trace = pt.PipelineTrace(f"simple-engine {symbol}", "backtest")
+    trace.add_agent(pt.router_step("backtest", f"simple-engine {symbol}", "backtest_results"))
+    trace.add_agent(
+        pt.specialist_step(
+            "backtest",
+            decision=f"ran self-implemented engine on {symbol} and read persisted Backtrader metrics",
+            reason="Transparent in-process engine for explainability; live Backtrader is NOT run by the agent runtime.",
+            input_summary=f"simple-engine {symbol} {strategy}",
+            tool_calls=[{"tool": "simple_engine.run_simple_backtest", "args": {"symbol": symbol, "strategy": strategy}, "status": "ok", "row_count": len(out.equity_curve)},
+                        *persisted_res.get("tool_calls", [])],
+            caveats=out.caveats,
+        )
+    )
+    trace.set_final_basis(tables=["daily_prices", "backtest_runs", "backtest_metrics"], query_mode=mode.upper(), caveats=out.caveats)
+    return {
+        "action": f"simple-engine {symbol}",
+        "domain": "backtest",
+        "status": "ok",
+        "answer_markdown": answer,
+        "rows": comparison,
+        "simple_engine_metrics": sm,
+        "backtrader_metrics": persisted,
+        "trace": trace.to_dict(),
+        "caveats": out.caveats + (["no persisted Backtrader row for this exact symbol/strategy/slippage"] if persisted is None else []) + list(data_caveats),
+        "next_action": {
+            "priority": 0, "area": "backtest_engine", "status": "INFO",
+            "title": "SimpleEngine is an explainability baseline, not a production engine",
+            "why": "Long-only, simple bps slippage; use it to explain logic, not to replace persisted Backtrader.",
+            "command": "python scripts\\run_simple_backtest_demo.py --symbol FPT --strategy ma20_ma50 --start-date 2020-01-01 --end-date 2025-12-31 --slippage-bps 0",
+            "ui_path": "/api/demo/backtest/FPT/simple-engine",
+        },
+        "timing": _timed_probe("backtest", symbol, mode, url),
+        "elapsed_ms": round(elapsed_ms, 3),
+    }
+
+
 def _build_trace_examples(url: str) -> dict[str, Any]:
     examples = []
     for query in ("summary FPT", "financial report FPT", "compare backtest strategies FPT", "latest news VNM"):
@@ -561,3 +659,10 @@ async def _read_json(request: Request) -> dict:
         return await request.json()
     except Exception:
         return {}
+
+
+def _redact(text: str) -> str:
+    """Strip any OpenAI-style key fragments from an error message before returning it."""
+    import re
+
+    return re.sub(r"sk-[A-Za-z0-9_*-]{6,}", "sk-<redacted>", text or "")

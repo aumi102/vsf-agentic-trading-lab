@@ -33,7 +33,15 @@ else:
     _IMPORT_ERROR = None
 
 try:  # optional pool
+    import logging
+
     from psycopg_pool import ConnectionPool  # type: ignore
+
+    # QuestDB closes idle PGWire connections; the pool then discards the dead
+    # connection and transparently reconnects. That self-healing logs a noisy
+    # "discarding closed connection" WARNING — harmless, so quiet it for the demo
+    # (errors still surface).
+    logging.getLogger("psycopg.pool").setLevel(logging.ERROR)
 except Exception:  # pragma: no cover - pool is optional
     ConnectionPool = None  # type: ignore[assignment]
 
@@ -102,7 +110,18 @@ def _get_persistent_conn(dsn: str):
 def _get_pool(dsn: str):
     pool = _pool_cache.get(dsn)
     if pool is None:
-        pool = ConnectionPool(dsn, min_size=1, max_size=4, kwargs={"autocommit": True})  # type: ignore[operator]
+        # check=check_connection validates a borrowed connection (and replaces a dead
+        # one) before handing it out, so QuestDB's idle-close does not surface as a
+        # mid-query failure. max_idle proactively recycles idle connections.
+        pool = ConnectionPool(  # type: ignore[operator]
+            dsn,
+            min_size=1,
+            max_size=4,
+            max_idle=30.0,
+            check=ConnectionPool.check_connection,  # type: ignore[attr-defined]
+            kwargs={"autocommit": True},
+            open=True,
+        )
         _pool_cache[dsn] = pool
     return pool
 

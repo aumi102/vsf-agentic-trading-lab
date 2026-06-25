@@ -39,6 +39,7 @@ action). A query-mode selector switches REST ↔ PGWire.
 | `GET /api/demo/fa/{symbol}` | persisted Vietcap FA facts + trace |
 | `GET /api/demo/backtest/{symbol}` | persisted Backtrader strategy comparison + trace |
 | `GET /api/demo/backtest/{symbol}/slippage` | persisted 0/5/10/15 bps scenarios + trace |
+| `GET /api/demo/backtest/{symbol}/simple-engine` | transparent SimpleEngine vs persisted Backtrader + trace |
 | `GET /api/demo/events/{symbol}` | official disclosure records (FPT) / guardrail (VNM) |
 | `POST /api/demo/ask` | free-text query → answer + trace (`{"query": "..."}` or `{"message": "..."}`; `mode: rule|deep`) |
 | `GET /api/demo/trace/examples` | full traces for each domain |
@@ -57,6 +58,21 @@ Add `?mode=pgwire` to a demo GET to route its timing probe through PGWire.
 `GET /market/summary/{symbol}`, `GET /backtest/comparison/{symbol}`,
 `GET /backtest/slippage-scenarios/{symbol}`, `GET /events/latest/{symbol}` — same
 behavior as the stdlib backend, so existing clients keep working.
+
+## Robustness
+
+- **JSON errors, never raw 500 text.** An app-wide exception handler returns
+  `{status, error_type, message, path, caveats, next_action}` (HTTP 500) for any
+  unhandled error, with OpenAI-style key fragments redacted. The browser console
+  renders it as an error card instead of failing to parse.
+- **Domain is derived from the tools that actually ran** (then intent, then keywords),
+  so the trace stays correct even in deep mode where the intent is nested — e.g.
+  `summary CTG` is `market_summary`/`MarketDataAgent`, not `SYSTEM`.
+- **Pandas-free import path.** `trading_agent.backtest` exposes `run_backtest` lazily,
+  so the validation gates / slippage guard / SimpleEngine import under the core
+  (no-pandas) `uv` environment; `/api/demo/validation` no longer 500s there.
+- **PGWire pool self-heals** QuestDB's idle-close (connection check on borrow); the
+  harmless "discarding closed connection" warning is quieted in the demo.
 
 ## Performance notes (Task H)
 

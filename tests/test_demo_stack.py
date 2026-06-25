@@ -144,6 +144,112 @@ def test_next_actions_action_shape_keys():
     assert set(sample) >= {"priority", "area", "status", "title", "why", "command", "ui_path"}
 
 
+# --- trace domain derivation: tool calls take priority ----------------------
+def _deep_result(tool_names, *, status="ok", nested_intent=None):
+    """Mimic the deep/guarded agent envelope: intent nested under data, not top level."""
+    return {
+        "status": status,
+        "data": {"domain": "x", "intent": nested_intent} if nested_intent else {},
+        "tool_calls": [{"tool": t, "status": "ok", "row_count": 1} for t in tool_names],
+        "caveats": [],
+    }
+
+
+def _agents(trace):
+    return [a["agent_name"] for a in trace["agents"]]
+
+
+def test_summary_ctg_deep_is_market_not_system():
+    # The regression: deep-mode 'summary CTG' had nested intent -> wrongly SYSTEM.
+    res = _deep_result(["get_latest_ohlcv", "get_latest_features", "get_latest_signal"], nested_intent="symbol_summary")
+    domain, _ = pt.derive_domain("summary CTG", res)
+    trace = pt.trace_from_rule_result("summary CTG", res, query_mode="REST")
+    assert domain == "market_summary"
+    assert _agents(trace) == ["RouterAgent", "MarketDataAgent"]
+    assert "SystemAgent" not in _agents(trace)
+    assert trace["pipeline_position"]["current_step"] != "validation"
+    assert {"daily_prices", "feature_snapshots", "signals"} <= set(trace["pipeline_position"]["upstream_tables"])
+
+
+@pytest.mark.parametrize(
+    "tools,expected_domain,expected_agent",
+    [
+        (["get_latest_ohlcv", "get_latest_features", "get_latest_signal"], "market_summary", "MarketDataAgent"),
+        (["get_symbol_summary"], "market_summary", "MarketDataAgent"),
+        (["get_latest_financial_report"], "financial_report", "FinancialReportAgent"),
+        (["get_backtest_strategy_comparison"], "backtest", "BacktestAgent"),
+        (["get_symbol_event_news"], "event_news", "EventNewsAgent"),
+    ],
+)
+def test_trace_domain_from_tool_calls(tools, expected_domain, expected_agent):
+    res = _deep_result(tools)
+    trace = pt.trace_from_rule_result("q", res, query_mode="REST")
+    assert pt.domain_from_tool_calls(res["tool_calls"]) == expected_domain
+    assert _agents(trace) == ["RouterAgent", expected_agent]
+
+
+def test_event_news_vnm_rejects_ohlcv_proxy():
+    res = _deep_result(["get_symbol_event_news"], status="unsupported")
+    trace = pt.trace_from_rule_result("latest news VNM", res, query_mode="REST")
+    assert trace["domain"] == "event_news"
+    assert _agents(trace)[1] == "EventNewsAgent"
+    assert "get_latest_ohlcv" in trace["agents"][0]["rejected_tools"]
+
+
+# --- live semantic routing (skipped if QuestDB is unreachable) --------------
+def _questdb_up() -> bool:
+    res = qr.query_rest_timed("SELECT 1")
+    return res.get("status") == "ok"
+
+
+@pytest.mark.parametrize(
+    "query,expected_domain,expected_agent",
+    [
+        ("summary FPT", "market_summary", "MarketDataAgent"),
+        ("summary CTG", "market_summary", "MarketDataAgent"),
+        ("summary VCB", "market_summary", "MarketDataAgent"),
+        ("summary HPG", "market_summary", "MarketDataAgent"),
+        ("financial report FPT", "financial_report", "FinancialReportAgent"),
+        ("compare backtest strategies FPT", "backtest", "BacktestAgent"),
+        ("latest news FPT", "event_news", "EventNewsAgent"),
+        ("latest news VNM", "event_news", "EventNewsAgent"),
+    ],
+)
+def test_live_semantic_routing(query, expected_domain, expected_agent):
+    if not _questdb_up():
+        pytest.skip("QuestDB REST not reachable in this environment")
+    from trading_agent.agent.questdb_agent_service import answer_query
+
+    result = answer_query(query)
+    trace = pt.trace_from_rule_result(query, result, query_mode="REST")
+    assert trace["domain"] == expected_domain, f"{query} -> {trace['domain']}"
+    assert _agents(trace) == ["RouterAgent", expected_agent]
+    assert "SystemAgent" not in _agents(trace)
+    if expected_domain == "event_news":
+        assert "get_latest_ohlcv" in trace["agents"][0]["rejected_tools"]
+
+
+# --- JSON error handler (no raw 500 text reaches the UI) --------------------
+def test_demo_endpoint_returns_json_error_not_raw_500(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    def _boom(_url):
+        raise ModuleNotFoundError("No module named 'pandas'")
+
+    monkeypatch.setattr(fastapi_app, "_build_status", _boom)
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.get("/api/demo/status")
+    assert resp.status_code == 500
+    body = resp.json()  # must be valid JSON, not "Internal Server Error" text
+    assert body["status"] == "error"
+    assert body["error_type"] == "ModuleNotFoundError"
+    assert "pandas" in body["message"]
+    assert body["caveats"]
+
+
 # --- live PGWire (skipped if QuestDB is down) --------------------------------
 def test_pgwire_ping_live_or_skip():
     res = pg.ping()

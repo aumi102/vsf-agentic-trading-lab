@@ -132,6 +132,7 @@ async function ask(){
 }
 
 function render(id, d){
+  if(d && d.status==='error' && d.error_type) return renderError(d);
   if(d.menu) return "<div class='card'>menu</div>";
   if(d.gates) return renderValidation(d);
   if(d.checks) return renderReadiness(d);
@@ -179,6 +180,13 @@ function nextActionCard(a){
 }
 function caveatsCard(c){ if(!c||!c.length) return ""; return `<div class="card"><h2>Caveats</h2>${c.map(x=>`<div class="caveat">${esc(x)}</div>`).join("")}</div>`; }
 
+function renderError(d){
+  return `<div class="card"><h2>Endpoint error ${badge('error')}</h2>
+    <div class="kv"><b>${esc(d.error_type||'Error')}</b>${d.path?` at <code>${esc(d.path)}</code>`:''}</div>
+    <pre>${esc(d.message||'')}</pre>
+    ${caveatsCard(d.caveats)}
+    ${d.next_action?`<div class="next">next: ${esc(typeof d.next_action==='string'?d.next_action:(d.next_action.title||''))}</div>`:''}</div>`;
+}
 function renderEnvelope(d){
   let html = `<div class="card"><h2>Result · ${esc(d.action||d.domain||'')}</h2>
     <div>status ${badge(d.status)} ${d.mode?`· mode <code>${esc(d.mode)}</code>`:''}</div>${timingLine(d)}`;

@@ -245,6 +245,60 @@ def classify_domain(query: str) -> tuple[str, str]:
     return INTENT_TO_DOMAIN.get(intent, "system"), intent
 
 
+# Tools that unambiguously identify a domain. The *actual* tools that ran are the
+# strongest signal — stronger than a keyword guess or a missing/nested intent — so
+# they take priority when deriving the trace domain.
+_DOMAIN_TOOL_SETS: tuple[tuple[str, frozenset[str]], ...] = (
+    ("event_news", frozenset({"get_symbol_event_news"})),
+    ("financial_report", frozenset({
+        "get_latest_financial_report", "get_financial_metrics", "get_financial_report_summary",
+    })),
+    ("backtest", frozenset({
+        "get_latest_backtest_metrics", "get_backtest_strategy_comparison",
+        "get_backtest_slippage_scenarios", "get_backtest_equity_curve",
+    })),
+    ("market_summary", frozenset({
+        "get_symbol_summary", "get_latest_ohlcv", "get_latest_features",
+        "get_latest_signal", "get_ohlcv_window", "get_market_summary",
+    })),
+    ("system", frozenset({"get_questdb_health", "get_table_health", "query_questdb"})),
+)
+
+
+def domain_from_tool_calls(tool_calls: list[dict[str, Any]]) -> str | None:
+    """Return the domain implied by the tools that actually ran, or None."""
+    names = {str(call.get("tool") or "") for call in (tool_calls or [])}
+    for domain, tools in _DOMAIN_TOOL_SETS:
+        if names & tools:
+            return domain
+    return None
+
+
+def _intent_from_result(result: dict[str, Any]) -> str | None:
+    """Find the rule-agent intent at the top level or nested under data (deep mode)."""
+    intent = result.get("intent")
+    if not intent and isinstance(result.get("data"), dict):
+        intent = result["data"].get("intent")
+    return str(intent) if intent else None
+
+
+def derive_domain(query: str, result: dict[str, Any]) -> tuple[str, str]:
+    """Derive (domain, intent) with tool calls taking priority.
+
+    Priority: actual tool calls -> intent (top-level or nested) -> query keywords.
+    This keeps the trace correct for the deep/guarded path, where the intent is
+    nested under ``data`` and a naive top-level lookup would wrongly fall back to
+    ``system``.
+    """
+    intent = _intent_from_result(result) or ""
+    by_tools = domain_from_tool_calls(result.get("tool_calls") or [])
+    if by_tools:
+        return by_tools, (intent or by_tools)
+    if intent:
+        return INTENT_TO_DOMAIN.get(intent, "system"), intent
+    return classify_domain(query)
+
+
 def router_reason(domain: str, query: str, intent: str) -> str:
     """Concise, non-private decision reason for the routing step."""
     q = (query or "").lower()
@@ -320,12 +374,12 @@ def trace_from_rule_result(
 ) -> dict[str, Any]:
     """Build a full trace dict from the rule agent's structured result.
 
-    `result` is the dict returned by questdb_agent_service.answer_query and carries
-    intent, tool_calls, caveats and status. This keeps the trace consistent with
-    what the agent actually did rather than re-deriving it.
+    `result` is the dict returned by questdb_agent_service.answer_query (rule) or
+    answer_query_deepagents (deep). It carries tool_calls, caveats, status and an
+    intent (top-level for rule, nested under ``data`` for deep). Domain is derived
+    tool-call-first so the trace matches what actually ran.
     """
-    intent = str(result.get("intent") or "unsupported")
-    domain = INTENT_TO_DOMAIN.get(intent, "system")
+    domain, intent = derive_domain(query, result)
     status = str(result.get("status") or "")
     tool_calls = list(result.get("tool_calls") or [])
     caveats = list(result.get("caveats") or [])
