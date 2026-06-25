@@ -48,3 +48,5 @@ build/
 !src/trading_agent/tools/__init__.py
 !src/trading_agent/strategies/__init__.py
 !src/trading_agent/backend/__init__.py
+!src/trading_agent/observability/__init__.py
+!src/trading_agent/api/__init__.py

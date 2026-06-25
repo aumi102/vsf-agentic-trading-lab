@@ -22,13 +22,23 @@ class QuestDBError(RuntimeError):
     """Raised when QuestDB returns an error payload or an unexpected response."""
 
 
+def to_ipv4_localhost(url: str) -> str:
+    """Rewrite a literal ``localhost`` host to ``127.0.0.1``.
+
+    On Windows, ``localhost`` resolves to IPv6 ``::1`` first; QuestDB binds IPv4,
+    so each fresh connection pays a ~2s IPv6 connect-timeout fallback. Forcing
+    IPv4 removes that penalty. Real/remote hosts are left untouched.
+    """
+    return (url or "").replace("://localhost:", "://127.0.0.1:").replace("://localhost/", "://127.0.0.1/")
+
+
 def open_client(timeout_seconds: float = 60.0) -> httpx.Client:
     return httpx.Client(timeout=timeout_seconds)
 
 
 def exec_query(client: httpx.Client, base_url: str, sql: str) -> dict[str, Any]:
     """Run SQL via /exec and return the parsed JSON payload (raises on error)."""
-    resp = client.get(f"{base_url.rstrip('/')}/exec", params={"query": sql})
+    resp = client.get(f"{to_ipv4_localhost(base_url).rstrip('/')}/exec", params={"query": sql})
     resp.raise_for_status()
     payload = resp.json()
     if isinstance(payload, dict) and payload.get("error"):

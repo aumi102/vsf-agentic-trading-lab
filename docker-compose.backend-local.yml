@@ -1,3 +1,6 @@
+# Backend-only: run the uv-based FastAPI console in Docker while QuestDB runs on the
+# host (started via run.cmd or the host install). The container reaches the host
+# QuestDB through host.docker.internal. extra_hosts maps it on Linux engines too.
 services:
   vsf-agent-backend:
     build:
@@ -9,5 +12,7 @@ services:
     environment:
       QUESTDB_URL: http://host.docker.internal:9000
       VSF_DEEPAGENTS_MODEL: ${VSF_DEEPAGENTS_MODEL:-gpt-4.1-mini}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8010:8010"

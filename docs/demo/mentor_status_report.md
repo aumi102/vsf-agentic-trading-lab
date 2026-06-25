@@ -1,5 +1,79 @@
 # Mentor status report
 
+## 2026-06-25 update — FastAPI demo console + transparent execution stack
+
+This update addresses the mentor's demo feedback. Nothing below mutated market/FA/
+backtest tables; everything added is read-only or additive.
+
+- **Demo is now FastAPI menu-driven, not command-driven.** Start once and open the
+  browser console:
+
+  ```bat
+  uv run python scripts\run_fastapi_demo_app.py --host 127.0.0.1 --port 8010
+  :: then open http://127.0.0.1:8010/demo
+  ```
+
+  `/demo` replaces the long sequence of terminal commands with buttons: system status,
+  validation gates, mentor readiness, market summary, financial report, backtest
+  comparison, slippage scenarios, official disclosure (FPT), event guardrail (VNM),
+  pipeline-trace examples, query benchmark, and next recommended actions. The old
+  stdlib backend and CLIs still work. All 13 demo GET endpoints + `POST /api/demo/ask`
+  + `POST /v1/chat/completions` verified `200`/valid JSON; `/demo` returns HTML.
+
+- **Every demo action returns an anti-blackbox trace.** It shows the pipeline position
+  (`source → … → agent_answer`), the RouterAgent + the active domain agent
+  (MarketDataAgent / FinancialReportAgent / BacktestAgent / EventNewsAgent / …), each
+  agent's decision and concise reason, the allowed vs rejected tools, the tool calls,
+  caveats, the final basis (source + query_mode + tables), and the next action. No
+  hidden chain-of-thought is exposed. Backtest answers reject live-Backtrader tools;
+  event/news for VNM returns `unavailable` (no OHLCV proxy). See
+  `docs/agent_architecture/anti_blackbox_pipeline_trace.md`.
+
+- **Transparent SimpleEngine added to explain backtest logic.**
+  `src/trading_agent/backtest/simple_engine.py` re-implements MA20/MA50 in explicit
+  Python (next-bar-open fills, 0.95 target, 0.1% commission, bps slippage). On FPT @
+  0 bps it reproduces the persisted Backtrader run almost exactly — final value
+  392.30M vs 392.52M, total return 292.30% vs 292.52%, max drawdown 22.18% vs 22.14%,
+  **trades 12 = 12, win rate 58.33% = 58.33%**. Only Sharpe differs (1.23 vs 0.90),
+  due to differing Sharpe definitions — exactly the black-box detail this makes
+  explicit. See `docs/backtest/simple_engine_explainer.md`. It does not replace the
+  persisted Backtrader results.
+
+- **QuestDB query-speed issue diagnosed.** The demoed ~72ms was client/connection/JSON
+  overhead, not the engine: server-side `execute` for a filtered query is ~0.0–0.3ms.
+  The dominant cost was **`localhost` on Windows** paying a ~2s IPv6 (`::1`) connect
+  fallback per fresh connection. Fix: normalize a literal `localhost` host to
+  `127.0.0.1` (`to_ipv4_localhost`). Measured: localhost p50 2049ms → 127.0.0.1 p50
+  18ms per fresh connection. **Use `127.0.0.1`, not `localhost`, on Windows demo
+  machines.** See `docs/performance/questdb_query_benchmark.md` and
+  `docs/operations/questdb_connection_modes.md`.
+
+- **PGWire via psycopg is available and benchmarked.** A direct PGWire path
+  (`questdb_pgwire_client`, default `127.0.0.1:8812`, admin/quest/qdb) sits alongside
+  REST, selectable via `QUESTDB_QUERY_MODE=rest|pgwire`. Warm 50-repeat benchmark:
+  REST p50 ≈ 1.38ms, PGWire p50 ≈ 1.08ms (PGWire ~22% faster for repeated reads).
+  REST stays default and keeps `/imp` for CSV ingestion.
+
+- **uv setup added (preferred); conda remains fallback.** `pyproject.toml`, `uv.lock`
+  (100 packages, pinned), `.python-version`. Verified: `uv sync` then `uv run python`
+  imports the FastAPI app (27 routes). Core group = fastapi/uvicorn/psycopg/httpx;
+  `research`/`deepagents`/`dev` extras are opt-in. See `docs/operations/uv_setup.md`.
+
+- **Docker now uses uv.** Lean 333MB image (`python:3.11-slim` + pinned uv binary,
+  installs from the lockfile, serves the FastAPI console). `docker compose config` is
+  clean (no `sk-` keys), `docker build` passes, and
+  `docker compose -f docker-compose.backend-local.yml up --build -d` serves `/health`,
+  `/demo`, `/api/demo/status` and `/api/demo/backtest/FPT` against host QuestDB. See
+  `docs/operations/docker_uv_setup.md`.
+
+- **Remaining caveats (unchanged, surfaced honestly in every response):** adjusted OHLC
+  source still unverified/raw-equivalent; FA metric mapping partial; event/news scope
+  narrow (FPT only; VNM/HPG return unavailable); slippage is a simple bps model, not
+  market-impact; SimpleEngine is an explainability baseline, not yet a production
+  engine. Fast next-action probes still report `WARN` across these four areas.
+
+---
+
 ## Completed
 
 - QuestDB market layer is loaded:

@@ -1,9 +1,12 @@
+# Full stack: QuestDB + the uv-based FastAPI demo console.
+# The backend serves the read-only console at http://localhost:8010/demo and
+# connects to the QuestDB service over the compose network (http://questdb:9000).
 services:
   questdb:
     image: questdb/questdb:latest
     ports:
-      - "9000:9000"
-      - "8812:8812"
+      - "9000:9000"   # REST / Web Console
+      - "8812:8812"   # PGWire
     volumes:
       - questdb_data:/var/lib/questdb
 
