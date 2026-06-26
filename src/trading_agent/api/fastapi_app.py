@@ -60,6 +60,8 @@ MENU = [
      "description": "Latest OHLCV + features + deterministic signal."},
     {"id": "fa", "label": "Financial report FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/fa/FPT",
      "description": "Persisted Vietcap FA facts (read-time metric names)."},
+    {"id": "fa_coverage", "label": "FA coverage status", "group": "Diagnostics", "method": "GET", "path": "/api/demo/fa/coverage",
+     "description": "Read-only Vietcap FA coverage: per-table, important symbols, latest run."},
     {"id": "backtest", "label": "Backtest comparison FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/backtest/FPT",
      "description": "Persisted Backtrader strategy comparison (no live run)."},
     {"id": "slippage", "label": "Slippage scenarios FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/backtest/FPT/slippage",
@@ -247,6 +249,10 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
     async def demo_market(symbol: str, request: Request) -> dict:
         mode = _resolve_mode(request)
         return await asyncio.to_thread(_envelope_from_query, f"summary {symbol.upper()}", mode=mode, url=url)
+
+    @app.get("/api/demo/fa/coverage")
+    async def demo_fa_coverage() -> dict:
+        return await asyncio.to_thread(_build_fa_coverage, url)
 
     @app.get("/api/demo/fa/{symbol}")
     async def demo_fa(symbol: str, request: Request) -> dict:
@@ -659,6 +665,81 @@ def _build_variants(symbol: str, mode: str, url: str) -> dict[str, Any]:
         "trace": trace.to_dict(),
         "caveats": lab["caveats"],
         "elapsed_ms": round(elapsed_ms, 3),
+    }
+
+
+def _build_fa_coverage(url: str) -> dict[str, Any]:
+    """Return the same summary structure as scripts/questdb_fa_coverage.py.
+
+    Calls the coverage script in-process via its CLI entry point to keep a
+    single source of truth. We re-invoke the script body but capture the JSON
+    output rather than printing it. Errors degrade to a structured error dict.
+    """
+    import contextlib as _cl
+    import importlib.util as _ilu
+    import io as _io
+    import json as _json
+    import sys as _sys
+    from datetime import datetime as _dt, timezone as _tz
+    from pathlib import Path as _P
+
+    spec = _ilu.spec_from_file_location(
+        "_questdb_fa_coverage_runtime",
+        str(_P(__file__).resolve().parents[3] / "scripts" / "questdb_fa_coverage.py"),
+    )
+    if spec is None or spec.loader is None:
+        return {
+            "status": "error",
+            "action": "fa coverage",
+            "domain": "fa",
+            "error_type": "ImportError",
+            "message": "could not load scripts/questdb_fa_coverage.py",
+            "caveats": ["fa coverage script not available in the demo runtime"],
+            "generated_at": _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+    mod = _ilu.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+
+    # The coverage script reads CLI args via argparse from sys.argv; force --json
+    # so the captured stdout is a parseable JSON object.
+    saved_argv = _sys.argv
+    _sys.argv = ["questdb_fa_coverage.py", "--json"]
+    buf = _io.StringIO()
+    with _cl.redirect_stdout(buf):
+        try:
+            summary = mod.main()
+        except SystemExit:
+            summary = None
+    _sys.argv = saved_argv
+    raw = buf.getvalue().strip()
+    if not isinstance(summary, dict):
+        try:
+            summary = _json.loads(raw) if raw.startswith("{") else {}
+        except Exception as exc:
+            summary = {
+                "status": "error",
+                "error_type": type(exc).__name__,
+                "message": str(exc)[:300],
+                "generated_at": _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+
+    if not summary:
+        summary = {
+            "status": "error",
+            "message": "coverage script returned no summary",
+            "generated_at": _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+
+    return {
+        "action": "fa coverage",
+        "domain": "fa",
+        "status": summary.get("status", "unknown"),
+        "summary": summary,
+        "caveats": [
+            "Read-only; the coverage script never writes to QuestDB.",
+            "FA ingest remains run-scoped; FA tools use the latest complete run until coverage is full.",
+        ],
+        "next_action": summary.get("next_action", ""),
     }
 
 

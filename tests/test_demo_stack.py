@@ -386,6 +386,55 @@ def test_demo_simple_engine_baseline_remains_close_to_expected(monkeypatch):
     assert 0.0 <= baseline["win_rate_pct"] <= 100.0
 
 
+# --- FA coverage endpoint + VHM behavior -------------------------------------
+def test_demo_fa_coverage_endpoint_returns_summary():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/api/demo/fa/coverage")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] in ("PASS", "WARN", "FAIL")
+    assert "summary" in body
+    s = body["summary"]
+    # Required structure: per-table, important symbols, latest run id.
+    assert "per_table" in s
+    for table in ("fa_balance_sheet", "fa_income_statement", "fa_cash_flow", "fa_notes"):
+        assert table in s["per_table"]
+        assert "present" in s["per_table"][table]
+        assert "row_count" in s["per_table"][table]
+        assert "symbol_count" in s["per_table"][table]
+    for sym in ("FPT", "VHM", "VCB", "CTG", "HPG", "VNM"):
+        assert sym in s["important_symbols"]
+        assert "covered_in_fa_balance_sheet" in s["important_symbols"][sym]
+
+
+def test_demo_fa_endpoint_vhm_uses_fa_or_returns_unavailable():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/api/demo/fa/VHM")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # VHM is now covered in the smoke run; the FA path must either return real
+    # data (status=ok) or honestly say it's unavailable. Either way, the
+    # domain must be financial_report and the OHLCV tool must be rejected.
+    assert body.get("trace", {}).get("domain") == "financial_report"
+    rejected = [
+        t.get("rejected_tools", [])
+        for t in body.get("trace", {}).get("agents", [])
+        if t.get("rejected_tools")
+    ]
+    flat = [name for sub in rejected for name in sub]
+    assert "get_latest_ohlcv" in flat, "FA path must reject OHLCV tools"
+
+
 # --- live PGWire (skipped if QuestDB is down) --------------------------------
 def test_pgwire_ping_live_or_skip():
     res = pg.ping()

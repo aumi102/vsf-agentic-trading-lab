@@ -37,6 +37,7 @@ action). A query-mode selector switches REST ↔ PGWire.
 | `GET /api/demo/readiness` | in-process routing readiness for the demo queries |
 | `GET /api/demo/market/{symbol}` | latest OHLCV + features + deterministic signal + trace |
 | `GET /api/demo/fa/{symbol}` | persisted Vietcap FA facts + trace |
+| `GET /api/demo/fa/coverage` | read-only Vietcap FA coverage: per-table counts, important-symbol status, latest run id, top missing symbols, PASS/WARN/FAIL |
 | `GET /api/demo/backtest/{symbol}` | persisted Backtrader strategy comparison + trace |
 | `GET /api/demo/backtest/{symbol}/slippage` | persisted 0/5/10/15 bps scenarios + trace |
 | `GET /api/demo/backtest/{symbol}/simple-engine` | transparent SimpleEngine vs persisted Backtrader + trace |

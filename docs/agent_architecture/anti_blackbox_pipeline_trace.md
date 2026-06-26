@@ -99,3 +99,19 @@ No private/hidden reasoning is exposed.
 - The `/demo` console renders the pipeline path (active step highlighted), each agent
   with its decision/reason, allowed/rejected tool chips, tool calls, the final basis
   (source + query_mode + tables), caveats, and the next recommended action.
+
+## FA query path honesty (2026-06-26)
+
+- `financial report VHM` / `FPT` / `VCB` / `CTG` return:
+  - `status=ok` with real FA data when the symbol has rows in the FA fact tables
+    for the latest complete run.
+  - `status=unavailable` with the explicit message *"Financial report data is
+    unavailable for SYMBOL. FA tables must be ingested before this question can
+    be answered."* when the symbol is not yet covered.
+  - The trace shows `domain=financial_report`, the active agent is the
+    `FinancialReportAgent`, and the rejected tools include `get_latest_ohlcv`
+    and `get_symbol_summary`. The FA path never proxies OHLCV.
+- The diagnostic endpoint `GET /api/demo/fa/coverage` reports the same
+  coverage summary as `scripts/questdb_fa_coverage.py`: per-table counts,
+  important-symbol status, latest run id, top missing symbols, and a
+  PASS/WARN/FAIL verdict.

@@ -1,5 +1,49 @@
 # Mentor status report
 
+## 2026-06-26 update — Full-universe Vietcap FA coverage workflow
+
+A resumable, low-concurrency full-universe FA ingester
+(`scripts/batch_ingest_vietcap_fa_full_universe.py`) is now implemented and
+ran for its first pass. Reuses the verified single-symbol helpers in
+`scripts/ingest_vietcap_financial_reports_to_questdb.py`; writes only to the
+existing FA tables; never drops/recreates market/OHLCV/backtest tables.
+
+- Smoke (`FA_SMOKE_VHM_FPT_20260626`): VHM and FPT, 0 failures, status
+  `complete`. VHM went from 0 → 13,571 balance-sheet rows.
+- First full pass (`FA_FULL_UNIVERSE_20260626`): 25 symbols, 0 failures,
+  status `in_progress`, 1,531 symbols remaining. Resumable.
+- Coverage endpoint: `GET /api/demo/fa/coverage` returns the same structure as
+  `scripts/questdb_fa_coverage.py` (PASS/WARN/FAIL, per-table counts, important
+  symbols, latest run id, top missing symbols).
+- FA quality gate: `scripts/run_fa_quality_gates.py` (WARN expected while
+  coverage is partial; mapping-partial is WARN, not FAIL).
+- FA feature layer: `scripts/inspect_fa_feature_candidates.py` reports
+  revenue, net profit, equity, operating cash flow as READY (4/5). A safe
+  builder `scripts/build_fa_feature_snapshots.py` is provided; it never
+  invents metric names and only writes features whose source codes are
+  consensus-mapped.
+- Overnight runners: `scripts/run_overnight_vietcap_fa_ingest.{bat,ps1}` run
+  with `--only-missing --resume`, sleep 2s + jitter 1s, stop on rate-limit,
+  no secrets.
+
+Important-symbol status (post smoke + first pass):
+
+- FPT, VCB, VNM, VHM: covered.
+- CTG, HPG: not yet covered; will be covered by the next overnight pass.
+
+Exact resume command:
+
+```bat
+python scripts\batch_ingest_vietcap_fa_full_universe.py --run-id FA_FULL_UNIVERSE_20260626 --only-missing --resume --sleep-seconds 2 --jitter-seconds 1 --stop-on-rate-limit --max-consecutive-failures 10 --write-summary-json data\cache\fa_full_universe_20260626_summary.json
+```
+
+Caveats (unchanged, surfaced honestly in every response):
+
+- Adjusted OHLC source still unverified/raw-equivalent.
+- FA metric mapping still partial.
+- Slippage is a simple bps model, not market-impact.
+- "Complete" only flips to true once every universe symbol has been attempted.
+
 ## 2026-06-26 update — SimpleEngine logic lab (deterministic, transparent)
 
 Adds a third layer to the existing SimpleEngine: a fully explicit `engine_logic`
