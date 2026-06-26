@@ -40,6 +40,8 @@ action). A query-mode selector switches REST ↔ PGWire.
 | `GET /api/demo/backtest/{symbol}` | persisted Backtrader strategy comparison + trace |
 | `GET /api/demo/backtest/{symbol}/slippage` | persisted 0/5/10/15 bps scenarios + trace |
 | `GET /api/demo/backtest/{symbol}/simple-engine` | transparent SimpleEngine vs persisted Backtrader + trace |
+| `GET /api/demo/backtest/{symbol}/simple-engine/logic` | exact, mentor-readable logic / assumptions block (data source, signal, execution, sizing, cost, metrics, divergences vs Backtrader) |
+| `GET /api/demo/backtest/{symbol}/simple-engine/variants` | deterministic strategy logic lab: 9 variants (raw vs adjusted, next-open vs same-close, 95% vs 100%, 0/5/10/15 bps slippage, volume filter, RSI(14) mean-reversion) with per-row narrative |
 | `GET /api/demo/events/{symbol}` | official disclosure records (FPT) / guardrail (VNM) |
 | `POST /api/demo/ask` | free-text query → answer + trace (`{"query": "..."}` or `{"message": "..."}`; `mode: rule|deep`) |
 | `GET /api/demo/trace/examples` | full traces for each domain |
@@ -84,7 +86,10 @@ behavior as the stdlib backend, so existing clients keep working.
 
 ## Verified endpoints
 
-All 13 GET endpoints + `POST /api/demo/ask` + `POST /v1/chat/completions` return
+All GET endpoints (15) + `POST /api/demo/ask` + `POST /v1/chat/completions` return
 `200` with valid JSON; `/demo` returns HTML. The event/news VNM route returns
 `status=unsupported` (no OHLCV proxy), and the backtest route's trace shows
-`RouterAgent → BacktestAgent` with live-Backtrader tools rejected.
+`RouterAgent → BacktestAgent` with live-Backtrader tools rejected. The
+`/simple-engine/logic` endpoint returns the explicit assumption dict;
+`/simple-engine/variants` returns the variant lab with the baseline row
+highlighted and per-row narratives.

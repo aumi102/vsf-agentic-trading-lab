@@ -66,6 +66,10 @@ MENU = [
      "description": "Persisted 0/5/10/15 bps slippage scenarios."},
     {"id": "simple_engine", "label": "SimpleEngine vs Backtrader FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/backtest/FPT/simple-engine",
      "description": "Transparent self-implemented engine vs persisted Backtrader."},
+    {"id": "simple_engine_logic", "label": "SimpleEngine logic FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/backtest/FPT/simple-engine/logic",
+     "description": "Exact signal/execution/sizing/cost logic, made explicit."},
+    {"id": "simple_engine_variants", "label": "Strategy logic lab FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/backtest/FPT/simple-engine/variants",
+     "description": "Deterministic ablations: price input, execution, capital, slippage, volume, RSI."},
     {"id": "events_fpt", "label": "Latest disclosure FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/events/FPT",
      "description": "Official disclosure records for FPT."},
     {"id": "events_vnm", "label": "Event guardrail VNM", "group": "Guardrails", "method": "GET", "path": "/api/demo/events/VNM",
@@ -253,6 +257,15 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
     async def demo_slippage(symbol: str, request: Request) -> dict:
         mode = _resolve_mode(request)
         return await asyncio.to_thread(_build_slippage, symbol.upper(), mode, url)
+
+    @app.get("/api/demo/backtest/{symbol}/simple-engine/logic")
+    async def demo_simple_engine_logic(symbol: str) -> dict:
+        return await asyncio.to_thread(_build_simple_engine_logic, symbol.upper(), url)
+
+    @app.get("/api/demo/backtest/{symbol}/simple-engine/variants")
+    async def demo_simple_engine_variants(symbol: str, request: Request) -> dict:
+        mode = _resolve_mode(request)
+        return await asyncio.to_thread(_build_variants, symbol.upper(), mode, url)
 
     @app.get("/api/demo/backtest/{symbol}/simple-engine")
     async def demo_simple_engine(symbol: str, request: Request) -> dict:
@@ -555,6 +568,7 @@ def _build_simple_engine(symbol: str, mode: str, url: str, *, strategy: str = "m
         "status": "ok",
         "answer_markdown": answer,
         "rows": comparison,
+        "logic": se.engine_logic(out),
         "simple_engine_metrics": sm,
         "backtrader_metrics": persisted,
         "trace": trace.to_dict(),
@@ -567,6 +581,83 @@ def _build_simple_engine(symbol: str, mode: str, url: str, *, strategy: str = "m
             "ui_path": "/api/demo/backtest/FPT/simple-engine",
         },
         "timing": _timed_probe("backtest", symbol, mode, url),
+        "elapsed_ms": round(elapsed_ms, 3),
+    }
+
+
+def _build_simple_engine_logic(symbol: str, url: str, *, strategy: str = "ma20_ma50") -> dict[str, Any]:
+    """Return the explicit SimpleEngine logic/assumptions for a symbol (read-only)."""
+    try:
+        bars, _ = se.load_bars_from_questdb(symbol, "2020-01-01", "2025-12-31", adjusted=True, url=url)
+        out = se.run_simple_backtest(bars, symbol=symbol, strategy=strategy, slippage_bps=0.0, exchange=se.fetch_exchange(symbol, url=url))
+    except Exception as exc:
+        return {"action": f"simple-engine logic {symbol}", "domain": "backtest", "status": "error",
+                "error_type": type(exc).__name__, "message": str(exc)[:300],
+                "caveats": ["SimpleEngine logic could not be computed for this symbol"]}
+    return {
+        "action": f"simple-engine logic {symbol}",
+        "domain": "backtest",
+        "status": "ok",
+        "symbol": symbol,
+        "strategy": strategy,
+        "logic": se.engine_logic(out),
+        "params": out.params,
+        "caveats": out.caveats,
+        "next_action": {
+            "priority": 0, "area": "backtest_engine", "status": "INFO",
+            "title": "Compare against persisted Backtrader / run the variant lab",
+            "why": "The logic above is the exact, transparent model used by the SimpleEngine.",
+            "command": "python scripts\\run_simple_backtest_demo.py --symbol FPT --strategy ma20_ma50 --start-date 2020-01-01 --end-date 2025-12-31 --slippage-bps 0",
+            "ui_path": "/api/demo/backtest/FPT/simple-engine/variants",
+        },
+    }
+
+
+def _build_variants(symbol: str, mode: str, url: str) -> dict[str, Any]:
+    """Run the deterministic SimpleEngine variant/sensitivity lab (read-only)."""
+    start = time.perf_counter()
+    try:
+        lab = se.run_variants(symbol, url=url)
+    except Exception as exc:
+        return {"action": f"simple-engine variants {symbol}", "domain": "backtest", "status": "error",
+                "error_type": type(exc).__name__, "message": str(exc)[:300],
+                "caveats": ["SimpleEngine variant lab could not run for this symbol"]}
+    elapsed_ms = (time.perf_counter() - start) * 1000.0
+    # Flatten to UI rows: one row per variant with its key metrics.
+    rows = []
+    for v in lab["variants"]:
+        m = v.get("metrics", {})
+        rows.append({
+            "variant": v["id"], "changed": v["changed"],
+            "total_return_pct": m.get("total_return_pct"), "annualized_return_pct": m.get("annualized_return_pct"),
+            "max_drawdown_pct": m.get("max_drawdown_pct"), "sharpe": m.get("sharpe_ratio"),
+            "trades": m.get("closed_trades"), "win_rate_pct": m.get("win_rate_pct"),
+            "narrative": v.get("narrative") or v.get("why") or v.get("error"),
+        })
+    trace = pt.PipelineTrace(f"simple-engine variants {symbol}", "backtest")
+    trace.add_agent(pt.router_step("backtest", f"simple-engine variants {symbol}", "backtest_results"))
+    trace.add_agent(
+        pt.specialist_step(
+            "backtest",
+            decision=f"ran {len(rows)} deterministic SimpleEngine variants on {symbol}",
+            reason="Transparent in-process sensitivity lab; no live Backtrader is run by the agent runtime.",
+            input_summary=f"variants {symbol}",
+            tool_calls=[{"tool": "simple_engine.run_variants", "args": {"symbol": symbol}, "status": "ok", "row_count": len(rows)}],
+            caveats=lab["caveats"],
+        )
+    )
+    trace.set_final_basis(tables=["daily_prices"], query_mode=mode.upper(), caveats=lab["caveats"])
+    return {
+        "action": f"simple-engine variants {symbol}",
+        "domain": "backtest",
+        "status": "ok",
+        "answer_markdown": f"**SimpleEngine variant lab — {symbol}** ({lab['start_date']}..{lab['end_date']}). "
+                           f"Baseline = `{lab['baseline_id']}`. Each row changes one assumption/feature and shows the impact.",
+        "rows": rows,
+        "baseline_id": lab["baseline_id"],
+        "variants": lab["variants"],
+        "trace": trace.to_dict(),
+        "caveats": lab["caveats"],
         "elapsed_ms": round(elapsed_ms, 3),
     }
 

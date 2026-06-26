@@ -140,7 +140,30 @@ function render(id, d){
   if(d.examples) return renderTraceExamples(d);
   if(d.next_actions && !d.trace) return renderNextActions(d);
   if(d.questdb_health) return renderStatus(d);
-  return renderEnvelope(d); // market/fa/backtest/slippage/events/ask
+  if(d.variants) return renderVariants(d);
+  return renderEnvelope(d); // market/fa/backtest/slippage/events/ask/simple-engine(+logic)
+}
+function renderLogic(L){
+  if(!L) return "";
+  const order = ["data_source","date_range","price_input","signal_formula","execution_timing","position_sizing",
+    "commission","slippage","fractional_shares","direction","cash_hold_behavior","equity_update","metrics"];
+  let rows = order.filter(k=>L[k]!=null).map(k=>`<tr><th>${esc(k.replace(/_/g,' '))}</th><td>${esc(L[k])}</td></tr>`).join("");
+  let diffs = (L.why_differs_from_backtrader||[]).map(x=>`<li>${esc(x)}</li>`).join("");
+  return `<div class="card"><h2>SimpleEngine logic (exact)</h2><table>${rows}</table>
+    ${diffs?`<div class="kv" style="margin-top:8px"><b>why it differs vs Backtrader</b><ul>${diffs}</ul></div>`:''}</div>`;
+}
+function renderVariants(d){
+  let html = `<div class="card"><h2>Strategy logic lab · ${esc(d.action||'')}</h2>${d.answer_markdown?`<div class="md">${mdToHtml(d.answer_markdown)}</div>`:''}
+    <table><tr><th>variant</th><th>changed</th><th>total %</th><th>ann %</th><th>max dd %</th><th>sharpe</th><th>trades</th><th>win %</th></tr>`;
+  (d.rows||[]).forEach(r=>{ const base = r.variant===d.baseline_id;
+    html += `<tr${base?' style="background:rgba(77,163,255,.10)"':''}><td>${esc(r.variant)}</td><td>${esc(r.changed)}</td>
+      <td class="num">${fmt(r.total_return_pct)}</td><td class="num">${fmt(r.annualized_return_pct)}</td>
+      <td class="num">${fmt(r.max_drawdown_pct)}</td><td class="num">${fmt(r.sharpe)}</td>
+      <td class="num">${fmt(r.trades)}</td><td class="num">${fmt(r.win_rate_pct)}</td></tr>`; });
+  html += `</table></div><div class="card"><h2>Why each variant differs</h2>`;
+  (d.rows||[]).forEach(r=>{ if(r.variant!==d.baseline_id) html += `<div class="kv"><b>${esc(r.variant)}</b>: ${esc(r.narrative||'')}</div>`; });
+  html += `</div>` + renderTrace(d.trace) + caveatsCard(d.caveats);
+  return html;
 }
 
 function renderTrace(t){
@@ -193,6 +216,7 @@ function renderEnvelope(d){
   if(d.answer_markdown) html += `<div class="md" style="margin-top:10px">${mdToHtml(d.answer_markdown)}</div>`;
   if(d.rows && Array.isArray(d.rows) && d.rows.length) html += table(d.rows);
   html += `</div>`;
+  if(d.logic) html += renderLogic(d.logic);
   html += renderTrace(d.trace);
   html += nextActionCard(d.next_action);
   html += caveatsCard(d.caveats);

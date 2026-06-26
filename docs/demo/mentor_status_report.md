@@ -1,5 +1,23 @@
 # Mentor status report
 
+## 2026-06-26 update — SimpleEngine logic lab (deterministic, transparent)
+
+Adds a third layer to the existing SimpleEngine: a fully explicit `engine_logic`
+dict (data source, price input, signal, execution, sizing, commission, slippage,
+metrics, divergences vs Backtrader) and a deterministic variant / sensitivity
+lab `run_variants(...)` with nine rows (raw vs adjusted, next-open vs same-close,
+95% vs 100% capital, 0/5/10/15 bps slippage, volume filter, RSI(14) mean
+reversion). Exposed in the FastAPI demo console at:
+
+- `GET /api/demo/backtest/{symbol}/simple-engine/logic` — explicit assumptions block.
+- `GET /api/demo/backtest/{symbol}/simple-engine/variants` — variant lab with
+  per-row narrative.
+- The main `/simple-engine` response also embeds the same `logic` block.
+
+The lab is a sensitivity / ablation tool, not a strategy search. No live
+Backtrader is executed in the agent runtime. FA full-universe ingestion remains
+a planned follow-up and is intentionally not part of this commit.
+
 ## 2026-06-25 update — FastAPI demo console + transparent execution stack
 
 This update addresses the mentor's demo feedback. Nothing below mutated market/FA/

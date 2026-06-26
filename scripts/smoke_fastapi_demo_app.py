@@ -70,14 +70,49 @@ def main() -> int:
         "/health", "/api/demo/menu", "/api/demo/status", "/api/demo/validation",
         "/api/demo/readiness", "/api/demo/market/FPT", "/api/demo/fa/FPT",
         "/api/demo/backtest/FPT", "/api/demo/backtest/FPT/slippage",
-        "/api/demo/backtest/FPT/simple-engine", "/api/demo/events/FPT",
-        "/api/demo/events/VNM", "/api/demo/trace/examples", "/api/demo/next-actions",
+        "/api/demo/backtest/FPT/simple-engine",
+        "/api/demo/backtest/FPT/simple-engine/logic",
+        "/api/demo/backtest/FPT/simple-engine/variants",
+        "/api/demo/events/FPT", "/api/demo/events/VNM",
+        "/api/demo/trace/examples", "/api/demo/next-actions",
         "/api/demo/benchmark/questdb",
     ]
     for path in get_endpoints:
         code, body = _get(base, path)
         data = _json(body)
         record(f"GET {path} non-500 JSON", code not in (0, 500) and data is not None, f"status={code}")
+
+    # 2a) SimpleEngine logic endpoint exposes the explicit assumptions block.
+    code, body = _get(base, "/api/demo/backtest/FPT/simple-engine/logic")
+    logic = (_json(body) or {}).get("logic") or {}
+    required_logic_keys = [
+        "data_source", "price_input", "signal_formula", "execution_timing",
+        "position_sizing", "commission", "slippage", "metrics",
+        "why_differs_from_backtrader",
+    ]
+    missing = [k for k in required_logic_keys if k not in logic]
+    record("/logic has required assumption keys", not missing and code == 200,
+           f"status={code} missing={missing} signal='{(logic.get('signal_formula') or '')[:40]}'")
+
+    # 2b) SimpleEngine variant lab returns multiple variants + a baseline row.
+    code, body = _get(base, "/api/demo/backtest/FPT/simple-engine/variants")
+    data = _json(body) or {}
+    rows = data.get("rows") or []
+    baseline_id = data.get("baseline_id")
+    baseline_row = next((r for r in rows if r.get("variant") == baseline_id), None) if baseline_id else None
+    record("/variants returns >=7 rows", code == 200 and len(rows) >= 7, f"status={code} rows={len(rows)}")
+    record("/variants has baseline row", baseline_row is not None,
+           f"baseline_id={baseline_id} found={baseline_row is not None}")
+    non_baseline_narratives = [r.get("narrative") for r in rows if r.get("variant") != baseline_id]
+    record("/variants non-baseline rows carry narratives",
+           all(n for n in non_baseline_narratives) and len(non_baseline_narratives) >= 6,
+           f"narratives={sum(1 for n in non_baseline_narratives if n)}/{len(non_baseline_narratives)}")
+
+    # 2c) SimpleEngine main endpoint now embeds the same logic block.
+    code, body = _get(base, "/api/demo/backtest/FPT/simple-engine")
+    se = _json(body) or {}
+    record("/simple-engine embeds logic block", code == 200 and "logic" in se and isinstance(se["logic"], dict),
+           f"status={code} has_logic={('logic' in se)}")
 
     # 3) /api/demo/validation no longer crashes (must be 200 + has gates)
     code, body = _get(base, "/api/demo/validation")

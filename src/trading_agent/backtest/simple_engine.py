@@ -158,7 +158,48 @@ def buy_hold_target_weights(closes: list[float], target_percent: float) -> list[
     return [target_percent] * len(closes)
 
 
-STRATEGIES = {"ma20_ma50", "buy_hold"}
+def rsi_sma(closes: list[float], period: int) -> list[float | None]:
+    """Wilder-style RSI using simple moving averages of up/down moves (Backtrader RSI_SMA)."""
+    ups = [0.0] * len(closes)
+    downs = [0.0] * len(closes)
+    for i in range(1, len(closes)):
+        change = closes[i] - closes[i - 1]
+        ups[i] = max(change, 0.0)
+        downs[i] = max(-change, 0.0)
+    avg_up = _sma(ups, period)
+    avg_down = _sma(downs, period)
+    out: list[float | None] = [None] * len(closes)
+    for i in range(len(closes)):
+        au, ad = avg_up[i], avg_down[i]
+        if au is None or ad is None:
+            continue
+        if ad == 0:
+            out[i] = 100.0
+        else:
+            rs = au / ad
+            out[i] = 100.0 - 100.0 / (1.0 + rs)
+    return out
+
+
+def rsi_mean_reversion_target_weights(
+    closes: list[float], period: int, buy_below: float, exit_above: float, target_percent: float
+) -> list[float]:
+    """Long when RSI drops below buy_below; exit when RSI rises above exit_above."""
+    rsi = rsi_sma(closes, period)
+    weights = [0.0] * len(closes)
+    target = 0.0
+    for i in range(len(closes)):
+        value = rsi[i]
+        if value is not None:
+            if target == 0.0 and value < buy_below:
+                target = target_percent
+            elif target > 0.0 and value > exit_above:
+                target = 0.0
+        weights[i] = target
+    return weights
+
+
+STRATEGIES = {"ma20_ma50", "buy_hold", "rsi_mean_reversion"}
 
 
 def _target_weights(strategy: str, closes: list[float], fast: int, slow: int, target_percent: float) -> list[float]:
@@ -166,7 +207,19 @@ def _target_weights(strategy: str, closes: list[float], fast: int, slow: int, ta
         return ma_cross_target_weights(closes, fast, slow, target_percent)
     if strategy == "buy_hold":
         return buy_hold_target_weights(closes, target_percent)
+    if strategy == "rsi_mean_reversion":
+        return rsi_mean_reversion_target_weights(closes, period=14, buy_below=30.0, exit_above=55.0, target_percent=target_percent)
     raise ValueError(f"unknown strategy: {strategy!r} (supported: {sorted(STRATEGIES)})")
+
+
+def _apply_volume_filter(weights: list[float], volumes: list[float], window: int = 20) -> list[float]:
+    """Zero out long bars whose volume is not above its rolling average (confirmation)."""
+    vol_ma = _sma(volumes, window)
+    out = list(weights)
+    for i in range(len(out)):
+        if out[i] > 0.0 and (vol_ma[i] is None or volumes[i] <= vol_ma[i]):
+            out[i] = 0.0
+    return out
 
 
 # --- engine -----------------------------------------------------------------
@@ -181,10 +234,15 @@ def run_simple_backtest(
     commission: float = DEFAULT_COMMISSION,
     slippage_bps: float = 0.0,
     target_percent: float = DEFAULT_TARGET_PERCENT,
+    execution: str = "next_open",
+    volume_filter: bool = False,
+    price_input: str = "adjusted",
     exchange: str | None = None,
 ) -> BacktestOutput:
     if strategy not in STRATEGIES:
         raise ValueError(f"unknown strategy: {strategy!r} (supported: {sorted(STRATEGIES)})")
+    if execution not in {"next_open", "same_close"}:
+        raise ValueError("execution must be 'next_open' or 'same_close'")
     if not 0.0 < target_percent <= 1.0:
         raise ValueError("target_percent must be in (0, 1]")
     if len(bars) < slow + 2:
@@ -192,6 +250,8 @@ def run_simple_backtest(
 
     closes = [b.close for b in bars]
     weights = _target_weights(strategy, closes, fast, slow, target_percent)
+    if volume_filter:
+        weights = _apply_volume_filter(weights, [b.volume for b in bars])
 
     guard = evaluate_price_band_guard(exchange, slippage_bps)
     slip = slippage_bps / 10_000.0
@@ -201,45 +261,51 @@ def run_simple_backtest(
 
     equity_curve: list[dict[str, Any]] = []
     fills: list[Fill] = []
-    # Track open position for round-trip trade reconstruction.
-    open_entry: dict[str, Any] | None = None
+    open_entry: dict[str, Any] | None = None  # track open position for round-trip trades
     trades: list[RoundTripTrade] = []
     equity_values: list[float] = []
 
+    def _do_fill(bar: Bar, price: float, target: float, index: int) -> None:
+        """Move toward `target` weight at `price`; update cash/shares, fills, trades."""
+        nonlocal cash, shares, open_entry
+        if price <= 0:
+            return
+        target_value = target * (cash + shares * price)
+        delta = target_value / price - shares
+        if abs(delta) <= 1e-12:
+            return
+        fill_price = price * (1.0 + slip) if delta > 0 else price * (1.0 - slip)
+        side = "buy" if delta > 0 else "sell"
+        comm = abs(delta) * fill_price * commission
+        cash -= delta * fill_price + comm
+        shares += delta
+        fills.append(Fill(bar.date, side, abs(delta), fill_price, comm, cash, shares))
+        open_entry, closed = _update_trades(open_entry, side, bar, fill_price, abs(delta), index)
+        if closed is not None:
+            trades.append(closed)
+
     for i, bar in enumerate(bars):
-        # STEP 3 (FILL): execute the order queued on the previous bar at THIS open.
-        if pending_target is not None:
-            target_value = pending_target * (cash + shares * bar.open)
-            desired_shares = target_value / bar.open if bar.open > 0 else shares
-            delta = desired_shares - shares
-            if abs(delta) > 1e-12 and bar.open > 0:
-                if delta > 0:
-                    fill_price = bar.open * (1.0 + slip)
-                    side = "buy"
-                else:
-                    fill_price = bar.open * (1.0 - slip)
-                    side = "sell"
-                trade_value = abs(delta) * fill_price
-                comm = trade_value * commission
-                cash -= delta * fill_price + comm
-                shares += delta
-                fills.append(Fill(bar.date, side, abs(delta), fill_price, comm, cash, shares))
-                open_entry, closed = _update_trades(open_entry, side, bar, fill_price, abs(delta), i)
-                if closed is not None:
-                    trades.append(closed)
+        # FILL (next_open): execute the order queued on the previous bar at THIS open.
+        if execution == "next_open" and pending_target is not None:
+            _do_fill(bar, bar.open, pending_target, i)
             pending_target = None
 
-        # STEP 4 (ACCOUNT): mark equity using this bar's close.
+        target = weights[i]
+        current_weight = (shares * bar.close) / (cash + shares * bar.close) if (cash + shares * bar.close) > 0 else 0.0
+        changed = _weight_changed(current_weight, target, target_percent)
+
+        if execution == "same_close":
+            # SIGNAL computed at close[t] is FILLED at the SAME close[t] (illustrative
+            # variant; introduces a same-bar execution assumption, not look-ahead-free).
+            if changed:
+                _do_fill(bar, bar.close, target, i)
+        elif changed:
+            pending_target = target  # queue for the NEXT bar's open
+
+        # ACCOUNT: mark equity using this bar's close.
         equity = cash + shares * bar.close
         equity_values.append(equity)
         equity_curve.append({"date": bar.date, "value": equity, "cash": cash, "shares": shares, "close": bar.close})
-
-        # STEP 1+2 (SIGNAL + ORDER): decide the target from closes up to and incl. t;
-        # if it differs from what we hold, queue an order for the NEXT open.
-        target = weights[i]
-        current_weight = (shares * bar.close) / equity if equity > 0 else 0.0
-        if _weight_changed(current_weight, target, target_percent):
-            pending_target = target
 
     # Close any still-open round trip at the final close for win-rate reporting.
     if open_entry is not None:
@@ -282,10 +348,12 @@ def run_simple_backtest(
         "exposure_pct": _pct(summary["exposure"]),
         "buy_hold_return_pct": round((closes[-1] / closes[0] - 1.0) * 100.0, 4) if closes[0] else None,
     }
+    exec_note = "fill at NEXT bar open (no look-ahead)" if execution == "next_open" else "fill at SAME-day close (same-bar execution assumption)"
     caveats = [
-        "self-implemented engine; execution convention = fill at NEXT bar open (no look-ahead).",
+        f"self-implemented engine; execution convention = {exec_note}.",
         f"long-only, no leverage, target_percent={target_percent}, fractional shares allowed.",
         f"commission={commission} per trade value; slippage_bps={slippage_bps} applied to fill price.",
+        f"price input = {price_input} OHLC; volume_filter={volume_filter}.",
         "adjusted OHLC source remains unverified/raw-equivalent; results are research-only.",
         *list(guard.caveats),
     ]
@@ -300,7 +368,9 @@ def run_simple_backtest(
             "commission": commission,
             "slippage_bps": slippage_bps,
             "target_percent": target_percent,
-            "execution": "next_bar_open",
+            "execution": execution,
+            "volume_filter": volume_filter,
+            "price_input": price_input,
             "exchange": guard.exchange,
         },
         start_date=dates[0],
@@ -400,7 +470,7 @@ def format_report(out: BacktestOutput) -> str:
     lines = [
         f"Self-implemented engine  symbol={out.symbol}  strategy={out.strategy}",
         f"  period            : {out.start_date} .. {out.end_date}",
-        f"  execution         : {out.params['execution']} (fill at next bar open)",
+        f"  execution         : {out.params['execution']}",
         f"  target_percent    : {out.params['target_percent']}  commission: {out.params['commission']}  slippage_bps: {out.params['slippage_bps']}",
         f"  price_band_status : {out.price_band_status}",
         "  " + "-" * 56,
@@ -416,3 +486,121 @@ def format_report(out: BacktestOutput) -> str:
         f"  buy & hold return : {num(m['buy_hold_return_pct'], '%')}  (benchmark)",
     ]
     return "\n".join(lines)
+
+
+# --- explicit logic block (Task A) ------------------------------------------
+def engine_logic(out: BacktestOutput) -> dict[str, Any]:
+    """Return a concrete, mentor-readable description of the engine's exact logic."""
+    p = out.params
+    fast, slow = p["fast"], p["slow"]
+    strat = p["strategy"]
+    if strat == "ma20_ma50":
+        signal = f"long when MA{fast} > MA{slow} (enter on the upward cross), else cash (exit on the downward cross)"
+    elif strat == "rsi_mean_reversion":
+        signal = "long when RSI(14) < 30 (oversold), exit to cash when RSI(14) > 55"
+    else:
+        signal = "buy on the first bar and hold to the end"
+    if p.get("volume_filter"):
+        signal += "; additionally require volume > its 20-bar average to hold long"
+    exec_desc = "the NEXT bar's OPEN (open[t+1]) - leak-free" if p["execution"] == "next_open" else "the SAME bar's CLOSE (close[t]) - optimistic same-bar assumption"
+    return {
+        "data_source": "QuestDB daily_prices (read-only)",
+        "date_range": f"{out.start_date} .. {out.end_date}",
+        "price_input": f"{p['price_input']} OHLC; quality_status='pass' rows only",
+        "signal_formula": signal,
+        "execution_timing": f"the order implied by close[t] is filled at {exec_desc}",
+        "position_sizing": f"order_target_percent({p['target_percent']}): target value = {p['target_percent']} x equity, sized from close[t]",
+        "commission": f"{p['commission']} ({p['commission'] * 100:g}%) of traded value, charged per fill",
+        "slippage": f"{p['slippage_bps']} bps moved against the fill (buy higher, sell lower)",
+        "fractional_shares": "yes (matches Backtrader's default)",
+        "direction": "long-only; no shorting; no leverage",
+        "cash_hold_behavior": "uninvested cash earns 0; when flat the portfolio is entirely cash",
+        "equity_update": "equity[t] = cash + shares x close[t], recorded once per bar",
+        "metrics": "total return; annualized = (1+total)^(365.25/calendar_days)-1; max drawdown; Sharpe = sqrt(252) x mean/std of daily equity returns (rf=0); trades = long round trips; win rate = winning round trips / trades",
+        "why_differs_from_backtrader": [
+            "sizes from close[t] but fills at open[t+1] (small sizing-vs-fill gap)",
+            "Sharpe uses sqrt(252) x mean/std; Backtrader's SharpeRatio_A annualizes differently",
+            "trade count = long round trips here vs Backtrader closed Trade objects",
+            "same adjusted daily_prices rows, 0.95 target, 0.1% commission and bps slippage are used in both",
+        ],
+    }
+
+
+# --- deterministic variant / sensitivity lab (Task B) -----------------------
+def _variant(variant_id: str, changed: str, why: str, **overrides: Any) -> dict[str, Any]:
+    base = {
+        "strategy": "ma20_ma50", "price_input": "adjusted", "execution": "next_open",
+        "slippage_bps": 0.0, "target_percent": 0.95, "volume_filter": False,
+    }
+    base.update(overrides)
+    return {"id": variant_id, "changed": changed, "why": why, **base}
+
+
+VARIANT_SPECS: list[dict[str, Any]] = [
+    _variant("baseline_ma20_ma50_adjusted_next_open", "baseline", "reference: adjusted close, next-open fill, 95% target, 0 bps"),
+    _variant("ma20_ma50_raw_close_next_open", "price input adjusted -> raw", "raw close ignores corporate-action adjustment; splits/dividends distort the MAs and returns", price_input="raw"),
+    _variant("ma20_ma50_adjusted_same_close", "execution next-open -> same-day close", "acting on the same close that produced the signal is an optimistic same-bar assumption", execution="same_close"),
+    _variant("ma20_ma50_adjusted_next_open_full_capital", "target 95% -> 100% capital", "removing the 5% cash buffer raises exposure, returns and drawdown", target_percent=1.0),
+    _variant("ma20_ma50_adjusted_next_open_5bps", "slippage 0 -> 5 bps", "each trade pays more friction; net return drops with turnover", slippage_bps=5.0),
+    _variant("ma20_ma50_adjusted_next_open_10bps", "slippage 0 -> 10 bps", "double the 5 bps friction", slippage_bps=10.0),
+    _variant("ma20_ma50_adjusted_next_open_15bps", "slippage 0 -> 15 bps", "highest friction; shows slippage sensitivity", slippage_bps=15.0),
+    _variant("ma20_ma50_with_volume_filter", "feature: require volume > 20-bar average to be long", "volume confirmation changes days-in-market and trade timing", volume_filter=True),
+    _variant("rsi_mean_reversion_baseline", "strategy MA-cross -> RSI(14) mean reversion", "different signal family: buy oversold (<30), exit on recovery (>55)", strategy="rsi_mean_reversion"),
+]
+
+_VARIANT_METRIC_KEYS = ("final_value", "total_return_pct", "annualized_return_pct", "max_drawdown_pct", "sharpe_ratio", "closed_trades", "win_rate_pct")
+
+
+def run_variants(
+    symbol: str,
+    *,
+    url: str = DEFAULT_URL,
+    start_date: str = "2020-01-01",
+    end_date: str = "2025-12-31",
+) -> dict[str, Any]:
+    """Run the deterministic variant lab for a symbol and return a comparison + narrative."""
+    adj_bars, adj_caveats = load_bars_from_questdb(symbol, start_date, end_date, adjusted=True, url=url)
+    raw_bars, raw_caveats = load_bars_from_questdb(symbol, start_date, end_date, adjusted=False, url=url)
+    exchange = fetch_exchange(symbol, url=url)
+    results: list[dict[str, Any]] = []
+    baseline: dict[str, Any] | None = None
+    for spec in VARIANT_SPECS:
+        bars = raw_bars if spec["price_input"] == "raw" else adj_bars
+        row: dict[str, Any] = {"id": spec["id"], "changed": spec["changed"], "why": spec["why"]}
+        try:
+            out = run_simple_backtest(
+                bars, symbol=symbol, strategy=spec["strategy"], slippage_bps=spec["slippage_bps"],
+                target_percent=spec["target_percent"], execution=spec["execution"],
+                volume_filter=spec["volume_filter"], price_input=spec["price_input"], exchange=exchange,
+            )
+            row["metrics"] = {key: out.metrics.get(key) for key in _VARIANT_METRIC_KEYS}
+        except Exception as exc:  # keep one bad variant from breaking the table
+            row["error"] = f"{type(exc).__name__}: {exc}"
+            results.append(row)
+            continue
+        if spec["id"].startswith("baseline"):
+            baseline = row["metrics"]
+        results.append(row)
+
+    for row in results:
+        if "metrics" in row and baseline is not None and not row["id"].startswith("baseline"):
+            base_ret = baseline.get("total_return_pct") or 0.0
+            var_ret = row["metrics"].get("total_return_pct") or 0.0
+            delta = var_ret - base_ret
+            direction = "outperforms" if delta > 0.05 else "underperforms" if delta < -0.05 else "matches"
+            if row["id"] == "ma20_ma50_raw_close_next_open" and abs(delta) <= 0.05:
+                row["narrative"] = (
+                    "identical to baseline here because this symbol's adjusted OHLC currently equals raw "
+                    "(adjustment factor ~ 1.0; source unverified). On a split/dividend name they would diverge."
+                )
+            else:
+                row["narrative"] = f"{direction} baseline by {delta:+.2f} pp total return - {row['why']}"
+    return {
+        "symbol": symbol,
+        "start_date": start_date,
+        "end_date": end_date,
+        "baseline_id": "baseline_ma20_ma50_adjusted_next_open",
+        "variants": results,
+        "caveats": list(dict.fromkeys(list(adj_caveats) + list(raw_caveats)))
+        + ["deterministic + transparent; no live Backtrader; for explainability/sensitivity only"],
+    }

@@ -126,3 +126,78 @@ end.
   (the same caveat the persisted runs carry).
 - The persisted Backtrader results are **not** replaced; SimpleEngine is additive and
   for education / future custom-engine work.
+
+## Explicit logic block — `engine_logic(out)`
+
+`simple_engine.engine_logic(out)` returns a structured, mentor-readable dict that
+spells out the assumptions the engine actually used. The FastAPI
+`GET /api/demo/backtest/{symbol}/simple-engine/logic` endpoint serves it
+verbatim and the demo console renders it as a table:
+
+| Key | Meaning |
+|---|---|
+| `data_source` | Where the bars come from (e.g. `QuestDB daily_prices (read-only)`). |
+| `date_range` | Effective start/end of the backtest. |
+| `price_input` | `adjusted` vs `raw` OHLC + the `quality_status='pass'` filter. |
+| `signal_formula` | The exact strategy rule in plain language (e.g. *long when MA20 > MA50*). |
+| `execution_timing` | `NEXT` (open[t+1], leak-free) or `SAME` (close[t], optimistic). |
+| `position_sizing` | `order_target_percent(x)` semantics and the size-from-close detail. |
+| `commission` / `slippage` | Cost model in the same units used by the fill loop. |
+| `fractional_shares` | Whether shares can be fractional (yes, to match Backtrader). |
+| `direction` | Long-only, no short, no leverage. |
+| `cash_hold_behavior` | Cash earns 0; flat = 100% cash. |
+| `equity_update` | `equity[t] = cash + shares * close[t]`. |
+| `metrics` | Total / annualized / max drawdown / Sharpe / trades / win-rate formulas. |
+| `why_differs_from_backtrader` | Concrete list of the known divergences (Sharpe definition, sizing-vs-fill, trade-counting). |
+
+The same logic block is also embedded in the main
+`/api/demo/backtest/{symbol}/simple-engine` response under `logic`.
+
+## Strategy logic lab — `run_variants(...)` and `/simple-engine/variants`
+
+The engine now also exposes a deterministic sensitivity / ablation lab. The
+endpoint `GET /api/demo/backtest/{symbol}/simple-engine/variants` runs nine
+variants for a symbol and returns them with one-row-per-variant metrics plus a
+human-readable narrative for each:
+
+| Variant id | What it changes |
+|---|---|
+| `baseline_ma20_ma50_adjusted_next_open` | reference: adjusted close, next-open fill, 95% target, 0 bps |
+| `ma20_ma50_raw_close_next_open` | price input: adjusted → raw |
+| `ma20_ma50_adjusted_same_close` | execution: next-open → same-day close |
+| `ma20_ma50_adjusted_next_open_full_capital` | target 95% → 100% |
+| `ma20_ma50_adjusted_next_open_5bps` | slippage 0 → 5 bps |
+| `ma20_ma50_adjusted_next_open_10bps` | slippage 0 → 10 bps |
+| `ma20_ma50_adjusted_next_open_15bps` | slippage 0 → 15 bps |
+| `ma20_ma50_with_volume_filter` | feature: require volume > 20-bar average to be long |
+| `rsi_mean_reversion_baseline` | strategy: MA-cross → RSI(14) mean reversion |
+
+For each non-baseline row the response carries a `narrative` field that says
+whether the variant *outperforms* / *underperforms* / *matches* the baseline by
+how many percentage points, and *why* (the same assumption/feature it changed).
+
+**This is a sensitivity lab, not a strategy search.** Every variant is one
+explicit assumption change away from the baseline; no parameters are swept,
+optimised or searched. The full Backtrader result set remains the persisted
+reference; no live Backtrader is executed inside the agent runtime.
+
+## Scope additions for the explainer work
+
+- New strategies available through the engine: `buy_hold`, `ma20_ma50`,
+  `rsi_mean_reversion` (RSI(14), Wilder-style via simple moving averages of
+  up/down moves; long below 30, exit above 55).
+- New optional engine parameters: `execution ∈ {next_open, same_close}`,
+  `volume_filter ∈ {False, True}`, `price_input ∈ {adjusted, raw}`.
+- New defaults stay safe: when unspecified, `execution='next_open'`,
+  `volume_filter=False`, `price_input='adjusted'` — identical behaviour to the
+  documented baseline above.
+- New helpers are pure (no side effects, no live Backtrader, no table mutation).
+
+## Demo follow-up (planned as a separate follow-up; intentionally not part of this commit)
+
+A controlled, resumable full-universe FA batch ingester
+(`scripts/batch_ingest_vietcap_fa_full_universe.py`) is local WIP, not in this
+commit. It will be committed separately after a controlled single-symbol smoke
+(e.g. VHM, which currently has 0 FA rows). It reuses the verified single-symbol
+helpers, is non-destructive, has `--plan-only` for safe inspection, and will
+only be promoted once the smoke + coverage probe pass.
