@@ -10,8 +10,18 @@ existing FA tables; never drops/recreates market/OHLCV/backtest tables.
 
 - Smoke (`FA_SMOKE_VHM_FPT_20260626`): VHM and FPT, 0 failures, status
   `complete`. VHM went from 0 → 13,571 balance-sheet rows.
-- First full pass (`FA_FULL_UNIVERSE_20260626`): 25 symbols, 0 failures,
-  status `in_progress`, 1,531 symbols remaining. Resumable.
+- Full-universe resume (`FA_FULL_UNIVERSE_20260626`): status `in_progress`.
+  Coverage progressed 53 → 54 (smoke) → 155+ after the resume. Selection bug
+  found and fixed (`--only-missing --resume` was using an `elif` chain that
+  ignored `--only-missing`; replaced with set-intersection filter combination).
+  FA query run-selection fix: `financial report VCB/VNM/FPT/VHM` now return
+  `status=ok` via per-symbol scoping fallback to older complete runs when the
+  symbol is absent from the latest complete run. CTG/HPG still
+  `status=unavailable` until the resume covers them. FA feature snapshot
+  layer: builder now writes successfully (header fix + post-write
+  verification); `fa_feature_snapshots` has rows for 53 source-backed symbols
+  from `20260624T044856Z`. `total_assets` is intentionally NOT emitted
+  (consensus mapping has no `total_assets` code yet).
 - Coverage endpoint: `GET /api/demo/fa/coverage` returns the same structure as
   `scripts/questdb_fa_coverage.py` (PASS/WARN/FAIL, per-table counts, important
   symbols, latest run id, top missing symbols).

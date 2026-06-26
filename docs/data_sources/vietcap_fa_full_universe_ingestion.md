@@ -42,17 +42,82 @@ but does NOT change the universe for production runs.
 ## 2026-06-26 run snapshot
 
 - Smoke run id: `FA_SMOKE_VHM_FPT_20260626` — processed 2 symbols (VHM, FPT), 0 failures, status `complete`. VHM went from 0 → 13,571 BS rows.
-- Full-universe run id: `FA_FULL_UNIVERSE_20260626` — first pass processed 25 symbols (A32..ADG), 0 failures, status `in_progress`. Resumable.
+- Full-universe run id: `FA_FULL_UNIVERSE_20260626` — multiple passes, status `in_progress`, resumable. The first pass re-ingested already-covered A-prefix symbols because the original `--only-missing --resume` flag combination was using an `elif` chain that ignored `--only-missing`. That was fixed (combine filters via set intersection, not elif) and the resume now correctly skips symbols already covered in any run.
+- Coverage progress (per-fa_balance_sheet distinct symbols via GROUP BY):
+  - Before smoke: 53
+  - After smoke: 54
+  - After full-universe resume: 159 (still in_progress; 1,371 remaining)
+- The `count_distinct` lag explanation from the previous report was wrong. The 54 global count is real. The 25 first-pass symbols were already in the 53-set (re-ingested), not new coverage.
+
+## Selection-bug fix
+
+The previous `--only-missing --resume` combination was an `if/elif` chain where
+`--resume` won over `--only-missing`. This meant `--only-missing` had no effect
+and the script kept re-processing already-covered symbols. The fix combines the
+flags:
+
+- `--resume` (default when no flags) → skip symbols already attempted in this run_id.
+- `--only-missing` → additionally skip symbols already covered in any run.
+- `--retry-failed` → re-attempt symbols that were attempted but produced no BS rows.
+
+`--max-symbols` default is now `0` (= all remaining). A positive value caps the
+pass. The plan-only output now correctly reports `remaining=1502` (or current
+remaining) and shows the first non-covered symbols instead of the already-covered
+A-prefix symbols.
+
+## FA query run-selection fix
+
+Previously, `financial report VCB` returned `unavailable` even though VCB had
+27,142 BS rows — because the tool scoped queries to `latest_complete_run_id`
+which (after the smoke) was the partial `FA_SMOKE_VHM_FPT_20260626` run that
+only contains FPT/VHM. Fixed by adding `_symbol_run_scope(symbol, table, url)`
+that:
+
+1. Tries the latest complete run; if the symbol has rows there, uses it.
+2. Otherwise falls back to the most recent run_id that has rows for the symbol.
+3. If no rows exist for the symbol in any run, returns the latest complete
+   run_id so the query is honestly empty (`status=unavailable`).
+
+Verified:
+
+- FPT/VHM/VCB/VNM → `status=ok`, `domain=financial_report`, OHLCV tools rejected.
+- CTG/HPG → `status=unavailable` (no rows in any run).
+
+## FA feature snapshot fix
+
+The previous `build_fa_feature_snapshots.py` reported `symbol_count=53` but the
+target table had 0 rows. Two real bugs:
+
+1. `csv.DictWriter` was not calling `writeheader()`, so the CSV had no header
+   line. With `forceHeader=true`, QuestDB rejected the header as missing.
+2. The builder did not verify the post-write row count; on silent failure it
+   still reported a fake success.
+
+Fixes:
+
+- `_csv_bytes` now writes a real header line.
+- After `imp_csv`, the builder reads back the table count and returns exit code
+  3 with a clear error if it stayed at 0.
+
+Result: `fa_feature_snapshots` has rows for all 53 symbols from
+`run_id=20260624T044856Z` (revenue_yoy / net_profit_yoy / equity_latest /
+operating_cashflow_latest). `total_assets` is intentionally NOT emitted because
+the consensus mapping table has no `total_assets` code yet.
 
 ## Coverage before / after (per-table)
 
-| Family | Before smoke | After smoke | After first full pass |
+| Family | Before smoke | After smoke | After full-universe resumes |
 |---|---|---|---|
-| `fa_balance_sheet` symbols | 53 | 54 | 54 (capped by `count_distinct` lag, but BS rows in the new run cover 25 new symbols) |
-| `fa_income_statement` symbols | 53 | 54 | 54 |
-| `fa_cash_flow` symbols | 53 | 54 | 54 |
-| `fa_notes` symbols | 53 | 54 | 54 |
-| `all_four_symbol_count` | 53 | 54 | 54 |
+| `fa_balance_sheet` symbols | 53 | 54 | 159 (still in_progress; 1,371 remaining) |
+| `fa_income_statement` symbols | 53 | 54 | 158 |
+| `fa_cash_flow` symbols | 53 | 54 | 158 |
+| `fa_notes` symbols | 53 | 54 | 156 |
+| `all_four_symbol_count` | 53 | 54 | 155 |
+
+Important-symbol status:
+
+- FPT, VCB, VNM, VHM: covered (real FA data; `financial report SYMBOL` returns `status=ok`).
+- CTG, HPG: not yet covered; `financial report CTG/HPG` returns `status=unavailable`.
 
 Important-symbol status (after smoke + first pass):
 

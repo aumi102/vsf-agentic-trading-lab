@@ -133,7 +133,7 @@ def main() -> int:
     parser.add_argument("--new-run", action="store_true", help="Force a brand-new run_id instead of resuming.")
     parser.add_argument("--universe-file", help="Optional newline-separated symbol file (default: full securities universe).")
     parser.add_argument("--statements", default="balance_sheet,income_statement,cash_flow,notes")
-    parser.add_argument("--max-symbols", type=int, default=25, help="Max symbols to attempt this pass (0 = all remaining).")
+    parser.add_argument("--max-symbols", type=int, default=0, help="Max symbols to attempt this pass (0 = all remaining).")
     parser.add_argument("--retry-failed", action="store_true", help="Also reprocess attempted symbols with no balance-sheet rows.")
     parser.add_argument("--cooldown-seconds", type=float, default=1.0, help="Sleep between symbols.")
     parser.add_argument("--rate-limit-stop-after", type=int, default=8, help="Stop the pass after N consecutive rate-limited sections.")
@@ -194,14 +194,21 @@ def main() -> int:
             from ingest_vietcap_financial_reports_to_questdb import SYMBOL_RE as sym_re  # type: ignore
         universe = [s for s in universe if sym_re.fullmatch(s)]
 
+        # Combine flags. The default skips symbols already attempted in this run_id
+        # (so a re-run is a no-op for that run). --only-missing additionally drops
+        # symbols already covered in ANY run. --retry-failed forces re-attempts of
+        # symbols without balance-sheet rows in this run. --resume is the default
+        # skip-already-attempted behaviour; the flag is kept for explicit clarity.
+        skip_attempted = args.retry_failed or args.resume or not args.only_missing
+        remaining = list(universe)
+        if skip_attempted and not args.retry_failed:
+            remaining = [s for s in remaining if s not in attempted]
+        if args.only_missing:
+            remaining = [s for s in remaining if s not in globally_covered]
         if args.retry_failed:
-            remaining = [s for s in universe if s not in covered]
-        elif args.resume:
-            remaining = [s for s in universe if s not in attempted]
-        elif args.only_missing:
-            remaining = [s for s in universe if s not in globally_covered]
-        else:
-            remaining = [s for s in universe if s not in attempted]
+            # Only retry symbols that were attempted but produced no balance-sheet
+            # rows in this run. (i.e. attempted and not covered.)
+            remaining = [s for s in remaining if s in attempted and s not in covered]
 
         # Optional positional slice into the remaining list.
         if args.start_index and args.start_index > 0:

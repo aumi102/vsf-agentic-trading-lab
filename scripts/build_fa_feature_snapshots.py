@@ -88,6 +88,7 @@ def _csv_bytes(rows: list[dict], columns: list[str]) -> bytes:
     import io
     buf = io.StringIO()
     w = csv.DictWriter(buf, fieldnames=columns, lineterminator="\n")
+    w.writeheader()
     for r in rows:
         w.writerow({c: r.get(c, "") for c in columns})
     return buf.getvalue().encode("utf-8")
@@ -227,10 +228,30 @@ def main() -> int:
             qdb.exec_query(client, base_url, ddl)
 
         if out_rows:
-            qdb.imp_csv(client, base_url, TARGET_TABLE, _csv_bytes(out_rows, COLUMNS), timeout_seconds=180.0)
+            imp_result = qdb.imp_csv(client, base_url, TARGET_TABLE, _csv_bytes(out_rows, COLUMNS), timeout_seconds=180.0)
             qdb.wait_wal_applied(client, base_url, TARGET_TABLE, attempts=120)
-
-        print(f"symbol_count={len(out_rows)} target={TARGET_TABLE} source_run_id={args.source_run_id}")
+            # Verify the write actually landed. If the table count is still 0 after
+            # a successful imp, fail loudly instead of reporting a fake success.
+            post_count = qdb.exec_scalar(client, base_url, f"SELECT count() FROM {TARGET_TABLE}", 0)
+            if int(post_count or 0) == 0:
+                print(
+                    f"error=write_verification_failed rows_in_csv={len(out_rows)} "
+                    f"imp_returned={imp_result} post_count=0 target={TARGET_TABLE} "
+                    f"source_run_id={args.source_run_id}",
+                    file=sys.stderr,
+                )
+                return 3
+            print(
+                f"symbol_count={len(out_rows)} imp_returned={imp_result} "
+                f"post_count={int(post_count)} target={TARGET_TABLE} source_run_id={args.source_run_id}"
+            )
+        else:
+            print(
+                f"warning=empty_out_rows target={TARGET_TABLE} source_run_id={args.source_run_id}; "
+                "no features were written. Inspect source_run_id and metric_code coverage.",
+                file=sys.stderr,
+            )
+            return 2
     return 0
 
 

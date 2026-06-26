@@ -61,6 +61,67 @@ def _run_scope(url: str) -> tuple[str, list[str], str | None]:
     return "", ["fa_ingest_runs unavailable or has no complete run; query may include duplicate append rows"], None
 
 
+def _symbol_run_scope(symbol: str, table: str, url: str) -> tuple[str, list[str], str | None]:
+    """Pick the best run_id for a given symbol/table.
+
+    Prefer the latest complete run that actually contains this symbol in the
+    table. If no complete run has the symbol, fall back to the most recent
+    run_id (started or complete) that has rows for the symbol. If no row exists
+    for the symbol in any run, return the latest complete run_id (so a downstream
+    query returns no rows and we honestly report unavailable).
+    """
+    sym = _validate_symbol(symbol) or symbol.upper()
+    caveats: list[str] = []
+
+    latest_complete = get_latest_complete_fa_run_id(url)
+    if latest_complete and _table_exists(table, url):
+        sql = (
+            f"SELECT count() AS cnt FROM {table} WHERE run_id = '{latest_complete}' "
+            f"AND symbol = '{sym}'"
+        )
+        res = market.query_questdb(sql, url=url)
+        if res.get("status") == "ok":
+            cnt = 0
+            for row in res.get("rows", []) or []:
+                v = row.get("cnt") if isinstance(row, dict) else (row[0] if row else None)
+                try:
+                    cnt = int(v or 0)
+                except Exception:
+                    cnt = 0
+                break
+            if cnt > 0:
+                return (
+                    f" AND run_id = '{latest_complete}'",
+                    [f"using_latest_complete_fa_run_id={latest_complete} (symbol={sym} present, rows={cnt})"],
+                    latest_complete,
+                )
+        caveats.append(
+            f"symbol={sym} not present in latest_complete_fa_run_id={latest_complete}; "
+            "falling back to per-symbol latest run"
+        )
+
+    # Fallback: most recent run_id (any status) that has rows for the symbol.
+    if _table_exists(table, url):
+        sql = (
+            f"SELECT run_id FROM {table} WHERE symbol = '{sym}' "
+            f"ORDER BY public_date DESC, run_id DESC LIMIT 1"
+        )
+        res = market.query_questdb(sql, url=url)
+        if res.get("status") == "ok" and res.get("rows"):
+            best = str(res["rows"][0].get("run_id") or "").strip()
+            if best:
+                caveats.append(f"using_per_symbol_latest_run_id={best} (fallback)")
+                return f" AND run_id = '{best}'", caveats, best
+
+    if latest_complete:
+        return (
+            f" AND run_id = '{latest_complete}'",
+            caveats + [f"using_latest_complete_fa_run_id={latest_complete} (symbol absent in all runs)"],
+            latest_complete,
+        )
+    return "", caveats + ["no FA run available; query will return no rows"], None
+
+
 def _sql_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
@@ -126,22 +187,30 @@ def get_latest_financial_report(symbol: str, statement_type: str | None = None, 
         targets = [("BALANCE_SHEET", "fa_balance_sheet"), ("INCOME_STATEMENT", "fa_income_statement"), ("CASH_FLOW", "fa_cash_flow"), ("NOTE", "fa_notes")]
     rows: list[dict[str, Any]] = []
     sqls: list[str] = []
-    run_filter, caveats, run_id = _run_scope(url)
+    caveats: list[str] = []
+    run_id: str | None = None
     for section, table in targets:
         if not _table_exists(table, url):
             caveats.append(f"{table} is not present; financial report data not ingested for this symbol")
             continue
+        # Per-symbol run scoping: if symbol is present in latest complete run,
+        # use it; otherwise fall back to the most recent run_id with rows.
+        s_run_filter, s_caveats, s_run_id = _symbol_run_scope(sym, table, url)
+        caveats.extend(s_caveats)
+        # _symbol_run_scope returns s_run_filter as " AND run_id = '<id>'" (no trailing quote).
         sql = (
             f"SELECT public_date, security_id, symbol, statement_type, period_type, fiscal_year, fiscal_quarter, "
             f"period_end_date, metric_code, metric_name, metric_value, metric_value_raw, currency, unit, source, "
             f"run_id, raw_payload_ref, quality_status FROM {table} WHERE symbol = '{sym}' "
-            f"{run_filter} AND public_date = (SELECT max(public_date) FROM {table} WHERE symbol = '{sym}' {run_filter}) "
+            f"{s_run_filter} AND public_date = (SELECT max(public_date) FROM {table} WHERE symbol = '{sym}' {s_run_filter}) "
             f"ORDER BY metric_code LIMIT 100"
         )
         sqls.append(sql)
         res = market.query_questdb(sql, url=url)
         if res.get("status") == "ok":
             rows.extend(res.get("rows", []))
+            if s_run_id and not run_id:
+                run_id = s_run_id
         else:
             caveats.extend(res.get("caveats", []))
     if not rows:

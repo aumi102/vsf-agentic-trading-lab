@@ -72,31 +72,37 @@ def main() -> int:
         # Base: total securities.
         summary["securities_count"] = _count(client, base_url, "SELECT count_distinct(symbol) FROM securities")
 
-        # Per-table row counts and covered-symbol counts.
+        # Per-table row counts and exact covered-symbol counts via GROUP BY
+        # (QuestDB's count_distinct over a partitioned table can lag the row
+        # count, so we use GROUP BY + a Python set for the canonical count).
         per_table: dict = {}
         table_present: dict = {}
+        global_per_table: dict[str, set[str]] = {}
         for t in FACT_TABLES:
             present = _table_exists(client, base_url, t)
             table_present[t] = present
             if not present:
-                per_table[t] = {"present": False, "row_count": 0, "symbol_count": 0}
+                per_table[t] = {"present": False, "row_count": 0, "symbol_count": 0, "symbols": []}
                 continue
             rows = _count(client, base_url, f"SELECT count() FROM {t}")
-            syms = _count(client, base_url, f"SELECT count_distinct(symbol) FROM {t}")
-            per_table[t] = {"present": True, "row_count": rows, "symbol_count": syms}
+            _, sym_rows = qdb.exec_rows(client, base_url, f"SELECT symbol, count() FROM {t} GROUP BY symbol")
+            syms = {str(r[0]).upper() for r in sym_rows if r and r[0]}
+            per_table[t] = {
+                "present": True,
+                "row_count": rows,
+                "symbol_count": len(syms),
+                "symbols": sorted(syms),
+            }
+            global_per_table[t] = syms
         summary["per_table"] = per_table
         summary["tables_present"] = table_present
 
         # All-4 coverage: intersect symbols across the four statement families.
-        all_four = None
-        for t in FACT_TABLES:
-            if not table_present.get(t):
-                all_four = set()
-                continue
-            _, rows = qdb.exec_rows(client, base_url, f"SELECT DISTINCT symbol FROM {t}")
-            syms = {str(r[0]).upper() for r in rows if r and r[0]}
-            all_four = syms if all_four is None else (all_four & syms)
-        summary["all_four_symbol_count"] = len(all_four or set())
+        all_four: set[str] = set.intersection(*global_per_table.values()) if all(
+            table_present.get(t) for t in FACT_TABLES
+        ) else set()
+        summary["all_four_symbol_count"] = len(all_four)
+        summary["all_four_symbols"] = sorted(all_four)
 
         # Latest complete + latest in-progress run ids (full-universe scope).
         latest_complete = None
@@ -169,6 +175,37 @@ def main() -> int:
             0, (summary["securities_count"] or 0) - (summary["all_four_symbol_count"] or 0)
         )
 
+        # Run-scoped coverage: per-(run_id) attempted vs covered, computed via
+        # GROUP BY + Python set so the numbers are exact (no count_distinct lag).
+        run_scoped: dict[str, dict] = {}
+        for rid in (summary.get("latest_in_progress_run_id"), summary.get("latest_complete_run_id"), "FA_SMOKE_VHM_FPT_20260626", "FA_FULL_UNIVERSE_20260626"):
+            if not rid or rid in run_scoped:
+                continue
+            attempted: set[str] = set()
+            covered_r: set[str] = set()
+            if _table_exists(client, base_url, "fa_raw_payloads"):
+                _, rows = qdb.exec_rows(
+                    client, base_url,
+                    f"SELECT symbol, count() FROM fa_raw_payloads WHERE run_id = '{rid}' GROUP BY symbol",
+                )
+                attempted = {str(r[0]).upper() for r in rows if r and r[0]}
+            if _table_exists(client, base_url, "fa_balance_sheet"):
+                _, rows = qdb.exec_rows(
+                    client, base_url,
+                    f"SELECT symbol, count() FROM fa_balance_sheet WHERE run_id = '{rid}' GROUP BY symbol",
+                )
+                covered_r = {str(r[0]).upper() for r in rows if r and r[0]}
+            run_scoped[rid] = {
+                "attempted_symbol_count": len(attempted),
+                "covered_symbol_count": len(covered_r),
+                "symbols_attempted_sample": sorted(attempted)[:25],
+                "symbols_covered_sample": sorted(covered_r)[:25],
+            }
+        summary["run_scoped"] = run_scoped
+        summary["remaining_globally"] = max(
+            0, (summary["securities_count"] or 0) - summary["all_four_symbol_count"],
+        )
+
     # Status: FAIL if any FA table missing, WARN if important symbols missing, PASS otherwise.
     if not all(table_present.get(t) for t in FACT_TABLES):
         status = "FAIL"
@@ -220,6 +257,23 @@ def _print_human(s: dict) -> None:
     for sym, info in s["important_symbols"].items():
         flag = "OK" if info["covered_in_fa_balance_sheet"] else "MISS"
         print(f"    [{flag}] {sym:5s} bs_rows={info['row_count']:>8d}")
+    rs = s.get("run_scoped") or {}
+    if rs:
+        print("  run_scoped:")
+        for rid, info in rs.items():
+            print(f"    - {rid:32s} attempted={info['attempted_symbol_count']:>4d} "
+                  f"covered={info['covered_symbol_count']:>4d}")
+            samp_a = ",".join(info.get("symbols_attempted_sample", [])[:8]) + (
+                "..." if len(info.get("symbols_attempted_sample", [])) > 8 else ""
+            )
+            samp_c = ",".join(info.get("symbols_covered_sample", [])[:8]) + (
+                "..." if len(info.get("symbols_covered_sample", [])) > 8 else ""
+            )
+            print(f"        attempted_sample : {samp_a}")
+            print(f"        covered_sample   : {samp_c}")
+    rem = s.get("remaining_globally")
+    if rem is not None:
+        print(f"  remaining_globally    : {rem}")
     miss = s.get("top_missing_symbols") or []
     if miss:
         preview = ",".join(miss[:20]) + ("..." if len(miss) > 20 else "")
