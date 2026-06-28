@@ -137,6 +137,7 @@ def main() -> int:
     parser.add_argument("--retry-failed", action="store_true", help="Also reprocess attempted symbols with no balance-sheet rows.")
     parser.add_argument("--cooldown-seconds", type=float, default=1.0, help="Sleep between symbols.")
     parser.add_argument("--rate-limit-stop-after", type=int, default=8, help="Stop the pass after N consecutive rate-limited sections.")
+    parser.add_argument("--cooldown-after-http-failures", type=int, default=0, help="Sleep cooldown-seconds after N consecutive HTTP 503/429 failures (0 = disabled).")
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
     parser.add_argument("--retries", type=int, default=2)
     parser.add_argument("--plan-only", action="store_true", help="Print the plan (no network, no writes) and exit.")
@@ -148,6 +149,7 @@ def main() -> int:
     parser.add_argument("--jitter-seconds", type=float, default=0.0, help="Extra random jitter added to --sleep-seconds per symbol.")
     parser.add_argument("--max-consecutive-failures", type=int, default=0, help="Stop the pass after N consecutive failed symbols (0 = disabled).")
     parser.add_argument("--stop-on-rate-limit", action="store_true", help="Stop the pass cleanly on rate-limit style failures.")
+    parser.add_argument("--count-zero-facts-as-failure", action="store_true", help="Count zero-fact symbols (http=200, no rows) toward --max-consecutive-failures. Default: they are skipped.")
     parser.add_argument("--write-summary-json", help="Write a compact summary JSON to this path (e.g. data/cache/...json). Not staged.")
     args = parser.parse_args()
 
@@ -219,11 +221,36 @@ def main() -> int:
         print(f"run_id={run_id} new_run={is_new}")
         print(f"universe={len(universe)} attempted={len(attempted)} covered_bs={len(covered)} "
               f"globally_covered_bs={len(globally_covered)} remaining={len(remaining)} this_pass={len(todo)}")
+        # Build resume command early so plan-only can print it.
+        sleep_secs = args.sleep_seconds if args.sleep_seconds is not None else args.cooldown_seconds
+        _resume_parts = [
+            "python scripts\\batch_ingest_vietcap_fa_full_universe.py",
+            f"--run-id {run_id}",
+            f"--max-symbols {args.max_symbols}",
+        ]
+        if args.only_missing:
+            _resume_parts.append("--only-missing")
+        if args.resume:
+            _resume_parts.append("--resume")
+        if sleep_secs and sleep_secs != 1.0:
+            _resume_parts.append(f"--sleep-seconds {sleep_secs}")
+        if args.jitter_seconds > 0:
+            _resume_parts.append(f"--jitter-seconds {args.jitter_seconds}")
+        if args.stop_on_rate_limit:
+            _resume_parts.append("--stop-on-rate-limit")
+        if args.max_consecutive_failures > 0:
+            _resume_parts.append(f"--max-consecutive-failures {args.max_consecutive_failures}")
+        if args.count_zero_facts_as_failure:
+            _resume_parts.append("--count-zero-facts-as-failure")
+        if args.cooldown_after_http_failures > 0:
+            _resume_parts.append(f"--cooldown-after-http-failures {args.cooldown_after_http_failures}")
+        if args.write_summary_json:
+            _resume_parts.append(f"--write-summary-json {args.write_summary_json}")
+        resume_command = " ".join(_resume_parts)
         if args.plan_only:
             preview = ",".join(todo[:20]) + ("..." if len(todo) > 20 else "")
             print(f"plan_preview={preview}")
-            print(f"resume_command=python scripts\\batch_ingest_vietcap_fa_full_universe.py "
-                  f"--run-id {run_id} --max-symbols {args.max_symbols}")
+            print(f"resume_command={resume_command}")
             return 0
 
         _ensure_tables(client, base_url)
@@ -235,17 +262,24 @@ def main() -> int:
             ))
 
         failures: list[dict] = []
+        zero_facts_samples: list[str] = []
         raw_rows: list[dict] = []
         consecutive_rate_limited = 0
         consecutive_failures = 0
         processed_this_pass = 0
         stopped_for_rate_limit = False
         stopped_for_failures = False
+        zero_facts_count = 0
+        http_failures_count = 0
+        rate_limit_failures_count = 0
         latest_processed_symbol: str | None = None
         sleep_seconds = args.sleep_seconds if args.sleep_seconds is not None else args.cooldown_seconds
+        count_zero_facts = args.count_zero_facts_as_failure
         for symbol in todo:
             symbol_rate_limited = False
-            symbol_failed = False
+            symbol_http_failed = False  # any section had http error or non-verified
+            symbol_had_parser_errors = False
+            section_row_counts: list[int] = []  # row count per section, in order
             for _, section, table in statements:
                 result = _fetch_with_retry(symbol, section, run_id, RAW_ROOT, args.timeout_seconds, args.retries)
                 http = result.get("http_status")
@@ -261,21 +295,48 @@ def main() -> int:
                     symbol_rate_limited = True
                 if result.get("access_status") != "verified" or not result.get("raw_path"):
                     failures.append({"symbol": symbol, "section": section, "status": result.get("access_status"), "http": http})
-                    symbol_failed = True
+                    symbol_http_failed = True
+                    section_row_counts.append(0)
                     continue
-                facts, errors, _stats = parse_payload(result)
+                try:
+                    facts, errors, _stats = parse_payload(result)
+                except Exception as exc:
+                    facts, errors = [], [{"kind": "parser_error", "message": f"{type(exc).__name__}: {exc}"}]
+                    symbol_had_parser_errors = True
                 if errors:
-                    failures.extend({"symbol": symbol, "section": section, **err} for err in errors[:3])
-                    symbol_failed = bool(errors)
+                    for err in errors[:3]:
+                        failures.append({"symbol": symbol, "section": section, **err})
+                    symbol_had_parser_errors = True
                 rows = _normalize_facts(facts, table, run_id)
                 if rows:
                     qdb.imp_csv(client, base_url, table, _csv_bytes(rows, FA_COLUMNS), timeout_seconds=180.0)
                     qdb.wait_wal_applied(client, base_url, table, attempts=240)
+                section_row_counts.append(len(rows))
                 print(f"symbol={symbol} section={section} facts={len(rows)} http={http}")
+            # Symbol-level classification after all sections processed.
+            total_rows = sum(section_row_counts)
+            # zero_fact: all sections were verified+fetched (no http failure) but total rows = 0
+            symbol_zero_fact = (not symbol_http_failed and total_rows == 0)
+            # symbol_http_failed already set; parser errors on top of successful fetch don't
+            # make it a zero_fact (the payload was valid but empty).
+            symbol_consec_failed = symbol_http_failed or (symbol_zero_fact and count_zero_facts)
+            consecutive_failures = consecutive_failures + 1 if symbol_consec_failed else 0
+            if symbol_zero_fact and not count_zero_facts:
+                zero_facts_samples.append(symbol)
+                zero_facts_count += 1
+            if symbol_http_failed:
+                http_failures_count += 1
+            if symbol_rate_limited:
+                rate_limit_failures_count += 1
+            # Cooldown after consecutive HTTP failures.
+            if args.cooldown_after_http_failures > 0 and consecutive_failures >= args.cooldown_after_http_failures:
+                cooldown = args.cooldown_seconds
+                print(f"cooldown_http reason=consecutive_http_failures count={consecutive_failures} sleeping={cooldown}s")
+                time.sleep(cooldown)
+                consecutive_failures = 0
             processed_this_pass += 1
             latest_processed_symbol = symbol
             consecutive_rate_limited = consecutive_rate_limited + 1 if symbol_rate_limited else 0
-            consecutive_failures = consecutive_failures + 1 if symbol_failed else 0
             if args.stop_on_rate_limit and symbol_rate_limited and consecutive_rate_limited >= args.rate_limit_stop_after:
                 stopped_for_rate_limit = True
                 print(f"stopping_pass reason=rate_limit consecutive={consecutive_rate_limited}")
@@ -309,17 +370,20 @@ def main() -> int:
     for table in (*FA_FACT_TABLES, "fa_raw_payloads"):
         print(f"{table}_rows_run={counts[table]}")
     print(f"failures_this_pass={len(failures)}")
+    print(f"zero_facts_this_pass={zero_facts_count}")
+    print(f"http_failures_this_pass={http_failures_count}")
+    print(f"rate_limit_failures_this_pass={rate_limit_failures_count}")
     # Build the resume command with the current option set so a copy-paste always works.
     resume_parts = [
         "python scripts\\batch_ingest_vietcap_fa_full_universe.py",
         f"--run-id {run_id}",
         f"--max-symbols {args.max_symbols}",
     ]
-    if args.only_missing or args.retry_failed:
+    if args.only_missing:
         resume_parts.append("--only-missing")
-    if args.resume or args.retry_failed or not is_new:
+    if args.resume:
         resume_parts.append("--resume")
-    if sleep_seconds:
+    if sleep_seconds and sleep_seconds != 1.0:
         resume_parts.append(f"--sleep-seconds {sleep_seconds}")
     if args.jitter_seconds > 0:
         resume_parts.append(f"--jitter-seconds {args.jitter_seconds}")
@@ -327,6 +391,10 @@ def main() -> int:
         resume_parts.append("--stop-on-rate-limit")
     if args.max_consecutive_failures > 0:
         resume_parts.append(f"--max-consecutive-failures {args.max_consecutive_failures}")
+    if args.count_zero_facts_as_failure:
+        resume_parts.append("--count-zero-facts-as-failure")
+    if args.cooldown_after_http_failures > 0:
+        resume_parts.append(f"--cooldown-after-http-failures {args.cooldown_after_http_failures}")
     if args.write_summary_json:
         resume_parts.append(f"--write-summary-json {args.write_summary_json}")
     resume_command = " ".join(resume_parts)
@@ -353,7 +421,11 @@ def main() -> int:
                 "remaining": len(universe) - len(attempted_after),
                 "row_counts_run": counts,
                 "failures_this_pass": len(failures),
+                "zero_facts_this_pass": zero_facts_count,
+                "http_failures_this_pass": http_failures_count,
+                "rate_limit_failures_this_pass": rate_limit_failures_count,
                 "failure_samples": failures[:50],
+                "zero_facts_samples": zero_facts_samples[:50],
                 "resume_command": resume_command,
             }
             target.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")

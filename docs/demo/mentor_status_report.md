@@ -1,5 +1,42 @@
 # Mentor status report
 
+## 2026-06-28 update — Zero-fact classification + bounded FA resume
+
+Three semantic bugs in the full-universe ingester were fixed:
+
+1. **Zero-facts counted as consecutive failures.** `http=200, verified, zero rows` symbols (ETFs, warrants, derivatives) were inflating the consecutive-failure counter, triggering premature stops. Now classified as `zero_fact` and excluded from consecutive-failure tracking by default. New flag `--count-zero-facts-as-failure` to include if needed.
+
+2. **Per-section zero-fact tracking inflated counts.** Each section's empty result was tracked independently, doubling/tripling the zero_fact count for symbols with 2-4 empty sections. Fixed: symbol-level total rows across all sections determines classification (zero_fact / partial / covered).
+
+3. **Parser exceptions crashed the loop.** Invalid/empty JSON payloads caused a hard crash. Wrapped `parse_payload()` in try/except — parser errors are now classified as HTTP failures and recorded, loop continues.
+
+Also added:
+- `--cooldown-after-http-failures N`: sleep cooldown-seconds after N consecutive HTTP 503/429 failures (resets counter after cooldown).
+- `scripts/inspect_fa_missing_universe.py`: read-only failure-pattern inspector reporting attempted_http_fail, attempted_zero_facts, pending_never_attempted, likely_no_fa_heuristic, next symbols to process.
+- Summary JSON now includes: `zero_facts_this_pass`, `http_failures_this_pass`, `rate_limit_failures_this_pass`, `zero_facts_samples`, `resume_command`.
+
+Coverage jumped significantly from bounded passes:
+
+| Table | Symbols (before) | Symbols (after) |
+|---|---|---|
+| fa_balance_sheet | 495 | 639 |
+| fa_income_statement | 471 | 635 |
+| fa_cash_flow | 471 | 635 |
+| fa_notes | 465 | 627 |
+| all_four | 486 | 627 |
+
+Remaining globally: 929 (down from ~1,091). HTTP 503 rate-limits on ETF/fund symbols (FUE*, E1VFVN30, BMK*, BHH*, etc.) are the dominant failure pattern — these are legitimate non-FA instruments. Pending_real ≈ 1,113 non-attempted symbols still include real stocks.
+
+All six important symbols return `status=ok domain=financial_report` via FastAPI demo.
+
+Exact resume command:
+
+```bat
+python scripts\batch_ingest_vietcap_fa_full_universe.py --run-id FA_FULL_UNIVERSE_20260626 --only-missing --resume --sleep-seconds 1 --jitter-seconds 0.5 --stop-on-rate-limit --max-consecutive-failures 20 --cooldown-after-http-failures 10 --write-summary-json data\cache\fa_full_universe_20260626_summary.json
+```
+
+Full-universe ingest remains `in_progress`; run-scoped tools continue using `FA_SMOKE_VHM_FPT_20260626` as latest complete.
+
 ## 2026-06-26 update — Full-universe Vietcap FA coverage workflow
 
 A resumable, low-concurrency full-universe FA ingester

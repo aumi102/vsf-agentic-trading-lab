@@ -28,26 +28,43 @@ but does NOT change the universe for production runs.
 | `--plan-only` | Print the plan and exit. No network, no writes. |
 | `--symbols A,B,C` | Smoke/test override that bypasses the universe lookup. |
 | `--run-id` | Force / resume a specific `run_id`. |
-| `--max-symbols N` | Cap symbols per pass (default 25, 0 = all remaining). |
+| `--max-symbols N` | Cap symbols per pass (default 0 = all remaining). |
 | `--start-index N` | Slice the remaining list starting at index N. |
 | `--resume` | Skip symbols already attempted in this `run_id`. |
 | `--only-missing` | Skip symbols already covered globally in any run. |
 | `--retry-failed` | Re-attempt symbols with no balance-sheet rows in this run. |
-| `--sleep-seconds` | Sleep between symbols (default 1.0, conservative: 2.0). |
+| `--sleep-seconds` | Sleep between symbols (default 1.0). |
 | `--jitter-seconds` | Random extra sleep per symbol. |
-| `--max-consecutive-failures N` | Stop the pass after N consecutive failed symbols. |
-| `--stop-on-rate-limit` | Stop the pass cleanly on 429 / throttle. |
+| `--max-consecutive-failures N` | Stop after N consecutive failed symbols (HTTP errors; zero-facts excluded by default). |
+| `--stop-on-rate-limit` | Stop cleanly on 429 / 503 throttle. |
+| `--count-zero-facts-as-failure` | Include zero-fact symbols (http=200, no rows) in consecutive failure count. |
+| `--cooldown-after-http-failures N` | Sleep cooldown-seconds after N consecutive HTTP failures (0 = disabled). |
 | `--write-summary-json PATH` | Write a compact summary JSON to PATH. Not staged. |
 
-## 2026-06-26 run snapshot
+## Failure classification
+
+The ingester classifies each attempted symbol into one of:
+
+- **HTTP failure**: non-2xx HTTP status or `access_status != verified`. Counts toward `--max-consecutive-failures`.
+- **Zero-fact**: http=200, verified, but zero rows across all four statement types. Does NOT count toward `--max-consecutive-failures` by default (use `--count-zero-facts-as-failure` to include). These are legitimate "no financial reports available" symbols (ETFs, warrants, derivatives, delisted).
+- **Partial**: some statements have rows, others are zero-fact. Coverage is partial but not zero.
+- **Covered**: at least one balance-sheet row produced.
+
+## 2026-06-28 run snapshot
 
 - Smoke run id: `FA_SMOKE_VHM_FPT_20260626` — processed 2 symbols (VHM, FPT), 0 failures, status `complete`. VHM went from 0 → 13,571 BS rows.
-- Full-universe run id: `FA_FULL_UNIVERSE_20260626` — multiple passes, status `in_progress`, resumable. The first pass re-ingested already-covered A-prefix symbols because the original `--only-missing --resume` flag combination was using an `elif` chain that ignored `--only-missing`. That was fixed (combine filters via set intersection, not elif) and the resume now correctly skips symbols already covered in any run.
-- Coverage progress (per-fa_balance_sheet distinct symbols via GROUP BY):
-  - Before smoke: 53
+- Full-universe run id: `FA_FULL_UNIVERSE_20260626` — multiple passes, status `in_progress`, resumable.
+- Bounded pass (100 symbols): zero-facts no longer counted as consecutive failures; cooldown-after-http-failures added. Symbols processed without premature stop. 141 new all4 symbols added.
+- Coverage progress:
+  - Before smoke: 53 (BS symbols)
   - After smoke: 54
-  - After full-universe resume: 159 (still in_progress; 1,371 remaining)
-- The `count_distinct` lag explanation from the previous report was wrong. The 54 global count is real. The 25 first-pass symbols were already in the 53-set (re-ingested), not new coverage.
+  - After full-universe resumes: 627 (all4 symbols), 929 remaining globally
+- Failure classification (from `scripts/inspect_fa_missing_universe.py`):
+  - `attempted_http_fail = 89`: mostly HTTP 503 (rate-limit on ETF/fund symbols like FUE*, E1VFVN30)
+  - `attempted_zero_facts = 90`: http=200, verified, but no rows (legitimate no-FA symbols)
+  - `pending_real = 1113`: symbols never attempted, mostly non-ETF stocks
+  - `likely_no_fa_heuristic = 102`: ETF/fund prefix symbols (FUE*, E1*, BMK*, BHH*, BQP*, etc.)
+- Zero-fact classification bug fixed: previously each section's empty rows was tracked independently (inflating zero_fact count); now symbol-level total rows across all sections determines zero-fact vs partial vs covered.
 
 ## Selection-bug fix
 
@@ -106,32 +123,30 @@ the consensus mapping table has no `total_assets` code yet.
 
 ## Coverage before / after (per-table)
 
-| Family | Before smoke | After smoke | After full-universe resumes |
+| Family | Before smoke | After smoke | After bounded resumes (2026-06-28) |
 |---|---|---|---|
-| `fa_balance_sheet` symbols | 53 | 54 | 159 (still in_progress; 1,371 remaining) |
-| `fa_income_statement` symbols | 53 | 54 | 158 |
-| `fa_cash_flow` symbols | 53 | 54 | 158 |
-| `fa_notes` symbols | 53 | 54 | 156 |
-| `all_four_symbol_count` | 53 | 54 | 155 |
+| `fa_balance_sheet` symbols | 53 | 54 | 639 |
+| `fa_income_statement` symbols | 53 | 54 | 635 |
+| `fa_cash_flow` symbols | 53 | 54 | 635 |
+| `fa_notes` symbols | 53 | 54 | 627 |
+| `all_four_symbol_count` | 53 | 54 | 627 |
+| Remaining globally | — | — | 929 |
 
-Important-symbol status:
+Important-symbol status (all OK as of 2026-06-28):
 
-- FPT, VCB, VNM, VHM: covered (real FA data; `financial report SYMBOL` returns `status=ok`).
-- CTG, HPG: not yet covered; `financial report CTG/HPG` returns `status=unavailable`.
+- FPT: covered (40,713 BS rows).
+- VHM: covered (13,571 BS rows).
+- VCB: covered (27,142 BS rows).
+- CTG: covered (13,571 BS rows).
+- HPG: covered (13,571 BS rows).
+- VNM: covered (27,142 BS rows).
 
-Important-symbol status (after smoke + first pass):
-
-- FPT: covered (40,713 BS rows across all runs).
-- VHM: covered (13,571 BS rows from the smoke run).
-- VCB: covered (27,142 BS rows, historical).
-- CTG: NOT yet covered. Needs a pass that includes CTG.
-- HPG: NOT yet covered. Needs a pass that includes HPG.
-- VNM: covered (27,142 BS rows, historical).
+All six return `status=ok domain=financial_report` via FastAPI demo.
 
 ## Exact resume command
 
 ```bat
-python scripts\batch_ingest_vietcap_fa_full_universe.py --run-id FA_FULL_UNIVERSE_20260626 --only-missing --resume --sleep-seconds 2 --jitter-seconds 1 --stop-on-rate-limit --max-consecutive-failures 10 --write-summary-json data\cache\fa_full_universe_20260626_summary.json
+python scripts\batch_ingest_vietcap_fa_full_universe.py --run-id FA_FULL_UNIVERSE_20260626 --only-missing --resume --sleep-seconds 1 --jitter-seconds 0.5 --stop-on-rate-limit --max-consecutive-failures 20 --cooldown-after-http-failures 10 --write-summary-json data\cache\fa_full_universe_20260626_summary.json
 ```
 
 ## Overnight runner (safe defaults)
