@@ -103,14 +103,17 @@ def list_adjusted_symbols(
             else:
                 approved_symbols.append(record)
 
-    # Count blocked symbols (in daily_prices but not in any pass list)
+    # Count missing symbols (in daily_prices but in neither approved/prototype NOR blocked_unapproved).
+    # blocked_unapproved symbols are KNOWN to have an vnstock source -- they are not missing,
+    # they are explicitly blocked. Exclude them so buckets are disjoint.
     _, dp_rows = qdb.exec_rows(
         client, base_url,
         "SELECT DISTINCT symbol FROM daily_prices ORDER BY symbol"
     )
     all_symbols = {str(r[0]) for r in dp_rows if r}
     pass_set = {s["symbol"] for s in approved_symbols + prototype_symbols}
-    blocked = sorted(all_symbols - pass_set)
+    blocked_set = {s["symbol"] for s in blocked_unapproved}
+    missing = sorted(all_symbols - pass_set - blocked_set)
 
     return {
         "status": "OK",
@@ -120,8 +123,8 @@ def list_adjusted_symbols(
         "approved_count": len(approved_symbols),
         "prototype_count": len(prototype_symbols),
         "blocked_unapproved_count": len(blocked_unapproved),
-        "missing_adjusted_source_count": len(blocked),
-        "missing_adjusted_source_symbols": blocked,
+        "missing_adjusted_source_count": len(missing),
+        "missing_adjusted_source_symbols": missing,
         "source_policy": source_policy,
     }
 

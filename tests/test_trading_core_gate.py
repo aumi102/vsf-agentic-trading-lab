@@ -601,6 +601,76 @@ def test_inspect_fpt_dividend_insufficient_fields():
         assert field in data["missing_fields"]
 
 
+# ─── new: bucket audit script ────────────────────────────────────────────────
+
+def test_adjusted_source_policy_bucket_audit_compiles():
+    result = subprocess.run(
+        [sys.executable, "-m", "compileall", "-q",
+         str(SCRIPTS / "audit_adjusted_source_policy_buckets.py")],
+        cwd=ROOT, capture_output=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_adjusted_source_policy_buckets_disjoint():
+    """Under each policy, no symbol appears in two buckets simultaneously."""
+    result = _run("audit_adjusted_source_policy_buckets.py",
+                  "--symbols", "FPT,VNM,HPG,VCB,CTG,VHM", "--json")
+    data = json.loads(result.stdout)
+    assert data["verdict"] == "BUCKETS_DISJOINT_PASS"
+    assert data["status"] == "ok"
+    assert result.returncode == 0
+    # All overlap checks must be empty
+    for check_name, overlapping in data["overlap_checks"].items():
+        assert overlapping == [], \
+            f"Bucket overlap {check_name} should be empty, got {overlapping}"
+
+
+def test_approved_only_buckets_fpt_vnm_blocked_unapproved():
+    """Under approved_only, FPT/VNM must be blocked_unapproved (not approved, not missing)."""
+    result = _run("audit_adjusted_source_policy_buckets.py",
+                  "--symbols", "FPT,VNM,HPG,VCB,CTG,VHM", "--json")
+    data = json.loads(result.stdout)
+    ao = data["approved_only"]
+    assert ao["approved_symbols"] == [], "approved_only: no approved symbols"
+    assert ao["approved_count"] == 0
+    assert ao["blocked_unapproved_count"] == 2
+    assert sorted(ao["blocked_unapproved_symbols"]) == ["FPT", "VNM"]
+    # FPT/VNM must NOT appear in missing under approved_only
+    assert "FPT" not in ao["missing_adjusted_source_symbols"]
+    assert "VNM" not in ao["missing_adjusted_source_symbols"]
+
+
+def test_prototype_allowed_buckets_fpt_vnm_prototype():
+    """Under prototype_allowed, FPT/VNM must be prototype (not approved, not blocked)."""
+    result = _run("audit_adjusted_source_policy_buckets.py",
+                  "--symbols", "FPT,VNM,HPG,VCB,CTG,VHM", "--json")
+    data = json.loads(result.stdout)
+    pp = data["prototype_allowed"]
+    assert pp["prototype_count"] == 2
+    assert sorted(pp["prototype_symbols"]) == ["FPT", "VNM"]
+    assert pp["blocked_unapproved_count"] == 0
+    assert pp["blocked_unapproved_symbols"] == []
+    assert "FPT" not in pp["missing_adjusted_source_symbols"]
+    assert "VNM" not in pp["missing_adjusted_source_symbols"]
+
+
+def test_hpg_vcb_ctg_vhm_missing_adjusted_source():
+    """HPG/VCB/CTG/VHM must be missing_adjusted_source under both policies."""
+    result = _run("audit_adjusted_source_policy_buckets.py",
+                  "--symbols", "FPT,VNM,HPG,VCB,CTG,VHM", "--json")
+    data = json.loads(result.stdout)
+    for policy in ("approved_only", "prototype_allowed"):
+        pdata = data[policy]
+        for sym in ["HPG", "VCB", "CTG", "VHM"]:
+            assert sym in pdata["missing_adjusted_source_symbols"], \
+                f"{sym} should be missing_adjusted_source under {policy}"
+            assert sym not in pdata["approved_symbols"], \
+                f"{sym} must not be approved under {policy}"
+            assert sym not in pdata["blocked_unapproved_symbols"], \
+                f"{sym} must not be blocked_unapproved under {policy}"
+
+
 # ─── new: source policy tests ────────────────────────────────────────────────
 
 def test_source_policy_default_is_approved_only():
