@@ -57,7 +57,7 @@ and backtest execution. Scripts are in `scripts/`:
 
 | Script | Purpose |
 |---|---|
-| `adjusted_ohlc_readiness.py` | Per-symbol gate from `adjusted_daily_prices`. Reports `PASS`/`BLOCKED`/`PARTIAL`. `--require-all` exits 1 if any symbol blocked. |
+| `adjusted_ohlc_readiness.py` | Per-symbol gate from `adjusted_daily_prices`. Reports `PASS`/`BLOCKED`/`PARTIAL`. `--source-policy approved_only|prototype_allowed`. Default `approved_only` (vnstock blocked). `--require-all` exits 1 if any symbol blocked. |
 | `run_trading_signals.py` | Computes BUY/SELL/HOLD/BLOCKED per symbol. PASS symbols use `adjusted_daily_prices`. BLOCKED symbols return `signal=BLOCKED` with reason. `--require-all` exits 1. |
 | `run_custom_backtest.py` | Custom no-lookahead backtest engine. PASS symbols run from `adjusted_daily_prices`. BLOCKED symbols skipped with reason. `--require-all` exits 1. Supports `baseline_buy_hold_v1` (engine validation only, not alpha). |
 | `run_trading_core_demo.py` | End-to-end demo: readiness -> signals -> backtest. Shows all symbols with status. PARTIAL if mixed. |
@@ -79,6 +79,24 @@ Requests with mixed PASS/BLOCKED symbols return `status=PARTIAL` (exit 0 without
 
 Never fallback to raw `daily_prices` for blocked symbols. Only `adjusted_daily_prices` is approved
 for trading computation.
+
+### Source policy
+
+`--source-policy approved_only` (default): vnstock-derived rows do NOT count as PASS.
+Symbols with `adjustment_source` containing "vnstock" are classified `BLOCKED_UNAPPROVED_SOURCE`.
+`--source-policy prototype_allowed`: vnstock rows count as `PASS_PROTOTYPE` with caveat.
+Per-symbol fields include: `adjustment_source`, `source_policy`, `source_approval_status`, `blocked_reason`.
+
+Current status (approved_only):
+- FPT, VNM: `BLOCKED_UNAPPROVED_SOURCE` (vnstock-derived, not approved)
+- HPG, VCB, CTG, VHM: `BLOCKED_ADJUSTED_SOURCE_MISSING` (no corporate action source)
+- No symbol has an approved adjusted OHLC source under the default policy.
+
+QuestDB `event_news_items` and `event_news_raw_payloads` were audited (2026-06-29):
+- Schema is disclosure/news oriented, not structured corporate action.
+- FPT has 1 dividend candidate; VNM/HPG/VCB/CTG/VHM have no rows.
+- Raw payload is HTML listing page; PDF dividend details not parseable without a PDF parser.
+- All 4 required fields missing: ex_date, record_date, cash_dividend_per_share, currency.
 
 ## Current Implementation
 

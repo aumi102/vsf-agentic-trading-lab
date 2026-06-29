@@ -1,42 +1,54 @@
 # Mentor status report
 
-## 2026-06-29 update -- PARTIAL adjusted trading core
+## 2026-06-29 update -- approved source policy enforced
 
-Trading core now operates in PARTIAL mode with truthful per-symbol gating.
+### Trading-core scripts (source-policy aware)
 
-### Trading-core scripts (PARTIAL-aware)
-
-- `scripts/adjusted_ohlc_readiness.py`: Per-symbol gate. FPT/VNM PASS, HPG/VCB/CTG/VHM BLOCKED.
-  `--require-all` exits 1 if any symbol blocked. Mixed requests return PARTIAL.
+- `scripts/adjusted_ohlc_readiness.py`: Per-symbol gate with `--source-policy approved_only|prototype_allowed`.
+  Default `approved_only`: vnstock-derived rows do NOT count as PASS.
+  FPT/VNM: BLOCKED_UNAPPROVED_SOURCE. HPG/VCB/CTG/VHM: BLOCKED_ADJUSTED_SOURCE_MISSING.
+  `--source-policy prototype_allowed`: vnstock rows count as PASS_PROTOTYPE with caveat.
 - `scripts/run_trading_signals.py`: PASS symbols compute from `adjusted_daily_prices`.
   BLOCKED symbols return `signal=BLOCKED` with precise reason. `--require-all` exits 1.
 - `scripts/run_custom_backtest.py`: PASS symbols run backtest. BLOCKED symbols skipped.
   Added `baseline_buy_hold_v1` strategy for engine validation. Metrics: Sharpe, Sortino, Profit Factor, Max Drawdown.
-- `scripts/run_trading_core_demo.py`: End-to-end. Shows FPT/VNM computed + HPG/VCB blocked.
+- `scripts/run_trading_core_demo.py`: End-to-end. Shows status per symbol.
 
-### Source-backed adjusted OHLC (FPT/VNM)
+### Source-backed adjusted OHLC (FPT/VNM) -- prototype only
 
-**Source:** `data/raw/vnstock/.../company_events`
+**Source:** `data/raw/vnstock/.../company_events` — NOT approved under `approved_only`.
 - FPT: 5 cash dividend events (VND 1,000/share, ex-dates: 2024-06-12, 2024-12-02, 2025-06-12, 2025-12-01, 2026-05-28)
 - VNM: 6 cash dividend events (VND 2500/500/350/2000/950/1500/share, ex-dates spanning 2024-2025)
-- HPG/VCB/CTG/VHM: NO vnstock company_events data -- BLOCKED
-
-**Factor audit:** Method B confirmed across all 11 events (`factor = close_before_exdate / close_on_exdate`).
-Continuity error = 0 for every event. Zero false positives.
+- HPG/VCB/CTG/VHM: NO vnstock company_events data
 
 **Output:** QuestDB `adjusted_daily_prices` WAL table (9,944 rows for FPT+VNM).
 - `adjustment_status = 'source_backed_corporate_action'`
 - `adjustment_source = 'vnstock:company_events:{symbol}'`
-- `factor_method = 'backward_exdate_price_ratio'`
+- **NOT approved for production under `approved_only` (default).**
 
-### PARTIAL semantics (honest)
+### QuestDB event table audit (2026-06-29)
 
-| Request | Status | Pass symbols | Blocked symbols |
-|---------|--------|-------------|-----------------|
-| FPT,VNM | PASS | FPT, VNM | none |
-| HPG,VCB,CTG,VHM | BLOCKED | none | HPG, VCB, CTG, VHM |
-| FPT,HPG,VCB,VNM | PARTIAL | FPT, VNM | HPG, VCB |
-| FPT,HPG,VCB,VNM + --require-all | exit 1 | — | — |
+Inspected `event_news_items` and `event_news_raw_payloads`:
+- Both tables exist with 20 total rows each (all FPT).
+- Schema: disclosure/news-oriented, not structured corporate action.
+- Fields: published_at, symbol, title, summary, source, raw_id, run_id, quality_status.
+- FPT has 1 dividend candidate (2025-05-19 BOD resolution for remaining 2025 cash dividend).
+- VNM/HPG/VCB/CTG/VHM: NO rows in either event table.
+- Raw payload for FPT dividend candidate: HTML listing page (1.4MB), no structured ex_date/amount fields.
+- PDF of dividend resolution not available from raw HTML (no PDF parser installed).
+- **All 4 required structured fields missing: ex_date, record_date, cash_dividend_per_share, currency.**
+
+**Conclusion:** QuestDB event tables are disclosure/news evidence, not structured corporate action.
+DB-derived adjusted OHLC not feasible without PDF parser + structured field extraction.
+
+### Source policy gate (honest)
+
+| Request | Policy | Status | FPT | VNM | HPG/VCB/CTG/VHM |
+|---------|--------|--------|-----|-----|-----------------|
+| FPT,VNM | approved_only | BLOCKED_UNAPPROVED_SOURCE | blocked | blocked | n/a |
+| FPT,VNM | prototype_allowed | PASS_PROTOTYPE | prototype | prototype | n/a |
+| HPG,VCB,CTG,VHM | approved_only | BLOCKED_ADJUSTED_SOURCE_MISSING | n/a | n/a | all blocked |
+| FPT,HPG | approved_only | PARTIAL | blocked | n/a | blocked |
 
 ### Signal status (2026-06-22)
 - FPT: `SELL`, score=-0.4498 (MA20 below MA50, 20d return=-4.5%)
@@ -64,11 +76,18 @@ Rules enforced:
 - Do NOT backtest on raw OHLC while claiming it is adjusted.
 - Do NOT silently fall back to raw OHLC.
 - Do NOT fake adjusted OHLC.
+- Do NOT count vnstock-derived rows as official PASS under `approved_only`.
+- Do NOT claim DB event tables are structured corporate action (they are disclosure/news only).
 
-Test suite: `tests/test_trading_core_gate.py` (16 tests, all pass).
-Caveats honestly state: adjusted OHLC columns exist but are fabricated.
+Test suite: `tests/test_trading_core_gate.py` (updated for source-policy tests).
+Caveats honestly state: adjusted OHLC from vnstock is prototype-only; no approved source exists.
 
-Remaining blocker: source-backed adjusted price / corporate-action factor.
+### Exact next blocker
+Approved adjusted OHLC source for any production symbol:
+1. PDF parser installed (pypdf/pdfplumber/pymupdf) to extract structured fields from FPT dividend HTML listing page, OR
+2. Structured corporate action from HSX/HOSE official endpoint, OR
+3. Vendor adjusted prices (CSI, Bloomberg, Refinitiv).
+Without one of the above, `approved_only` remains BLOCKED for all symbols.
 
 ## 2026-06-28 update -- Zero-fact classification + bounded FA resume
 

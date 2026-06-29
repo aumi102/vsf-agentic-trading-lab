@@ -33,6 +33,7 @@ DEFAULT_URL = qdb.DEFAULT_QUESTDB_URL
 # Strategy registry
 STRATEGIES = {
     "momentum_v1": "MA20/MA50 cross (trend following)",
+    "ma_cross_v1": "MA20/MA60 cross (trend following, alias for momentum_v1)",
     "mean_reversion_v1": "RSI(14) mean reversion",
     "buy_hold_v1": "Long everything",
     "baseline_buy_hold_v1": "Long everything (baseline, engine validation only)",
@@ -284,8 +285,10 @@ def compute_signals(
     strategy: str,
     lookback: int = 120,
     require_all: bool = False,
+    source_policy: str = "approved_only",
 ) -> tuple[list[dict], list[str]]:
-    readiness = check_adjusted_readiness(client, base_url, symbols)
+    readiness = check_adjusted_readiness(client, base_url, symbols,
+                                          source_policy=source_policy)
     by_symbol = readiness.get("by_symbol", [])
     sym_status = {s["symbol"]: s for s in by_symbol}
 
@@ -306,7 +309,7 @@ def compute_signals(
 
             adj_status = bars[-1]["adjustment_status"] if bars else "unknown"
             feat_strategy = strategy.replace("_v1", "")
-            if feat_strategy == "momentum":
+            if feat_strategy in ("momentum", "ma_cross"):
                 sig = _signal_momentum_v1(bars)
             elif feat_strategy == "mean_reversion":
                 sig = _signal_mean_reversion_v1(bars)
@@ -376,7 +379,7 @@ def main() -> int:
     parser.add_argument("--symbols", required=True, help="Comma-separated symbols, e.g. FPT,HPG,VCB")
     parser.add_argument("--as-of", default="latest", help="Signal date (default: latest)")
     parser.add_argument("--strategy", default="momentum_v1",
-                        choices=list(STRATEGIES.keys()),
+                        choices=["momentum_v1", "ma_cross_v1", "mean_reversion_v1", "buy_hold_v1", "baseline_buy_hold_v1"],
                         help="Strategy to run")
     parser.add_argument("--questdb-url", default=DEFAULT_URL)
     parser.add_argument("--lookback", type=int, default=120, help="Lookback bars")
@@ -384,6 +387,13 @@ def main() -> int:
     parser.add_argument(
         "--require-all", action="store_true",
         help="Exit 1 if any requested symbol is blocked"
+    )
+    parser.add_argument(
+        "--source-policy",
+        choices=["approved_only", "prototype_allowed"],
+        default="approved_only",
+        help="approved_only: vnstock rows are BLOCKED (default). "
+             "prototype_allowed: vnstock rows count as PASS_PROTOTYPE.",
     )
     args = parser.parse_args()
 
@@ -397,6 +407,7 @@ def main() -> int:
             results, caveats, overall = compute_signals(
                 client, base_url, symbols, args.strategy,
                 args.lookback, require_all=args.require_all,
+                source_policy=args.source_policy,
             )
     except RuntimeError as e:
         if args.json:
