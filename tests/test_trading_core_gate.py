@@ -23,9 +23,12 @@ SCRIPTS = ROOT / "scripts"
 
 
 def _run(script_name: str, *args: str) -> subprocess.CompletedProcess[str]:
+    env = dict(__import__("os").environ)
+    env["PYTHONUNBUFFERED"] = "1"
     return subprocess.run(
-        [sys.executable, "-u", str(SCRIPTS / script_name), *args],
+        [sys.executable, str(SCRIPTS / script_name), *args],
         cwd=ROOT,
+        env=env,
         text=True,
         encoding="utf-8",
         errors="replace",
@@ -428,9 +431,12 @@ def test_list_adjusted_pass_symbols_shows_2():
     result = _run("list_adjusted_pass_symbols.py", "--limit", "100", "--json")
     data = json.loads(result.stdout)
     assert data["status"] == "OK"
-    assert data["total_pass_count"] == 2, f"Expected 2 PASS, got {data['total_pass_count']}"
-    pass_syms = {s["symbol"] for s in data["pass_symbols"]}
-    assert pass_syms == {"FPT", "VNM"}
+    # Under approved_only: approved_count=0, blocked_unapproved_count=2 (FPT/VNM are vnstock)
+    assert data["approved_count"] == 0, f"Expected approved_count=0, got {data['approved_count']}"
+    assert data["prototype_count"] == 0, f"Expected prototype_count=0, got {data['prototype_count']}"
+    assert data["blocked_unapproved_count"] == 2, f"Expected 2 blocked_unapproved, got {data['blocked_unapproved_count']}"
+    blocked_syms = {s["symbol"] for s in data["blocked_unapproved_symbols"]}
+    assert blocked_syms == {"FPT", "VNM"}
 
 
 # ─── new: multi-symbol demo (CHECKPOINT 7) ────────────────────────────────
@@ -451,11 +457,24 @@ def test_multi_symbol_demo_reports_limited():
                   "--commission-bps", "15", "--slippage-bps", "5",
                   "--price-band-guard", "--json")
     data = json.loads(result.stdout)
-    assert data["demo_status"] == "BROAD_DEMO_LIMITED_SOURCE_BACKED_SYMBOLS"
-    assert data["pass_symbols_count"] == 2
-    assert data["broad_demo_limited"] is True
-    assert "baseline_buy_hold_v1" in data["backtests"]
-    assert "ma_cross_v1" in data["backtests"]
+    # approved_only: approved_count=0, prototype_count=0, demo blocked
+    assert data["approved_adjusted_symbols_count"] == 0
+    assert data["prototype_adjusted_symbols_count"] == 0
+    assert data["blocked_unapproved_symbols_count"] == 2
+    assert data["demo_status"] in ("BROAD_DEMO_APPROVED_SOURCE_BLOCKED", "BROAD_DEMO_LIMITED_APPROVED_SYMBOLS")
+    assert data["source_policy"] == "approved_only"
+    # Prototype_allowed path
+    result2 = _run("run_multi_symbol_trading_core_demo.py",
+                   "--limit", "100", "--from", "2021-01-01", "--to", "2025-12-31",
+                   "--strategy", "ma_cross_v1",
+                   "--commission-bps", "15", "--slippage-bps", "5",
+                   "--price-band-guard", "--json",
+                   "--source-policy", "prototype_allowed")
+    data2 = json.loads(result2.stdout)
+    assert data2["approved_adjusted_symbols_count"] == 0
+    assert data2["prototype_adjusted_symbols_count"] == 2
+    assert "baseline_buy_hold_v1" in data2["backtests"]
+    assert "ma_cross_v1" in data2["backtests"]
 
 
 # ─── new: probe script (CHECKPOINT 5) ──────────────────────────────────
@@ -489,15 +508,17 @@ def test_mentor_report_approved_only_status():
                   "--commission-bps", "15", "--slippage-bps", "5",
                   "--price-band-guard", "--json")
     data = json.loads(result.stdout)
-    # list_adjusted_pass_symbols uses DB query (no source_policy) -> counts FPT/VNM as pass
-    assert data["adjusted_ohlc_pipeline"]["source_backed_symbols_count"] == 2
-    assert data["adjusted_ohlc_pipeline"]["target_50_achieved"] is False
-    # but sym_status uses approved_only -> FPT/VNM blocked (vnstock), HPG/VCB blocked (no source)
-    assert data["adjusted_ohlc_pipeline"]["target_symbols"]["HPG"]["gate"] == "blocked"
-    assert data["adjusted_ohlc_pipeline"]["target_symbols"]["VCB"]["gate"] == "blocked"
-    # FPT/VNM now blocked under approved_only (vnstock source)
-    assert data["adjusted_ohlc_pipeline"]["target_symbols"]["FPT"]["gate"] == "blocked"
-    assert data["adjusted_ohlc_pipeline"]["target_symbols"]["VNM"]["gate"] == "blocked"
+    p = data["adjusted_ohlc_pipeline"]
+    # Under approved_only: no approved symbols
+    assert p["approved_adjusted_symbols_count"] == 0
+    assert p["prototype_adjusted_symbols_count"] == 0
+    assert p["blocked_unapproved_symbols_count"] == 2  # FPT/VNM are vnstock
+    # FPT/VNM blocked (vnstock), HPG/VCB blocked (no source)
+    assert p["target_symbols"]["HPG"]["gate"] == "blocked"
+    assert p["target_symbols"]["VCB"]["gate"] == "blocked"
+    assert p["target_symbols"]["FPT"]["gate"] == "blocked"
+    assert p["target_symbols"]["VNM"]["gate"] == "blocked"
+    assert data["verdict"] == "TRADING_CORE_APPROVED_SOURCE_BLOCKED"
 
 
 # ─── new: DB event audit script ─────────────────────────────────────────────
