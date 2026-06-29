@@ -97,8 +97,7 @@ that:
 
 Verified:
 
-- FPT/VHM/VCB/VNM → `status=ok`, `domain=financial_report`, OHLCV tools rejected.
-- CTG/HPG → `status=unavailable` (no rows in any run).
+- FPT/VHM/VCB/VNM/CTG/HPG → `status=ok`, `domain=financial_report`, OHLCV tools rejected.
 
 ## FA feature snapshot fix
 
@@ -123,14 +122,31 @@ the consensus mapping table has no `total_assets` code yet.
 
 ## Coverage before / after (per-table)
 
-| Family | Before smoke | After smoke | After bounded resumes (2026-06-28) |
+| Family | Before smoke | After smoke | After bounded resumes (2026-06-29) |
 |---|---|---|---|
-| `fa_balance_sheet` symbols | 53 | 54 | 639 |
-| `fa_income_statement` symbols | 53 | 54 | 635 |
-| `fa_cash_flow` symbols | 53 | 54 | 635 |
-| `fa_notes` symbols | 53 | 54 | 627 |
-| `all_four_symbol_count` | 53 | 54 | 627 |
-| Remaining globally | — | — | 929 |
+| `fa_balance_sheet` symbols | 53 | 54 | 663 |
+| `fa_income_statement` symbols | 53 | 54 | 659 |
+| `fa_cash_flow` symbols | 53 | 54 | 658 |
+| `fa_notes` symbols | 53 | 54 | 650 |
+| `all_four_symbol_count` | 53 | 54 | 650 |
+| Remaining globally | — | — | 906 |
+
+## Summary JSON reliability
+
+The summary JSON (`data/cache/fa_full_universe_20260626_summary.json`) is written at the
+end of each bounded pass. It includes:
+
+- `generated_at` — timestamp of write
+- `completed_normally` — `true` if pass ran symbols; `false` if pass was skipped
+- `interrupted` — `true` if pass started but was killed before summary write
+- `actual_coverage_snapshot` — authoritative per-table symbol counts from QuestDB
+  (`bs_symbols`, `is_symbols`, `cf_symbols`, `note_symbols`, `all4_symbols`,
+  `remaining_globally`)
+- `remaining_globally` = universe (1,556) minus symbols in all four tables
+
+**Use `questdb_fa_coverage.py` for real-time coverage. Use the summary JSON for
+pass-scoped metadata after a bounded run.** The summary's `actual_coverage_snapshot`
+is the authoritative count for that run's coverage.
 
 Important-symbol status (all OK as of 2026-06-28):
 

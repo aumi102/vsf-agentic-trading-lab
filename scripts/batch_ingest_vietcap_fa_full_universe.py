@@ -358,6 +358,14 @@ def main() -> int:
         counts = {t: _table_count(client, base_url, t, run_id) for t in (*FA_FACT_TABLES, "fa_raw_payloads")}
         all_attempted = len(attempted_after) >= len(universe)
         status = "complete" if all_attempted else "in_progress"
+        # Actual coverage snapshot from QuestDB (authoritative — reflects all runs even after interrupt).
+        # Must be computed inside the client context.
+        actual_bs_syms = _distinct_symbols(client, base_url, "fa_balance_sheet", "*")
+        actual_is_syms = _distinct_symbols(client, base_url, "fa_income_statement", "*")
+        actual_cf_syms = _distinct_symbols(client, base_url, "fa_cash_flow", "*")
+        actual_note_syms = _distinct_symbols(client, base_url, "fa_notes", "*")
+        actual_all4 = actual_bs_syms & actual_is_syms & actual_cf_syms & actual_note_syms
+        remaining_globally = len(universe) - len(actual_all4)
         _write_run_row(client, base_url, _progress_row(
             run_id=run_id, statements=statements, status=status,
             attempted=len(attempted_after), counts=counts, failures=failures,
@@ -408,17 +416,29 @@ def main() -> int:
             from pathlib import Path
             target = Path(args.write_summary_json)
             target.parent.mkdir(parents=True, exist_ok=True)
+            # Detect whether pass ran any symbols.
+            completed_normally = processed_this_pass > 0
+            # interrupted only if we processed symbols but didn't reach the summary write
+            # (the raw_rows write above succeeded, but a subsequent kill left pass_processed stale).
+            interrupted = completed_normally and (
+                len(attempted_after) == len(attempted) and
+                latest_processed_symbol != "" and
+                latest_processed_symbol not in universe[-1:]
+            )
             payload = {
+                "generated_at": _utc_timestamp(),
                 "run_id": run_id,
                 "run_status": status,
+                "completed_normally": completed_normally,
+                "interrupted": interrupted,
                 "pass_processed": processed_this_pass,
-                "latest_processed_symbol": latest_processed_symbol,
+                "latest_processed_symbol": latest_processed_symbol or "",
                 "stopped_for_rate_limit": stopped_for_rate_limit,
                 "stopped_for_failures": stopped_for_failures,
                 "universe": len(universe),
                 "attempted": len(attempted_after),
                 "covered_bs": len(covered_after),
-                "remaining": len(universe) - len(attempted_after),
+                "remaining": remaining_globally,
                 "row_counts_run": counts,
                 "failures_this_pass": len(failures),
                 "zero_facts_this_pass": zero_facts_count,
@@ -426,6 +446,14 @@ def main() -> int:
                 "rate_limit_failures_this_pass": rate_limit_failures_count,
                 "failure_samples": failures[:50],
                 "zero_facts_samples": zero_facts_samples[:50],
+                "actual_coverage_snapshot": {
+                    "bs_symbols": len(actual_bs_syms),
+                    "is_symbols": len(actual_is_syms),
+                    "cf_symbols": len(actual_cf_syms),
+                    "note_symbols": len(actual_note_syms),
+                    "all4_symbols": len(actual_all4),
+                    "remaining_globally": remaining_globally,
+                },
                 "resume_command": resume_command,
             }
             target.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")

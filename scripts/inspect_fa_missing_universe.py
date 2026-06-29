@@ -133,7 +133,8 @@ def inspect(client, base_url: str, run_id: str, as_json: bool = False) -> dict:
         "covered_partial": len(universe & attempted) - len(all4),
         "attempted_zero_facts": len(zero_facts),
         "attempted_http_fail": len(http_failures),
-        "pending_never_attempted": len(pending),
+        "pending_never_attempted": len(pending),  # universe - attempted; denominator = 1556
+        "remaining_globally": len(universe) - len(all4),  # universe - all4; denominator = 1556
         "likely_no_fa_heuristic": len(heuristic_no_fa),
         "pending_real": len(pending) - len(heuristic_no_fa),
     }
@@ -191,7 +192,8 @@ def _print_text(result: dict) -> None:
     print(f"  covered_partial                   : {s['covered_partial']}")
     print(f"  attempted_zero_facts              : {s['attempted_zero_facts']}  (http=200 but no BS rows)")
     print(f"  attempted_http_fail               : {s['attempted_http_fail']}  (non-2xx or non-verified)")
-    print(f"  pending_never_attempted           : {s['pending_never_attempted']}")
+    print(f"  pending_never_attempted           : {s['pending_never_attempted']}  (universe - attempted; ~{s['pending_never_attempted']/s['universe']*100:.0f}% of universe not yet attempted)")
+    print(f"  remaining_globally               : {s['remaining_globally']}  (universe - all4; ~{s['remaining_globally']/s['universe']*100:.0f}% of universe missing all 4 statements)")
     print(f"    likely_no_fa_heuristic          : {s['likely_no_fa_heuristic']}  (ETF/fund prefix, warrants)")
     print(f"    pending_real                    : {s['pending_real']}")
     print("-" * 70)

@@ -20,12 +20,14 @@ Coverage jumped significantly from bounded passes:
 | Table | Symbols (before) | Symbols (after) |
 |---|---|---|
 | fa_balance_sheet | 495 | 639 |
-| fa_income_statement | 471 | 635 |
-| fa_cash_flow | 471 | 635 |
-| fa_notes | 465 | 627 |
-| all_four | 486 | 627 |
+| fa_income_statement | 471 | 659 |
+| fa_cash_flow | 471 | 658 |
+| fa_notes | 465 | 650 |
+| all_four | 486 | 650 |
 
-Remaining globally: 929 (down from ~1,091). HTTP 503 rate-limits on ETF/fund symbols (FUE*, E1VFVN30, BMK*, BHH*, etc.) are the dominant failure pattern — these are legitimate non-FA instruments. Pending_real ≈ 1,113 non-attempted symbols still include real stocks.
+Remaining globally: 906. HTTP 503 rate-limits on ETF/fund symbols (FUE*, E1VFVN30, BMK*, BHH*, etc.) are the dominant failure pattern — these are legitimate non-FA instruments. pending_never_attempted = 1,195 (universe minus attempted); pending_real ≈ 1,093 non-attempted symbols still include real stocks.
+
+Summary JSON now includes `actual_coverage_snapshot` (authoritative QuestDB counts) and `generated_at` timestamp, making it reliable even after interrupted runs.
 
 All six important symbols return `status=ok domain=financial_report` via FastAPI demo.
 
