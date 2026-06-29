@@ -57,20 +57,28 @@ and backtest execution. Scripts are in `scripts/`:
 
 | Script | Purpose |
 |---|---|
-| `adjusted_ohlc_readiness.py` | Reports backtest gate status from QuestDB `daily_prices`. Exits 0 if `real_factor_rows > 0`, exits 1 if blocked. |
-| `run_trading_signals.py` | Computes BUY/SELL/HOLD signals. BLOCKED if adjusted feed gate is blocked. Exits 1 with `SIGNAL_BLOCKED_ADJUSTED_FACTOR_FABRICATED`. |
-| `run_custom_backtest.py` | Custom no-lookahead backtest engine. BLOCKED if adjusted feed gate is blocked. Exits 1 with `BACKTEST_BLOCKED_ADJUSTED_FACTOR_FABRICATED`. |
-| `run_trading_core_demo.py` | End-to-end demo: readiness -> signals -> backtest. Stops honestly at the gate if blocked. |
+| `adjusted_ohlc_readiness.py` | Per-symbol gate from `adjusted_daily_prices`. Reports `PASS`/`BLOCKED`/`PARTIAL`. `--require-all` exits 1 if any symbol blocked. |
+| `run_trading_signals.py` | Computes BUY/SELL/HOLD/BLOCKED per symbol. PASS symbols use `adjusted_daily_prices`. BLOCKED symbols return `signal=BLOCKED` with reason. `--require-all` exits 1. |
+| `run_custom_backtest.py` | Custom no-lookahead backtest engine. PASS symbols run from `adjusted_daily_prices`. BLOCKED symbols skipped with reason. `--require-all` exits 1. Supports `baseline_buy_hold_v1` (engine validation only, not alpha). |
+| `run_trading_core_demo.py` | End-to-end demo: readiness -> signals -> backtest. Shows all symbols with status. PARTIAL if mixed. |
 
-Signal contract fields: `symbol`, `as_of`, `strategy`, `signal` (BUY/SELL/HOLD),
-`score`, `features_used`, `reason`, `risk_flags`, `data_source`, `caveats`.
+Signal contract fields: `symbol`, `as_of`, `strategy`, `signal` (BUY/SELL/HOLD/BLOCKED),
+`score`, `features_used`, `reason`, `risk_flags`, `data_source`, `gate` (pass/blocked), `caveats`.
 
 Backtest contract v1 fields: `portfolio` ({cash, position, equity, bars_count}),
 `trade_ledger` ({date, symbol, side, price, quantity, value}),
-`metrics` ({total_return, sharpe, max_drawdown, win_rate, total_trades}),
+`metrics` ({total_return_pct, sharpe_ratio, sortino_ratio, profit_factor, max_drawdown_pct, win_rate, total_trades, cost_slippage_assumptions}),
 `execution_rule` (no-lookahead: signal at bar t fires at bar t+1 open price).
 
 All four scripts support `--json` for machine-parseable output.
+
+### PARTIAL semantics
+
+Requests with mixed PASS/BLOCKED symbols return `status=PARTIAL` (exit 0 without `--require-all`).
+`--require-all` exits 1 if any requested symbol is blocked.
+
+Never fallback to raw `daily_prices` for blocked symbols. Only `adjusted_daily_prices` is approved
+for trading computation.
 
 ## Current Implementation
 

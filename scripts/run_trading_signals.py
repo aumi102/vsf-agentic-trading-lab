@@ -35,20 +35,21 @@ STRATEGIES = {
     "momentum_v1": "MA20/MA50 cross (trend following)",
     "mean_reversion_v1": "RSI(14) mean reversion",
     "buy_hold_v1": "Long everything",
+    "baseline_buy_hold_v1": "Long everything (baseline, engine validation only)",
 }
 
 
 # ─── data fetch ───────────────────────────────────────────────────────────────
 
-def _fetch_bars(client, base_url: str, symbol: str, lookback: int = 120) -> list[dict[str, Any]]:
-    """Read bars. Prefers adjusted_daily_prices (source-backed) over daily_prices.
+def _fetch_bars(client, base_url: str, symbol: str, lookback: int = 120) -> list[dict[str, Any]] | None:
+    """Read bars from adjusted_daily_prices only. Returns None if no source-backed data.
 
-    adjusted_daily_prices columns are already adjusted (open/high/low/close).
-    daily_prices adjusted columns may be fabricated (adj == raw).
+    NEVER falls back to raw daily_prices — blocked symbols return None.
     """
     # Check if source-backed table has data for this symbol (limit 1 for speed)
     adj_exists_sql = (
         f"SELECT trade_date FROM adjusted_daily_prices WHERE symbol = '{symbol}' "
+        f"AND adjustment_status = 'source_backed_corporate_action' "
         f"ORDER BY trade_date DESC LIMIT 1"
     )
     try:
@@ -56,41 +57,32 @@ def _fetch_bars(client, base_url: str, symbol: str, lookback: int = 120) -> list
     except Exception:
         adj_exists = None
 
-    if adj_exists is not None:
-        # Use source-backed adjusted table (filter to last 5 years to reduce partitions)
-        five_years_ago = "2021-01-01"
-        sql = (
-            f"SELECT trade_date, open, high, low, close, volume, "
-            f"adjustment_factor, adjustment_status, exchange "
-            f"FROM adjusted_daily_prices "
-            f"WHERE symbol = '{symbol}' "
-            f"AND trade_date >= '{five_years_ago}' "
-            f"ORDER BY trade_date DESC "
-            f"LIMIT {lookback}"
-        )
-        cols, rows = qdb.exec_rows(client, base_url, sql)
-        result = []
-        for r in rows[::-1]:  # oldest first
-            d = _row_to_dict(cols, r)
-            d["adjusted_open"] = d.get("open")
-            d["adjusted_high"] = d.get("high")
-            d["adjusted_low"] = d.get("low")
-            d["adjusted_close"] = d.get("close")
-            result.append(d)
-        return result
-    else:
-        # Fall back to daily_prices (may be fabricated)
-        sql = (
-            f"SELECT trade_date, open, high, low, close, volume, "
-            f"adjusted_open, adjusted_high, adjusted_low, adjusted_close, "
-            f"adjustment_status, exchange "
-            f"FROM daily_prices "
-            f"WHERE symbol = '{symbol}' "
-            f"ORDER BY trade_date DESC "
-            f"LIMIT {lookback}"
-        )
-        cols, rows = qdb.exec_rows(client, base_url, sql)
-        return [_row_to_dict(cols, r) for r in rows[::-1]]  # oldest first
+    if adj_exists is None:
+        # No source-backed data for this symbol — BLOCKED, no raw fallback
+        return None
+
+    # Use source-backed adjusted table (filter to last 5 years to reduce partitions)
+    five_years_ago = "2021-01-01"
+    sql = (
+        f"SELECT trade_date, open, high, low, close, volume, "
+        f"adjustment_factor, adjustment_status, exchange "
+        f"FROM adjusted_daily_prices "
+        f"WHERE symbol = '{symbol}' "
+        f"AND adjustment_status = 'source_backed_corporate_action' "
+        f"AND trade_date >= '{five_years_ago}' "
+        f"ORDER BY trade_date DESC "
+        f"LIMIT {lookback}"
+    )
+    cols, rows = qdb.exec_rows(client, base_url, sql)
+    result = []
+    for r in rows[::-1]:  # oldest first
+        d = _row_to_dict(cols, r)
+        d["adjusted_open"] = d.get("open")
+        d["adjusted_high"] = d.get("high")
+        d["adjusted_low"] = d.get("low")
+        d["adjusted_close"] = d.get("close")
+        result.append(d)
+    return result
 
 
 def _row_to_dict(cols: list[str], row: list) -> dict[str, Any]:
@@ -291,50 +283,92 @@ def compute_signals(
     symbols: list[str],
     strategy: str,
     lookback: int = 120,
+    require_all: bool = False,
 ) -> tuple[list[dict], list[str]]:
     readiness = check_adjusted_readiness(client, base_url, symbols)
-    gate = readiness["backtest_gate"]
-    status = readiness["status"]
-
-    if gate == "blocked":
-        blocked_msg = (
-            "SIGNAL_BLOCKED_ADJUSTED_FACTOR_FABRICATED"
-            if "FABRICATED" in status
-            else "SIGNAL_BLOCKED_ADJUSTED_FEED_MISSING"
-        )
-        raise RuntimeError(
-            f"{blocked_msg}: adjusted OHLCV readiness gate={gate}. "
-            "Signals require source-backed adjusted price / corporate action factor."
-        )
+    by_symbol = readiness.get("by_symbol", [])
+    sym_status = {s["symbol"]: s for s in by_symbol}
 
     caveats_out = readiness["caveats"][:]
     results = []
+    pass_count = 0
+    block_count = 0
+
     for sym in symbols:
-        bars = _fetch_bars(client, base_url, sym, lookback)
-        adj_status = bars[-1]["adjustment_status"] if bars else "unknown"
-        feat_strategy = strategy.replace("_v1", "")
-        if feat_strategy == "momentum":
-            sig = _signal_momentum_v1(bars)
-        elif feat_strategy == "mean_reversion":
-            sig = _signal_mean_reversion_v1(bars)
-        elif feat_strategy == "buy_hold":
-            sig = _signal_buy_hold_v1(bars, adj_status)
+        sym_info = sym_status.get(sym, {})
+        if sym_info.get("backtest_gate") == "pass":
+            bars = _fetch_bars(client, base_url, sym, lookback)
+            if bars is None:
+                # Should not happen but guard anyway
+                block_count += 1
+                results.append(_blocked_signal(sym, strategy, sym_info.get("blocked_reason")))
+                continue
+
+            adj_status = bars[-1]["adjustment_status"] if bars else "unknown"
+            feat_strategy = strategy.replace("_v1", "")
+            if feat_strategy == "momentum":
+                sig = _signal_momentum_v1(bars)
+            elif feat_strategy == "mean_reversion":
+                sig = _signal_mean_reversion_v1(bars)
+            elif feat_strategy in ("buy_hold", "baseline_buy_hold"):
+                sig = _signal_buy_hold_v1(bars, adj_status)
+            else:
+                sig = _hold("unknown_strategy", 0.0, [], [], adj_status, f"strategy={strategy}")
+            results.append({
+                "symbol": sym,
+                "as_of": bars[-1]["trade_date"] if bars else None,
+                "strategy": strategy,
+                **sig,
+                "data_source": "adjusted_daily_prices",
+                "adjustment_status": adj_status,
+                "gate": "pass",
+                "caveats": [
+                    "corporate-event-derived adjusted OHLC (vnstock company_events)",
+                    "adjusted OHLCV readiness only -- not financial advice",
+                ],
+            })
+            pass_count += 1
         else:
-            sig = _hold("unknown_strategy", 0.0, [], [], adj_status, f"strategy={strategy}")
-        results.append({
-            "symbol": sym,
-            "as_of": bars[-1]["trade_date"] if bars else None,
-            "strategy": strategy,
-            **sig,
-            "data_source": "daily_prices.adjusted_ohlcv",
-            "adjustment_status": adj_status,
-            "gate": gate,
-            "caveats": [
-                f"backtest_gate={gate}",
-                "adjusted OHLCV readiness only -- not financial advice",
-            ],
-        })
-    return results, caveats_out
+            block_count += 1
+            results.append(_blocked_signal(sym, strategy, sym_info.get("blocked_reason")))
+
+    # Overall status
+    if block_count == 0:
+        overall = "ok"
+    elif pass_count == 0:
+        overall = "blocked"
+    else:
+        overall = "partial"
+
+    if require_all and block_count > 0:
+        raise RuntimeError(
+            f"SIGNAL_BLOCKED: {block_count} of {len(symbols)} symbols blocked "
+            f"(require_all=True). Blocked symbols: "
+            f"{[s for s in symbols if sym_status.get(s, {}).get('backtest_gate') != 'pass']}"
+        )
+
+    return results, caveats_out, overall
+
+
+def _blocked_signal(symbol: str, strategy: str, reason: str | None) -> dict:
+    return {
+        "symbol": symbol,
+        "as_of": None,
+        "strategy": strategy,
+        "signal": "BLOCKED",
+        "score": None,
+        "features_used": {},
+        "reason": reason or "No source-backed adjusted OHLC for this symbol.",
+        "risk_flags": ["no_adjusted_source"],
+        "data_source": None,
+        "adjustment_status": None,
+        "gate": "blocked",
+        "caveats": [
+            "BLOCKED -- no corporate action source. "
+            "Raw daily_prices MUST NOT be used as adjusted for trading.",
+            "adjusted OHLCV readiness only -- not financial advice",
+        ],
+    }
 
 
 def main() -> int:
@@ -347,67 +381,82 @@ def main() -> int:
     parser.add_argument("--questdb-url", default=DEFAULT_URL)
     parser.add_argument("--lookback", type=int, default=120, help="Lookback bars")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--require-all", action="store_true",
+        help="Exit 1 if any requested symbol is blocked"
+    )
     args = parser.parse_args()
 
     symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
     base_url = args.questdb_url.rstrip("/")
 
-    with qdb.open_client(timeout_seconds=60.0) as client:
-        readiness = check_adjusted_readiness(client, base_url, symbols)
-
-    gate = readiness["backtest_gate"]
-    status = readiness["status"]
-
     import json as _json
-    if gate == "blocked":
-        blocked_msg = (
-            "SIGNAL_BLOCKED_ADJUSTED_FACTOR_FABRICATED"
-            if "FABRICATED" in status
-            else "SIGNAL_BLOCKED_ADJUSTED_FEED_MISSING"
-        )
+
+    try:
+        with qdb.open_client(timeout_seconds=60.0) as client:
+            results, caveats, overall = compute_signals(
+                client, base_url, symbols, args.strategy,
+                args.lookback, require_all=args.require_all,
+            )
+    except RuntimeError as e:
         if args.json:
-            output = {
-                "status": blocked_msg,
-                "gate": gate,
-                "backtest_gate": gate,
+            print(_json.dumps({
+                "status": "PARTIAL_BLOCKED",
+                "error": str(e),
                 "symbols": symbols,
                 "strategy": args.strategy,
-                "as_of": args.as_of,
-                "caveats": readiness["caveats"],
-            }
-            print(_json.dumps(output, indent=2))
+            }, indent=2))
         else:
             print(f"{'='*60}")
-            print(f"  {blocked_msg}")
-            print(f"  gate: {gate}")
-            print(f"  strategy: {args.strategy}")
-            print(f"  as_of: {args.as_of}")
-            print(f"  symbols: {symbols}")
+            print(f"  SIGNAL PARTIAL BLOCKED")
             print(f"{'='*60}")
-            print("  Blocked -- adjusted OHLCV source factors are fabricated (adj == raw).")
-            print("  Signals require source-backed adjusted price / corporate action factor.")
+            print(f"  {e}")
             print(f"{'='*60}")
         return 1
 
-    with qdb.open_client(timeout_seconds=60.0) as client:
-        results, caveats = compute_signals(client, base_url, symbols, args.strategy, args.lookback)
+    if overall == "blocked":
+        # All symbols blocked -- exit 1
+        if args.json:
+            print(_json.dumps({
+                "status": "blocked",
+                "strategy": args.strategy,
+                "signals": results,
+                "caveats": caveats,
+            }, indent=2))
+        else:
+            print(f"{'='*60}")
+            print(f"Trading Signals  strategy={args.strategy}  overall=BLOCKED")
+            print(f"{'='*60}")
+            for r in results:
+                print(f"\n  [BLOCKED] {r['symbol']}")
+                print(f"            {r['reason']}")
+            if caveats:
+                print(f"\n{'='*60}")
+                print("  Caveats:")
+                for c in caveats:
+                    print(f"    - {c}")
+            print(f"{'='*60}")
+        return 1
 
     if args.json:
-        output = {"status": "ok", "strategy": args.strategy, "signals": results, "caveats": caveats}
-        print(_json.dumps(output, indent=2))
-        return 0
+        print(_json.dumps({
+            "status": overall,
+            "strategy": args.strategy,
+            "signals": results,
+            "caveats": caveats,
+        }, indent=2))
+        return 0 if overall != "blocked" else 1
 
     print(f"{'='*60}")
-    print(f"Trading Signals  strategy={args.strategy}  gate={gate}")
+    print(f"Trading Signals  strategy={args.strategy}  overall={overall}")
     print(f"{'='*60}")
     for r in results:
-        print(f"\n  [{r['signal']:4s}] {r['symbol']}  score={r['score']:+.4f}  as_of={r['as_of']}")
+        print(f"\n  [{str(r['signal']):4s}] {r['symbol']}  score={r.get('score')}  as_of={r['as_of']}")
         print(f"           reason: {r['reason']}")
-        print(f"           features: {r['features_used']}")
-        if r['risk_flags']:
+        if r.get('features_used'):
+            print(f"           features: {r['features_used']}")
+        if r.get('risk_flags'):
             print(f"           risk_flags: {r['risk_flags']}")
-        if r.get('adjustment_status') == 'adjusted_price_missing_warn':
-            print(f"           ⚠ adjusted OHLCV is FABRICATED (adj == raw) -- research only")
     if caveats:
         print(f"\n{'='*60}")
         print("  Caveats:")

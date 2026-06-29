@@ -53,99 +53,112 @@ def main() -> int:
 
     gate = readiness["backtest_gate"]
     status = readiness["status"]
-    total_rows = readiness["coverage"]["total_rows"]
-    warn_rows = readiness["coverage"]["warn_rows"]
-    real_rows = readiness["coverage"]["real_factor_rows"]
+    by_symbol = readiness.get("by_symbol", [])
+    sym_status = {s["symbol"]: s for s in by_symbol}
+
+    pass_syms = [s for s in symbols if sym_status.get(s, {}).get("backtest_gate") == "pass"]
+    block_syms = [s for s in symbols if sym_status.get(s, {}).get("backtest_gate") == "blocked"]
 
     if args.json:
         step1 = {
             "step": "adjusted_ohlc_readiness",
             "gate": gate,
             "status": status,
-            "total_rows": total_rows,
-            "warn_rows": warn_rows,
-            "real_factor_rows": real_rows,
+            "pass_symbols": pass_syms,
+            "blocked_symbols": block_syms,
         }
     else:
         print(f"\n{SEP}")
         print(f"  STEP 1: Adjusted OHLC Readiness")
         print(f"{SEP}")
-        print(f"  status:          {status}")
-        print(f"  backtest_gate:  {gate}")
-        print(f"  total_rows:     {total_rows:,}")
-        print(f"  warn_rows:      {warn_rows:,}  (adj == raw, factor=1.0)")
-        print(f"  real_factor_rows: {real_rows:,}  (factor != 1.0)")
+        print(f"  status:   {status}")
+        print(f"  gate:     {gate}")
         print(f"{SEP2}")
-        for s in readiness["caveats"]:
-            print(f"  {s}")
+        for sym in symbols:
+            s = sym_status.get(sym, {})
+            if s.get("backtest_gate") == "pass":
+                src = s.get("source", "?")
+                rows = s.get("row_count", 0)
+                print(f"    [PASS] {sym:<6}  rows={rows:>6,}  source={src}")
+            else:
+                reason = (s.get("blocked_reason") or "unknown")[:80]
+                print(f"    [BLOCK] {sym:<6}  {reason}")
+        print(f"{SEP2}")
+        for c in readiness["caveats"]:
+            print(f"  {c}")
         print(f"{SEP}")
 
     if gate == "blocked":
-        blocked_msg = (
-            "BLOCKED_ADJUSTED_FACTOR_FABRICATED"
-            if "FABRICATED" in status
-            else "BLOCKED_ADJUSTED_FEED_MISSING"
-        )
         if args.json:
             print(_json.dumps({
-                "status": blocked_msg,
+                "status": "BLOCKED",
                 "step": "adjusted_ohlc_readiness",
                 "gate": gate,
                 "symbols": symbols,
-                "total_rows": total_rows,
-                "real_factor_rows": real_rows,
-                "next_action": "Need source-backed adjusted price / corporate action factor",
+                "blocked_symbols": block_syms,
                 "caveats": readiness["caveats"],
             }, indent=2))
         else:
             print(f"\n  {SEP}")
-            print(f"  TRADE GATE: {blocked_msg}")
+            print(f"  TRADE GATE: BLOCKED (all symbols)")
             print(f"{SEP}")
-            print(f"  Stopped -- adjusted OHLCV source factors are fabricated (adj == raw).")
-            print(f"  Need source-backed adjusted price / corporate action factor before")
-            print(f"  real strategy signals or backtest.")
+            print(f"  Stopped -- no source-backed adjusted OHLC for any requested symbol.")
+            print(f"  Need corporate action source for: {', '.join(block_syms)}")
             print(f"{SEP}")
         return 1
 
     # ── Step 2: Strategy signals ─────────────────────────────────────────────
     with qdb.open_client(timeout_seconds=60.0) as client:
-        results, caveats = compute_signals(client, base_url, symbols, args.strategy, lookback=120)
+        results, caveats, sig_overall = compute_signals(
+            client, base_url, symbols, args.strategy,
+            lookback=120, require_all=False,
+        )
 
     if args.json:
-        step2 = {"step": "strategy_signals", "results": results}
+        step2 = {"step": "strategy_signals", "overall": sig_overall, "results": results}
     else:
         print(f"\n  STEP 2: Strategy Signals (strategy={args.strategy})")
         print(f"{SEP}")
         for r in results:
-            print(f"\n  [{r['signal']:4s}] {r['symbol']}  score={r['score']:+.4f}  as_of={r['as_of']}")
-            print(f"           reason: {r['reason']}")
-            print(f"           features: {r['features_used']}")
-            if r.get('risk_flags'):
-                print(f"           risk_flags: {r['risk_flags']}")
+            sig = str(r.get("signal", "?"))
+            print(f"    [{sig:6s}] {r['symbol']:<6}  score={str(r.get('score'))}  as_of={r.get('as_of')}")
+            print(f"            {r.get('reason', '')}")
 
     # ── Step 3: Custom backtest ─────────────────────────────────────────────
     with qdb.open_client(timeout_seconds=60.0) as client:
-        bk_results, bk_caveats = run_backtest(
+        bk_results, bk_caveats, bk_overall = run_backtest(
             client, base_url, symbols,
             args.from_date, args.to_date,
             args.strategy, args.initial_cash,
+            require_all=False,
         )
 
     if args.json:
-        step3 = {"step": "custom_backtest", "results": bk_results}
+        step3 = {"step": "custom_backtest", "overall": bk_overall, "results": bk_results}
         print(_json.dumps({
-            "status": "ok",
-            "steps": [step1, step2, step3],
+            "status": "PARTIAL" if gate == "partial" else "ok",
+            "step1": step1,
+            "step2": step2,
+            "step3": step3,
             "caveats": caveats + bk_caveats,
         }, indent=2))
     else:
+        print(f"\n  STEP 3: Custom Backtest (strategy={args.strategy})")
+        print(f"{SEP}")
         for r in bk_results:
-            print(f"\n  {r['symbol']}  reason={r['reason']}")
-            print(f"  portfolio: {r['portfolio']}")
-            print(f"  metrics:   {r['metrics']}")
-            print(f"  trades:    {len(r['trade_ledger'])}")
+            if r.get("status") == "BLOCKED":
+                print(f"    [BLOCK] {r['symbol']:<6}  {r.get('reason', '')[:80]}")
+            else:
+                m = r.get("metrics", {})
+                trades = len(r.get("trade_ledger", []))
+                print(f"    {r['symbol']:<6}  ret={m.get('total_return_pct', 0):+.1f}%  "
+                      f"sharpe={m.get('sharpe_ratio', 0):.2f}  "
+                      f"dd={m.get('max_drawdown_pct', 0):.1f}%  "
+                      f"trades={trades}")
+                print(f"            equity: {r.get('portfolio', {}).get('final_equity', 0):,.0f} VND")
         print(f"\n{SEP}")
-        print(f"  Done. All steps complete.")
+        overall = "PARTIAL" if gate == "partial" else "ok"
+        print(f"  overall: {overall}")
         print(f"{SEP}")
 
     return 0

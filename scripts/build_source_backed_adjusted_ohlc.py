@@ -158,6 +158,7 @@ def main() -> int:
     parser.add_argument("--questdb-url", default=DEFAULT_URL)
     parser.add_argument("--dry-run", action="store_true", help="Show factors only, no writes")
     parser.add_argument("--write-derived", action="store_true", help="Write to adjusted_daily_prices table")
+    parser.add_argument("--rebuild", action="store_true", help="Drop and recreate adjusted_daily_prices before writing")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
@@ -234,6 +235,13 @@ def main() -> int:
             return 0
 
         # ── Write to adjusted_daily_prices (WAL table, all columns) ──────────
+        # Drop table if --rebuild so DEDUP UPSERT uses new schema
+        if args.rebuild:
+            print(f"\n  Rebuilding adjusted_daily_prices...")
+            drop_sql = "DROP TABLE IF EXISTS adjusted_daily_prices;"
+            qdb.exec_query(client, base_url, drop_sql)
+            print(f"    dropped adjusted_daily_prices")
+
         print(f"\n  Writing adjusted_daily_prices (WAL table)...")
         total_written = 0
 
@@ -287,6 +295,7 @@ def main() -> int:
                     "adjustment_status": "source_backed_corporate_action",
                     "adjustment_source": f"vnstock:company_events:{sym}",
                     "run_id": RUN_ID,
+                    "event_count": len(ex_dates),
                     "factor_method": "backward_exdate_price_ratio",
                     "dividend_exdates": ";".join(ex_dates),
                 })
@@ -319,18 +328,20 @@ def _write_batch(client, base_url: str, rows: list[dict]) -> int:
         "symbol", "trade_date", "open", "high", "low", "close",
         "volume", "exchange", "adjustment_factor", "adjustment_status",
         "adjustment_source", "run_id", "factor_method", "dividend_exdates",
+        "event_count",
     ]
 
-    # Create WAL table if not exists (same pattern as ingest_to_questdb.py)
+    # Create WAL table if not exists
+    # DEDUP UPSERT KEYS(symbol, trade_date) so rebuilds overwrite old run_id values
     create_sql = (
         "CREATE TABLE IF NOT EXISTS adjusted_daily_prices ("
         "symbol SYMBOL, trade_date TIMESTAMP, open DOUBLE, high DOUBLE, "
         "low DOUBLE, close DOUBLE, volume DOUBLE, exchange SYMBOL, "
         "adjustment_factor DOUBLE, adjustment_status SYMBOL, "
         "adjustment_source SYMBOL, run_id SYMBOL, "
-        "factor_method SYMBOL, dividend_exdates STRING"
+        "factor_method SYMBOL, dividend_exdates STRING, event_count INT"
         ") TIMESTAMP(trade_date) PARTITION BY DAY WAL "
-        "DEDUP UPSERT KEYS(symbol, trade_date, run_id);"
+        "DEDUP UPSERT KEYS(symbol, trade_date);"
     )
     resp = client.get(f"{base_url}/exec", params={"query": create_sql})
     resp.raise_for_status()
@@ -355,11 +366,12 @@ def _write_batch(client, base_url: str, rows: list[dict]) -> int:
             row["run_id"],
             row["factor_method"],
             row["dividend_exdates"],
+            row.get("event_count", 0),
         ])
 
     csv_bytes = buf.getvalue().encode("utf-8")
 
-    # POST via imp with overwrite=false for idempotent upserts
+    # POST via imp
     resp = client.post(
         f"{base_url}/imp",
         params={"name": table, "overwrite": "false", "forceHeader": "true"},

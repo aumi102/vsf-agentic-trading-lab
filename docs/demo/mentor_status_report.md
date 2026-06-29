@@ -1,63 +1,63 @@
 # Mentor status report
 
-## 2026-06-29 update -- Source-backed adjusted OHLC unlocked for FPT/VNM
+## 2026-06-29 update -- PARTIAL adjusted trading core
 
-Four trading-core scripts added in previous session (all gated on adjusted OHLC):
+Trading core now operates in PARTIAL mode with truthful per-symbol gating.
 
-- `scripts/adjusted_ohlc_readiness.py`: Reports `PASS` for FPT/VNM.
-- `scripts/run_trading_signals.py`: Computes real BUY/SELL/HOLD signals for FPT.
-- `scripts/run_custom_backtest.py`: Custom no-lookahead engine runs for FPT.
-- `scripts/run_trading_core_demo.py`: End-to-end demo (readiness -> signals -> backtest).
+### Trading-core scripts (PARTIAL-aware)
 
-Now source-backed adjusted OHLC is built for FPT and VNM using vnstock company_events:
+- `scripts/adjusted_ohlc_readiness.py`: Per-symbol gate. FPT/VNM PASS, HPG/VCB/CTG/VHM BLOCKED.
+  `--require-all` exits 1 if any symbol blocked. Mixed requests return PARTIAL.
+- `scripts/run_trading_signals.py`: PASS symbols compute from `adjusted_daily_prices`.
+  BLOCKED symbols return `signal=BLOCKED` with precise reason. `--require-all` exits 1.
+- `scripts/run_custom_backtest.py`: PASS symbols run backtest. BLOCKED symbols skipped.
+  Added `baseline_buy_hold_v1` strategy for engine validation. Metrics: Sharpe, Sortino, Profit Factor, Max Drawdown.
+- `scripts/run_trading_core_demo.py`: End-to-end. Shows FPT/VNM computed + HPG/VCB blocked.
 
-**Source:** `data/raw/vnstock/.../company_events` (run_id=20260601T104928Z)
+### Source-backed adjusted OHLC (FPT/VNM)
+
+**Source:** `data/raw/vnstock/.../company_events`
 - FPT: 5 cash dividend events (VND 1,000/share, ex-dates: 2024-06-12, 2024-12-02, 2025-06-12, 2025-12-01, 2026-05-28)
 - VNM: 6 cash dividend events (VND 2500/500/350/2000/950/1500/share, ex-dates spanning 2024-2025)
-- HPG/VCB/CTG/VHM: NO vnstock company_events data -- remain BLOCKED
+- HPG/VCB/CTG/VHM: NO vnstock company_events data -- BLOCKED
 
-**Method:** Backward adjustment via ex-date price ratios:
-`factor = close_before_exdate / close_on_exdate`
-`adjusted_ohlc = raw_ohlc * cumulative_factor (for rows before ex-date)`
+**Factor audit:** Method B confirmed across all 11 events (`factor = close_before_exdate / close_on_exdate`).
+Continuity error = 0 for every event. Zero false positives.
 
 **Output:** QuestDB `adjusted_daily_prices` WAL table (9,944 rows for FPT+VNM).
 - `adjustment_status = 'source_backed_corporate_action'`
 - `adjustment_source = 'vnstock:company_events:{symbol}'`
 - `factor_method = 'backward_exdate_price_ratio'`
 
-**Gate result:**
-- FPT: PASS (4,860 rows, `status=PASS`, `backtest_gate=pass`)
-- VNM: PASS (5,084 rows)
-- HPG/VCB/CTG/VHM: BLOCKED (`NO_CORPORATE_ACTION_SOURCE`)
+### PARTIAL semantics (honest)
 
-**FPT momentum_v1 signal (2026-06-22):**
-- `SELL`, score=-0.4498, MA20=73,362, MA50=74,285, 20d return=-4.5%
-- `adjustment_status=source_backed_corporate_action`, no fabricated risk flag
+| Request | Status | Pass symbols | Blocked symbols |
+|---------|--------|-------------|-----------------|
+| FPT,VNM | PASS | FPT, VNM | none |
+| HPG,VCB,CTG,VHM | BLOCKED | none | HPG, VCB, CTG, VHM |
+| FPT,HPG,VCB,VNM | PARTIAL | FPT, VNM | HPG, VCB |
+| FPT,HPG,VCB,VNM + --require-all | exit 1 | — | — |
 
-**Limitation:** Only 2 of 6 demo symbols unlocked. HPG/VCB/CTG/VHM still blocked.
-Need: (1) vnstock company_events for those symbols, or (2) HSX/HOSE corporate action endpoint, or (3) vendor adjusted price data.
+### Signal status (2026-06-22)
+- FPT: `SELL`, score=-0.4498 (MA20 below MA50, 20d return=-4.5%)
+- VNM: `SELL`, score=-0.0846
+- HPG/VCB: `BLOCKED` (no raw fallback)
 
-Tests: 17/17 trading-core gate tests pass, 36/36 demo stack tests pass.
+### Baseline backtest results (baseline_buy_hold_v1, 2021-01-01 to 2025-12-31)
+- FPT: +7.1% total return, Sharpe=0.668, Sortino=0.933, MaxDD=4.3%, Profit Factor=1.138
+- VNM: -2.2% total return, Sharpe=-0.294, Sortino=-0.412, MaxDD=4.1%, Profit Factor=0.979
+- Cost/slippage assumptions: 0 bps commission, 0 slippage (configurable, future)
 
-Four trading-core scripts are added, all gated on adjusted OHLC readiness:
+**Baseline is engine validation only. Not alpha.**
 
-- `scripts/adjusted_ohlc_readiness.py`: Reports `BLOCKED_ADJUSTED_FACTOR_FABRICATED`
-  for all 26,473 rows across 6 demo symbols (FPT/HPG/VCB/CTG/VNM/VHM).
-  `adjustment_factor=1.0` and `adjustment_status='adjusted_price_missing_warn'` for every row.
-  Vietcap gap-chart source provides no adjustment factors. Adjusted OHLCV is fabricated
-  (adj == raw). Backtest is BLOCKED. Exits 0 only when real factor rows exist.
+### No raw fallback
+`scripts/run_trading_signals.py` and `scripts/run_custom_backtest.py` NEVER use `daily_prices` as adjusted for BLOCKED symbols.
+`adjusted_daily_prices` is the only approved source for trading computation.
 
-- `scripts/run_trading_signals.py`: Exits 1 with `SIGNAL_BLOCKED_ADJUSTED_FACTOR_FABRICATED`
-  when gate is blocked. Supports `--strategy momentum_v1` and `--strategy mean_reversion_v1`.
-  `--json` emits machine-parseable blocked output.
+### Tests: 26/26 trading-core gate tests pass, 36/36 demo stack tests pass.
 
-- `scripts/run_custom_backtest.py`: Exits 1 with `BACKTEST_BLOCKED_ADJUSTED_FACTOR_FABRICATED`
-  when gate is blocked. Self-built no-lookahead engine (not Backtrader).
-  Supports `--dry-run` for gate-only checks. Contract: portfolio state, trade ledger,
-  metrics (sharpe/drawdown/win_rate), no-lookahead execution.
-
-- `scripts/run_trading_core_demo.py`: End-to-end demo. Stops honestly at the gate.
-  Prints clear next action: "Need source-backed adjusted price / corporate action factor
+### Exact next blocker
+Source-backed corporate action data (vnstock company_events, HSX/HOSE endpoint, or vendor adjusted prices) for HPG, VCB, CTG, VHM.
   before real backtest."
 
 Rules enforced:
