@@ -74,7 +74,24 @@ def check_adjusted_readiness(
             by_symbol=[], symbols=[], coverage={},
         )
 
-    # Coverage counts
+    # Check for source-backed adjusted_daily_prices table
+    adj_table_exists = "adjusted_daily_prices" in table_names
+    adj_real_count = 0
+    adj_invalid_count = 0
+    if adj_table_exists:
+        adj_real_sql = (
+            f"SELECT COUNT(*) FROM adjusted_daily_prices {where} "
+            f"AND adjustment_status = 'source_backed_corporate_action'"
+        )
+        adj_real_count = int(qdb.exec_scalar(client, base_url, adj_real_sql) or 0)
+        adj_invalid_sql = (
+            f"SELECT COUNT(*) FROM adjusted_daily_prices {where} "
+            f"AND adjustment_status = 'source_backed_corporate_action' "
+            f"AND (high < low OR high < 0 OR low < 0 OR close < 0)"
+        )
+        adj_invalid_count = int(qdb.exec_scalar(client, base_url, adj_invalid_sql) or 0)
+
+    # Coverage counts (daily_prices — source of raw prices)
     total_sql = f"SELECT COUNT(*) FROM daily_prices {where}"
     total = int(qdb.exec_scalar(client, base_url, total_sql) or 0)
 
@@ -84,15 +101,14 @@ def check_adjusted_readiness(
     )
     warn_count = int(qdb.exec_scalar(client, base_url, warn_sql) or 0)
 
+    # Real factors in daily_prices (pre-existing, mostly 1.0)
     real_sql = (
         f"SELECT COUNT(*) FROM daily_prices {where} "
         f"AND adjustment_factor IS NOT NULL AND adjustment_factor != 1.0"
     )
     real_count = int(qdb.exec_scalar(client, base_url, real_sql) or 0)
 
-    # Invalid OHLC: only check rows that claim to be adjusted (status != warn).
-    # Skip aggregate MAX/MIN in WHERE -- use a simpler flag: adjusted_high < adjusted_low.
-    # This catches a class of bad data; full H/L/O/C consistency needs a subquery.
+    # Invalid OHLC in daily_prices
     invalid_sql = (
         f"SELECT COUNT(*) FROM daily_prices {where} "
         f"AND adjustment_status != 'adjusted_price_missing_warn' "
@@ -100,27 +116,48 @@ def check_adjusted_readiness(
     )
     invalid_count = int(qdb.exec_scalar(client, base_url, invalid_sql) or 0)
 
-    # Per-symbol
-    sym_sql = (
-        f"SELECT symbol, COUNT(*) AS total, "
-        f"SUM(CASE WHEN adjustment_status = 'adjusted_price_missing_warn' THEN 1 ELSE 0 END) AS warn_rows, "
-        f"SUM(CASE WHEN adjustment_factor IS NOT NULL AND adjustment_factor != 1.0 THEN 1 ELSE 0 END) AS real_rows "
-        f"FROM daily_prices {where} "
-        f"GROUP BY symbol ORDER BY symbol"
-    )
-    _, sym_rows = qdb.exec_rows(client, base_url, sym_sql)
+    # Per-symbol: prefer adjusted_daily_prices, fall back to daily_prices
     by_symbol = []
-    for row in sym_rows:
-        sym = str(row[0])
-        tot = int(row[1] or 0)
-        warn = int(row[2] or 0)
-        real = int(row[3] or 0)
-        gate = "pass" if real > 0 and invalid_count == 0 else "blocked"
-        by_symbol.append({
-            "symbol": sym, "total_rows": tot,
-            "warn_rows": warn, "real_factor_rows": real,
-            "backtest_gate": gate,
-        })
+    if adj_table_exists and adj_real_count > 0:
+        # Source-backed data available — check per-symbol from adjusted_daily_prices
+        adj_sym_sql = (
+            f"SELECT symbol, COUNT(*) AS total, "
+            f"SUM(CASE WHEN adjustment_status = 'source_backed_corporate_action' THEN 1 ELSE 0 END) AS real_rows "
+            f"FROM adjusted_daily_prices {where} "
+            f"GROUP BY symbol ORDER BY symbol"
+        )
+        _, adj_sym_rows = qdb.exec_rows(client, base_url, adj_sym_sql)
+        for row in adj_sym_rows:
+            sym = str(row[0])
+            tot = int(row[1] or 0)
+            real = int(row[2] or 0)
+            by_symbol.append({
+                "symbol": sym, "total_rows": tot,
+                "warn_rows": 0, "real_factor_rows": real,
+                "backtest_gate": "pass" if real > 0 and adj_invalid_count == 0 else "blocked",
+                "source": "adjusted_daily_prices",
+            })
+    else:
+        # Fall back to daily_prices
+        sym_sql = (
+            f"SELECT symbol, COUNT(*) AS total, "
+            f"SUM(CASE WHEN adjustment_status = 'adjusted_price_missing_warn' THEN 1 ELSE 0 END) AS warn_rows, "
+            f"SUM(CASE WHEN adjustment_factor IS NOT NULL AND adjustment_factor != 1.0 THEN 1 ELSE 0 END) AS real_rows "
+            f"FROM daily_prices {where} "
+            f"GROUP BY symbol ORDER BY symbol"
+        )
+        _, sym_rows = qdb.exec_rows(client, base_url, sym_sql)
+        for row in sym_rows:
+            sym = str(row[0])
+            tot = int(row[1] or 0)
+            warn = int(row[2] or 0)
+            real = int(row[3] or 0)
+            by_symbol.append({
+                "symbol": sym, "total_rows": tot,
+                "warn_rows": warn, "real_factor_rows": real,
+                "backtest_gate": "pass" if real > 0 and invalid_count == 0 else "blocked",
+                "source": "daily_prices",
+            })
 
     # Status
     caveats = []
@@ -128,6 +165,14 @@ def check_adjusted_readiness(
         status = "BLOCKED_NO_ROWS"
         backtest_gate = "blocked"
         caveats.append("No daily_prices rows for the selected filters.")
+    elif adj_table_exists and adj_real_count > 0:
+        status = "PASS"
+        backtest_gate = "pass" if adj_invalid_count == 0 else "blocked"
+        caveats.append(
+            f"{adj_real_count} source-backed adjusted rows found in adjusted_daily_prices "
+            f"(adjustment_status='source_backed_corporate_action', adjustment_source=vnstock:company_events). "
+            f"{adj_invalid_count} rows have invalid OHLC."
+        )
     elif real_count == 0 and warn_count == total:
         status = "BLOCKED_ADJUSTED_FACTOR_FABRICATED"
         backtest_gate = "blocked"
@@ -160,8 +205,15 @@ def check_adjusted_readiness(
         status=status, backtest_gate=backtest_gate,
         caveats=caveats, by_symbol=by_symbol,
         symbols=[s["symbol"] for s in by_symbol],
-        coverage={"total_rows": total, "warn_rows": warn_count,
-                  "real_factor_rows": real_count, "invalid_ohlc_rows": invalid_count},
+        coverage={
+            "total_rows": total,
+            "warn_rows": warn_count,
+            "real_factor_rows": real_count,
+            "invalid_ohlc_rows": invalid_count,
+            "adjusted_daily_prices_rows": adj_real_count,
+            "adjusted_daily_prices_invalid": adj_invalid_count,
+            "adjusted_daily_prices_source": "vnstock:company_events" if adj_real_count > 0 else None,
+        },
     )
 
 

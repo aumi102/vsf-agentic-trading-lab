@@ -1,6 +1,43 @@
 # Mentor status report
 
-## 2026-06-29 update -- Trading core gates on source-backed adjusted OHLC
+## 2026-06-29 update -- Source-backed adjusted OHLC unlocked for FPT/VNM
+
+Four trading-core scripts added in previous session (all gated on adjusted OHLC):
+
+- `scripts/adjusted_ohlc_readiness.py`: Reports `PASS` for FPT/VNM.
+- `scripts/run_trading_signals.py`: Computes real BUY/SELL/HOLD signals for FPT.
+- `scripts/run_custom_backtest.py`: Custom no-lookahead engine runs for FPT.
+- `scripts/run_trading_core_demo.py`: End-to-end demo (readiness -> signals -> backtest).
+
+Now source-backed adjusted OHLC is built for FPT and VNM using vnstock company_events:
+
+**Source:** `data/raw/vnstock/.../company_events` (run_id=20260601T104928Z)
+- FPT: 5 cash dividend events (VND 1,000/share, ex-dates: 2024-06-12, 2024-12-02, 2025-06-12, 2025-12-01, 2026-05-28)
+- VNM: 6 cash dividend events (VND 2500/500/350/2000/950/1500/share, ex-dates spanning 2024-2025)
+- HPG/VCB/CTG/VHM: NO vnstock company_events data -- remain BLOCKED
+
+**Method:** Backward adjustment via ex-date price ratios:
+`factor = close_before_exdate / close_on_exdate`
+`adjusted_ohlc = raw_ohlc * cumulative_factor (for rows before ex-date)`
+
+**Output:** QuestDB `adjusted_daily_prices` WAL table (9,944 rows for FPT+VNM).
+- `adjustment_status = 'source_backed_corporate_action'`
+- `adjustment_source = 'vnstock:company_events:{symbol}'`
+- `factor_method = 'backward_exdate_price_ratio'`
+
+**Gate result:**
+- FPT: PASS (4,860 rows, `status=PASS`, `backtest_gate=pass`)
+- VNM: PASS (5,084 rows)
+- HPG/VCB/CTG/VHM: BLOCKED (`NO_CORPORATE_ACTION_SOURCE`)
+
+**FPT momentum_v1 signal (2026-06-22):**
+- `SELL`, score=-0.4498, MA20=73,362, MA50=74,285, 20d return=-4.5%
+- `adjustment_status=source_backed_corporate_action`, no fabricated risk flag
+
+**Limitation:** Only 2 of 6 demo symbols unlocked. HPG/VCB/CTG/VHM still blocked.
+Need: (1) vnstock company_events for those symbols, or (2) HSX/HOSE corporate action endpoint, or (3) vendor adjusted price data.
+
+Tests: 17/17 trading-core gate tests pass, 36/36 demo stack tests pass.
 
 Four trading-core scripts are added, all gated on adjusted OHLC readiness:
 

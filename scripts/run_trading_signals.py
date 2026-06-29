@@ -41,17 +41,56 @@ STRATEGIES = {
 # ─── data fetch ───────────────────────────────────────────────────────────────
 
 def _fetch_bars(client, base_url: str, symbol: str, lookback: int = 120) -> list[dict[str, Any]]:
-    sql = (
-        f"SELECT trade_date, open, high, low, close, volume, "
-        f"adjusted_open, adjusted_high, adjusted_low, adjusted_close, "
-        f"adjustment_status, exchange "
-        f"FROM daily_prices "
-        f"WHERE symbol = '{symbol}' "
-        f"ORDER BY trade_date DESC "
-        f"LIMIT {lookback}"
+    """Read bars. Prefers adjusted_daily_prices (source-backed) over daily_prices.
+
+    adjusted_daily_prices columns are already adjusted (open/high/low/close).
+    daily_prices adjusted columns may be fabricated (adj == raw).
+    """
+    # Check if source-backed table has data for this symbol (limit 1 for speed)
+    adj_exists_sql = (
+        f"SELECT trade_date FROM adjusted_daily_prices WHERE symbol = '{symbol}' "
+        f"ORDER BY trade_date DESC LIMIT 1"
     )
-    cols, rows = qdb.exec_rows(client, base_url, sql)
-    return [_row_to_dict(cols, r) for r in rows[::-1]]  # oldest first
+    try:
+        adj_exists = qdb.exec_scalar(client, base_url, adj_exists_sql)
+    except Exception:
+        adj_exists = None
+
+    if adj_exists is not None:
+        # Use source-backed adjusted table (filter to last 5 years to reduce partitions)
+        five_years_ago = "2021-01-01"
+        sql = (
+            f"SELECT trade_date, open, high, low, close, volume, "
+            f"adjustment_factor, adjustment_status, exchange "
+            f"FROM adjusted_daily_prices "
+            f"WHERE symbol = '{symbol}' "
+            f"AND trade_date >= '{five_years_ago}' "
+            f"ORDER BY trade_date DESC "
+            f"LIMIT {lookback}"
+        )
+        cols, rows = qdb.exec_rows(client, base_url, sql)
+        result = []
+        for r in rows[::-1]:  # oldest first
+            d = _row_to_dict(cols, r)
+            d["adjusted_open"] = d.get("open")
+            d["adjusted_high"] = d.get("high")
+            d["adjusted_low"] = d.get("low")
+            d["adjusted_close"] = d.get("close")
+            result.append(d)
+        return result
+    else:
+        # Fall back to daily_prices (may be fabricated)
+        sql = (
+            f"SELECT trade_date, open, high, low, close, volume, "
+            f"adjusted_open, adjusted_high, adjusted_low, adjusted_close, "
+            f"adjustment_status, exchange "
+            f"FROM daily_prices "
+            f"WHERE symbol = '{symbol}' "
+            f"ORDER BY trade_date DESC "
+            f"LIMIT {lookback}"
+        )
+        cols, rows = qdb.exec_rows(client, base_url, sql)
+        return [_row_to_dict(cols, r) for r in rows[::-1]]  # oldest first
 
 
 def _row_to_dict(cols: list[str], row: list) -> dict[str, Any]:

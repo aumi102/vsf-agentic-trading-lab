@@ -26,7 +26,12 @@ for p in (str(ROOT), str(ROOT / "src"), str(SCRIPT_DIR)):
 
 from trading_agent.storage import questdb_client as qdb  # noqa: E402
 from scripts.adjusted_ohlc_readiness import check_adjusted_readiness  # noqa: E402
-from scripts.run_trading_signals import compute_signals  # noqa: E402
+from scripts.run_trading_signals import (  # noqa: E402
+    _fetch_bars as _fetch_bars_signals,
+    _signal_momentum_v1,
+    _signal_mean_reversion_v1,
+    _signal_buy_hold_v1,
+)
 
 DEFAULT_URL = qdb.DEFAULT_QUESTDB_URL
 
@@ -37,18 +42,51 @@ def _fetch_bars(
     from_date: str,
     to_date: str,
 ) -> list[dict[str, Any]]:
-    sql = (
-        f"SELECT trade_date, open, high, low, close, volume, "
-        f"adjusted_open, adjusted_high, adjusted_low, adjusted_close, "
-        f"adjustment_status, exchange "
-        f"FROM daily_prices "
-        f"WHERE symbol = '{symbol}' "
-        f"AND trade_date >= '{from_date}' "
-        f"AND trade_date <= '{to_date}' "
-        f"ORDER BY trade_date ASC"
+    """Read bars. Prefers adjusted_daily_prices (source-backed) over daily_prices."""
+    # Check if adjusted_daily_prices has data
+    adj_exists_sql = (
+        f"SELECT trade_date FROM adjusted_daily_prices WHERE symbol = '{symbol}' "
+        f"AND trade_date >= '{from_date}' AND trade_date <= '{to_date}' "
+        f"ORDER BY trade_date ASC LIMIT 1"
     )
-    cols, rows = qdb.exec_rows(client, base_url, sql)
-    return [_row_to_dict(cols, r) for r in rows]
+    try:
+        adj_exists = qdb.exec_scalar(client, base_url, adj_exists_sql)
+    except Exception:
+        adj_exists = None
+
+    if adj_exists is not None:
+        sql = (
+            f"SELECT trade_date, open, high, low, close, volume, "
+            f"adjustment_factor, adjustment_status, exchange "
+            f"FROM adjusted_daily_prices "
+            f"WHERE symbol = '{symbol}' "
+            f"AND trade_date >= '{from_date}' "
+            f"AND trade_date <= '{to_date}' "
+            f"ORDER BY trade_date ASC"
+        )
+        cols, rows = qdb.exec_rows(client, base_url, sql)
+        result = []
+        for r in rows:
+            d = _row_to_dict(cols, r)
+            d["adjusted_open"] = d.get("open")
+            d["adjusted_high"] = d.get("high")
+            d["adjusted_low"] = d.get("low")
+            d["adjusted_close"] = d.get("close")
+            result.append(d)
+        return result
+    else:
+        sql = (
+            f"SELECT trade_date, open, high, low, close, volume, "
+            f"adjusted_open, adjusted_high, adjusted_low, adjusted_close, "
+            f"adjustment_status, exchange "
+            f"FROM daily_prices "
+            f"WHERE symbol = '{symbol}' "
+            f"AND trade_date >= '{from_date}' "
+            f"AND trade_date <= '{to_date}' "
+            f"ORDER BY trade_date ASC"
+        )
+        cols, rows = qdb.exec_rows(client, base_url, sql)
+        return [_row_to_dict(cols, r) for r in rows]
 
 
 def _row_to_dict(cols: list[str], row: list) -> dict[str, Any]:
@@ -220,9 +258,17 @@ def run_backtest(
     for sym in symbols:
         bars = _fetch_bars(client, base_url, sym, from_date, to_date)
         adj_status = bars[-1]["adjustment_status"] if bars else "unknown"
-        # compute signals over bars
-        signals, _ = compute_signals(client, base_url, [sym], strategy, lookback=120)
-        sig_list = [_sig_for_bar(signals, i) for i in range(len(bars))]
+        # Compute signals directly (no gate-level block; gate already passed)
+        feat_strategy = strategy.replace("_v1", "")
+        if feat_strategy == "momentum":
+            sig = _signal_momentum_v1(bars)
+        elif feat_strategy == "mean_reversion":
+            sig = _signal_mean_reversion_v1(bars)
+        elif feat_strategy == "buy_hold":
+            sig = _signal_buy_hold_v1(bars, adj_status)
+        else:
+            sig = {"signal": "HOLD", "score": 0.0, "reason": f"unknown strategy={strategy}"}
+        sig_list = [sig] * len(bars)
         engine = BacktestEngineV1(initial_cash)
         result = engine.run(sym, bars, sig_list, strategy)
         result["adjustment_status"] = adj_status

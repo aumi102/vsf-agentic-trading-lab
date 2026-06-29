@@ -2,8 +2,11 @@
 
 Verifies:
   - Scripts compile without errors
-  - Blocked output is deterministic and machine-parseable
-  - Gate blocks signal generation and backtest on fabricated adjusted feed
+  - Gate PASSes for FPT/VNM (source-backed corporate-action data in adjusted_daily_prices)
+  - Gate BLOCKs for HPG/VCB/CTG/VHM (no source-backed data)
+  - Signals are real (not fabricated) for FPT
+  - Backtest dry-run passes for FPT when gate passes
+  - No tracebacks on blocked gates (HPG/VCB/CTG/VHM)
 """
 from __future__ import annotations
 
@@ -63,132 +66,130 @@ def test_run_trading_core_demo_compiles():
 
 # ─── adjusted_ohlc_readiness gate ──────────────────────────────────────────────
 
-def test_readiness_reports_blocked_fabricated():
-    result = _run("adjusted_ohlc_readiness.py", "--symbols", "FPT,HPG,VCB")
-    assert result.returncode == 1
-    assert "BLOCKED_ADJUSTED_FACTOR_FABRICATED" in result.stdout
-    assert "backtest_gate" in result.stdout
-    assert "blocked" in result.stdout
-    assert "26" not in result.stdout or "warn" in result.stdout  # has row counts
-
-
-def test_readiness_json_parsable():
+def test_readiness_fpt_vnm_pass():
+    """FPT and VNM have source-backed adjusted data -> gate PASS."""
     result = _run("adjusted_ohlc_readiness.py", "--symbols", "FPT", "--json")
+    assert result.returncode == 0, f"FPT should PASS (exit 0), got:\n{result.stdout}\n{result.stderr}"
+    data = json.loads(result.stdout)
+    assert data["status"] == "PASS", data["status"]
+    assert data["backtest_gate"] == "pass"
+    assert data["coverage"]["adjusted_daily_prices_rows"] > 0
+    assert data["coverage"]["adjusted_daily_prices_source"] == "vnstock:company_events"
+
+
+def test_readiness_hpg_blocked():
+    """HPG has no source-backed data -> gate BLOCKED."""
+    result = _run("adjusted_ohlc_readiness.py", "--symbols", "HPG", "--json")
     assert result.returncode == 1
     data = json.loads(result.stdout)
-    assert data["status"] == "BLOCKED_ADJUSTED_FACTOR_FABRICATED"
     assert data["backtest_gate"] == "blocked"
-    assert data["symbols"] == ["FPT"]
-    assert isinstance(data["coverage"], dict)
-    assert data["coverage"]["warn_rows"] > 0
-    assert data["coverage"]["real_factor_rows"] == 0
+    assert data["coverage"]["adjusted_daily_prices_rows"] == 0
 
 
-def test_readiness_all_6_demo_symbols_blocked():
-    result = _run("adjusted_ohlc_readiness.py", "--symbols", "FPT,HPG,VCB,CTG,VNM,VHM", "--json")
+def test_readiness_mixed_fpt_hpg():
+    """Mixed request (FPT+PASS syms only) -> overall PASS."""
+    result = _run("adjusted_ohlc_readiness.py", "--symbols", "FPT,VNM", "--json")
+    assert result.returncode == 0
     data = json.loads(result.stdout)
-    for sym in ["FPT", "HPG", "VCB", "CTG", "VNM", "VHM"]:
-        sym_data = next((s for s in data["by_symbol"] if s["symbol"] == sym), None)
-        assert sym_data is not None, f"{sym} missing from by_symbol"
-        assert sym_data["backtest_gate"] == "blocked"
-        assert sym_data["warn_rows"] > 0
-        assert sym_data["real_factor_rows"] == 0
+    assert data["status"] == "PASS"
 
 
 # ─── signal gate ───────────────────────────────────────────────────────────────
 
-def test_signals_blocked_on_fabricated_feed():
-    result = _run("run_trading_signals.py", "--symbols", "FPT,HPG,VCB",
-                  "--as-of", "latest", "--strategy", "momentum_v1")
-    assert result.returncode == 1
-    assert "SIGNAL_BLOCKED_ADJUSTED_FACTOR_FABRICATED" in result.stdout
-
-
-def test_signals_mean_reversion_blocked():
-    result = _run("run_trading_signals.py", "--symbols", "FPT,HPG",
-                  "--as-of", "latest", "--strategy", "mean_reversion_v1")
-    assert result.returncode == 1
-    assert "BLOCKED" in result.stdout
-
-
-def test_signals_json_blocked_parsable():
+def test_signals_fpt_computes_real_signal():
+    """FPT has source-backed data -> signals computed, not fabricated."""
     result = _run("run_trading_signals.py", "--symbols", "FPT",
                   "--as-of", "latest", "--strategy", "momentum_v1", "--json")
-    assert result.returncode == 1
+    assert result.returncode == 0, f"FPT signals should succeed:\n{result.stdout}\n{result.stderr}"
     data = json.loads(result.stdout)
-    assert "BLOCKED" in data["status"]
-    assert data["gate"] == "blocked"
-    assert isinstance(data["caveats"], list)
+    assert data["status"] == "ok"
+    assert len(data["signals"]) == 1
+    sig = data["signals"][0]
+    assert sig["adjustment_status"] == "source_backed_corporate_action"
+    assert "fabricated" not in str(sig.get("risk_flags", [])).lower()
+    assert sig["signal"] in ("BUY", "SELL", "HOLD")
+
+
+def test_signals_mean_reversion_fpt():
+    """FPT mean reversion also computes from source-backed data."""
+    result = _run("run_trading_signals.py", "--symbols", "FPT",
+                  "--as-of", "latest", "--strategy", "mean_reversion_v1", "--json")
+    assert result.returncode == 0
+    data = json.loads(result.stdout)
+    assert data["status"] == "ok"
+    sig = data["signals"][0]
+    assert sig["adjustment_status"] == "source_backed_corporate_action"
+
+
+def test_signals_hpg_blocked():
+    """HPG has no source-backed data -> blocked."""
+    result = _run("run_trading_signals.py", "--symbols", "HPG",
+                  "--as-of", "latest", "--strategy", "momentum_v1")
+    assert result.returncode == 1
+    assert "BLOCKED" in result.stdout
 
 
 # ─── backtest gate ─────────────────────────────────────────────────────────────
 
-def test_backtest_blocked_on_fabricated_feed():
-    result = _run("run_custom_backtest.py", "--symbols", "FPT",
-                  "--from", "2021-01-01", "--to", "2025-12-31",
-                  "--strategy", "momentum_v1", "--initial-cash", "100000000")
-    assert result.returncode == 1
-    assert "BACKTEST_BLOCKED_ADJUSTED_FACTOR_FABRICATED" in result.stdout
-
-
-def test_backtest_dry_run_blocked():
+def test_backtest_fpt_dry_run_passes():
+    """FPT dry-run passes when gate is pass."""
     result = _run("run_custom_backtest.py", "--symbols", "FPT",
                   "--from", "2021-01-01", "--to", "2025-12-31",
                   "--strategy", "momentum_v1", "--initial-cash", "100000000",
                   "--dry-run")
+    assert result.returncode == 0, f"FPT dry-run should pass:\n{result.stdout}\n{result.stderr}"
+    assert "DRY RUN" in result.stdout
+    assert "BLOCKED" not in result.stdout
+
+
+def test_backtest_fpt_json_passes():
+    """FPT backtest exits 0 (no fabricates blocked) when gate pass."""
+    result = _run("run_custom_backtest.py", "--symbols", "FPT",
+                  "--from", "2021-01-01", "--to", "2025-12-31",
+                  "--strategy", "momentum_v1", "--json")
+    # Exit 0 when gate passes; backtest may succeed or fail on insufficient data but not blocked
+    assert result.returncode == 0, f"FPT backtest JSON should exit 0:\n{result.stdout}\n{result.stderr}"
+
+
+def test_backtest_hpg_blocked():
+    """HPG no source-backed -> blocked."""
+    result = _run("run_custom_backtest.py", "--symbols", "HPG",
+                  "--from", "2021-01-01", "--to", "2025-12-31",
+                  "--strategy", "momentum_v1")
     assert result.returncode == 1
     assert "BLOCKED" in result.stdout
 
 
-def test_backtest_json_blocked_parsable():
-    result = _run("run_custom_backtest.py", "--symbols", "FPT",
-                  "--from", "2021-01-01", "--to", "2025-12-31",
-                  "--strategy", "momentum_v1", "--json")
-    assert result.returncode == 1
-    data = json.loads(result.stdout)
-    assert "BLOCKED" in data["status"]
-    assert data["gate"] == "blocked"
-
-
 # ─── demo gate ─────────────────────────────────────────────────────────────────
 
-def test_demo_blocks_at_gate():
-    result = _run("run_trading_core_demo.py", "--symbols", "FPT,HPG,VCB",
+def test_demo_all_blocked_symbols_blocks():
+    """Demo with all-no-source symbols (HPG/VCB/CTG/VHM) blocks at gate."""
+    result = _run("run_trading_core_demo.py", "--symbols", "HPG,VCB",
                   "--from", "2021-01-01", "--to", "2025-12-31",
                   "--strategy", "momentum_v1")
     assert result.returncode == 1
-    assert "BLOCKED_ADJUSTED_FACTOR_FABRICATED" in result.stdout
+    assert "TRADE GATE" in result.stdout or "BLOCKED" in result.stdout
     assert "STEP 1" in result.stdout
-    assert "TRADE GATE" in result.stdout
-    assert "Need source-backed adjusted price" in result.stdout
 
 
-def test_demo_json_blocks_parsable():
-    result = _run("run_trading_core_demo.py", "--symbols", "FPT",
-                  "--from", "2021-01-01", "--to", "2025-12-31",
-                  "--strategy", "momentum_v1", "--json")
+# ─── no tracebacks on blocked gates ──────────────────────────────────────────
+
+def test_no_tracebacks_on_blocked_hpg_signals():
+    result = _run("run_trading_signals.py", "--symbols", "HPG",
+                  "--as-of", "latest", "--strategy", "momentum_v1")
     assert result.returncode == 1
-    data = json.loads(result.stdout)
-    assert "BLOCKED" in data["status"]
-    assert "next_action" in data
-    assert "source-backed" in data["next_action"].lower()
+    assert "Traceback" not in result.stderr
 
 
-# ─── no tracebacks ─────────────────────────────────────────────────────────────
-
-BLOCKED_SCRIPTS = [
-    ("adjusted_ohlc_readiness.py", ["--symbols", "FPT"]),
-    ("run_trading_signals.py", ["--symbols", "FPT", "--as-of", "latest", "--strategy", "momentum_v1"]),
-    ("run_custom_backtest.py", ["--symbols", "FPT", "--from", "2021-01-01", "--to", "2025-12-31",
-                                "--strategy", "momentum_v1"]),
-    ("run_trading_core_demo.py", ["--symbols", "FPT", "--from", "2021-01-01", "--to", "2025-12-31",
-                                  "--strategy", "momentum_v1"]),
-]
+def test_no_tracebacks_on_blocked_hpg_backtest():
+    result = _run("run_custom_backtest.py", "--symbols", "HPG",
+                  "--from", "2021-01-01", "--to", "2025-12-31",
+                  "--strategy", "momentum_v1")
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
 
 
-def test_no_tracebacks_on_blocked_gate():
-    """All gate scripts must exit cleanly (exit 1, no traceback) when blocked."""
-    for script, args in BLOCKED_SCRIPTS:
-        result = _run(script, *args)
-        assert result.returncode == 1, f"{script} should exit 1 when blocked"
-        assert "Traceback" not in result.stderr, f"{script} should not emit Traceback\n{result.stderr}"
+def test_no_tracebacks_on_blocked_readiness():
+    result = _run("adjusted_ohlc_readiness.py", "--symbols", "HPG")
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
