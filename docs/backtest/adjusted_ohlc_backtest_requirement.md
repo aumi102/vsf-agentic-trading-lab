@@ -50,6 +50,28 @@ Required policy:
 - adjusted open/high/low/close: used by Backtrader;
 - missing factor: block hardened backtest use for that row or symbol.
 
+## Trading Core Gate Scripts
+
+A read-only adjusted OHLCV readiness check gates strategy signal generation
+and backtest execution. Scripts are in `scripts/`:
+
+| Script | Purpose |
+|---|---|
+| `adjusted_ohlc_readiness.py` | Reports backtest gate status from QuestDB `daily_prices`. Exits 0 if `real_factor_rows > 0`, exits 1 if blocked. |
+| `run_trading_signals.py` | Computes BUY/SELL/HOLD signals. BLOCKED if adjusted feed gate is blocked. Exits 1 with `SIGNAL_BLOCKED_ADJUSTED_FACTOR_FABRICATED`. |
+| `run_custom_backtest.py` | Custom no-lookahead backtest engine. BLOCKED if adjusted feed gate is blocked. Exits 1 with `BACKTEST_BLOCKED_ADJUSTED_FACTOR_FABRICATED`. |
+| `run_trading_core_demo.py` | End-to-end demo: readiness -> signals -> backtest. Stops honestly at the gate if blocked. |
+
+Signal contract fields: `symbol`, `as_of`, `strategy`, `signal` (BUY/SELL/HOLD),
+`score`, `features_used`, `reason`, `risk_flags`, `data_source`, `caveats`.
+
+Backtest contract v1 fields: `portfolio` ({cash, position, equity, bars_count}),
+`trade_ledger` ({date, symbol, side, price, quantity, value}),
+`metrics` ({total_return, sharpe, max_drawdown, win_rate, total_trades}),
+`execution_rule` (no-lookahead: signal at bar t fires at bar t+1 open price).
+
+All four scripts support `--json` for machine-parseable output.
+
 ## Current Implementation
 
 The local SQLite `daily_prices` table now has nullable adjusted OHLC fields:

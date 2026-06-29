@@ -1,6 +1,39 @@
 # Mentor status report
 
-## 2026-06-28 update — Zero-fact classification + bounded FA resume
+## 2026-06-29 update -- Trading core gates on source-backed adjusted OHLC
+
+Four trading-core scripts are added, all gated on adjusted OHLC readiness:
+
+- `scripts/adjusted_ohlc_readiness.py`: Reports `BLOCKED_ADJUSTED_FACTOR_FABRICATED`
+  for all 26,473 rows across 6 demo symbols (FPT/HPG/VCB/CTG/VNM/VHM).
+  `adjustment_factor=1.0` and `adjustment_status='adjusted_price_missing_warn'` for every row.
+  Vietcap gap-chart source provides no adjustment factors. Adjusted OHLCV is fabricated
+  (adj == raw). Backtest is BLOCKED. Exits 0 only when real factor rows exist.
+
+- `scripts/run_trading_signals.py`: Exits 1 with `SIGNAL_BLOCKED_ADJUSTED_FACTOR_FABRICATED`
+  when gate is blocked. Supports `--strategy momentum_v1` and `--strategy mean_reversion_v1`.
+  `--json` emits machine-parseable blocked output.
+
+- `scripts/run_custom_backtest.py`: Exits 1 with `BACKTEST_BLOCKED_ADJUSTED_FACTOR_FABRICATED`
+  when gate is blocked. Self-built no-lookahead engine (not Backtrader).
+  Supports `--dry-run` for gate-only checks. Contract: portfolio state, trade ledger,
+  metrics (sharpe/drawdown/win_rate), no-lookahead execution.
+
+- `scripts/run_trading_core_demo.py`: End-to-end demo. Stops honestly at the gate.
+  Prints clear next action: "Need source-backed adjusted price / corporate action factor
+  before real backtest."
+
+Rules enforced:
+- Do NOT backtest on raw OHLC while claiming it is adjusted.
+- Do NOT silently fall back to raw OHLC.
+- Do NOT fake adjusted OHLC.
+
+Test suite: `tests/test_trading_core_gate.py` (16 tests, all pass).
+Caveats honestly state: adjusted OHLC columns exist but are fabricated.
+
+Remaining blocker: source-backed adjusted price / corporate-action factor.
+
+## 2026-06-28 update -- Zero-fact classification + bounded FA resume
 
 Three semantic bugs in the full-universe ingester were fixed:
 
