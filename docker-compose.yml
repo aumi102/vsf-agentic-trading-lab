@@ -20,7 +20,7 @@ services:
       - path: .env
         required: false
     environment:
-      QUESTDB_URL: http://questdb:9000
+      QUESTDB_URL: http://host.docker.internal:9000
       VSF_DEEPAGENTS_MODEL: ${VSF_DEEPAGENTS_MODEL:-gpt-4.1-mini}
     ports:
       - "8010:8010"

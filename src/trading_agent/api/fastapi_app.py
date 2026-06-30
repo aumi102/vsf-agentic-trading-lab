@@ -381,6 +381,15 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
 
     @app.get("/product/data-status")
     async def product_data_status() -> dict:
+        def _cnt(rows):
+            """Extract count from [{'cnt': N}] rows format."""
+            if not rows:
+                return 0
+            row = rows[0]
+            if isinstance(row, dict):
+                return row.get("cnt", 0)
+            return row[0] if row else 0
+
         try:
             daily = market.query_questdb("SELECT count() cnt FROM daily_prices", url=url)
             adj = market.query_questdb("SELECT count() cnt FROM adjusted_daily_prices", url=url)
@@ -392,10 +401,12 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
             return {
                 "status": "ok",
                 "questdb_reachable": True,
-                "daily_prices_rows": daily.get("rows", [[0]])[0][0] if daily.get("rows") else 0,
-                "adjusted_daily_prices_rows": adj.get("rows", [[0]])[0][0] if adj.get("rows") else 0,
-                "fa_ingest_runs": [{"status": r[0], "count": r[1]} for r in fa_runs.get("rows", [])],
-                "event_news_items_rows": event_news.get("rows", [[0]])[0][0] if event_news.get("rows") else 0,
+                "daily_prices_rows": _cnt(daily.get("rows")),
+                "adjusted_daily_prices_rows": _cnt(adj.get("rows")),
+                "fa_ingest_runs": [{"status": r.get("status", r[0] if not isinstance(r, dict) else "?"),
+                                    "count": r.get("cnt", r[1] if not isinstance(r, dict) else 0)}
+                                   for r in fa_runs.get("rows", [])],
+                "event_news_items_rows": _cnt(event_news.get("rows")),
             }
         except Exception as exc:
             return {"status": "error", "questdb_reachable": False, "message": str(exc)[:200]}
@@ -411,9 +422,18 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
                 "LIMIT 10", url=url)
             proto_ok = market.query_questdb(
                 "SELECT symbol FROM daily_prices WHERE symbol IN ('FPT','VNM') LIMIT 2", url=url)
+            # Extract sample of blocked symbols
+            blocked_sample = []
+            for r in blocked.get("rows", [])[:5]:
+                if isinstance(r, dict):
+                    blocked_sample.append({"symbol": r.get("symbol", ""), "status": r.get("adjustment_status", "")})
+                elif isinstance(r, (list, tuple)) and len(r) >= 2:
+                    blocked_sample.append({"symbol": r[0], "status": r[1]})
             return {
                 "status": gate.status.lower() if gate.status else "unknown",
                 "adjusted_columns_present": gate.evidence.get("adjusted_columns_present", []),
+                "adjusted_columns_count": len(gate.evidence.get("adjusted_columns_present", [])),
+                "raw_equivalent_ratio": gate.evidence.get("raw_equivalent_ratio"),
                 "approved_only": {
                     "approved_count": 0,
                     "FPT_VNM": "BLOCKED_UNAPPROVED_SOURCE",
@@ -422,8 +442,8 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
                 "prototype_allowed": {
                     "FPT_VNM": "PASS_PROTOTYPE" if proto_ok.get("rows") else "NO_DATA",
                 },
-                "caveat": "vnstock is prototype only, not approved",
-                "blocked_symbols_sample": [{"symbol": r[0], "status": r[1]} for r in blocked.get("rows", [])[:5]],
+                "caveat": "vnstock is prototype only, not approved. All rows are raw_equivalent.",
+                "blocked_symbols_sample": blocked_sample,
             }
         except Exception as exc:
             # Graceful degradation when tables don't exist
@@ -452,10 +472,19 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
         for sym in symbols[:5]:
             try:
                 res = fst.get_latest_signal(sym.strip(), strategy_id=sid, url=url)
-                row = res.get("rows", [[None]])[0] if res.get("rows") else [None]
-                signal_val = row[4] if len(row) > 4 else "HOLD"
-                score = row[5] if len(row) > 5 else None
-                reason = row[6] if len(row) > 6 else ""
+                if res.get("status") != "ok" or not res.get("rows"):
+                    signals.append({"symbol": sym.strip(), "signal": "HOLD", "score": None,
+                                    "reason": res.get("caveats", ["no signal rows"])[0] if res.get("caveats") else "no data"})
+                    continue
+                row = res["rows"][0]
+                if isinstance(row, dict):
+                    signal_val = row.get("signal", "HOLD")
+                    score = row.get("score")
+                    reason = row.get("reason_code", "")
+                else:
+                    signal_val = row[4] if len(row) > 4 else "HOLD"
+                    score = row[5] if len(row) > 5 else None
+                    reason = row[6] if len(row) > 6 else ""
                 signals.append({
                     "symbol": sym.strip(),
                     "signal": signal_val or "HOLD",
@@ -544,6 +573,8 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
                 if res.get("status") != "ok" or not res.get("rows"):
                     return 0
                 row = res["rows"][0]
+                if isinstance(row, dict):
+                    return row.get("cnt", 0)
                 return row[0] if row else 0
 
             return {
