@@ -136,7 +136,7 @@ function render(id, d){
   if(d.menu) return "<div class='card'>menu</div>";
   if(d.usable_now) return renderProductOverview(d);
   if(d.daily_prices_rows!==undefined) return renderProductDataStatus(d);
-  if(d.adjusted_columns_present!==undefined) return renderProductAdjustedGate(d);
+  if(d.approved_only?.approved_count!==undefined) return renderProductAdjustedGate(d);
   if(d.signals!==undefined && !d.trace) return renderProductSignals(d);
   if(d.engine==='custom_backtest_v1') return renderProductBacktest(d);
   if(d.commission_bps!==undefined && d.price_band_guard) return renderProductCostSlippage(d);
@@ -170,33 +170,77 @@ function renderProductDataStatus(d){
 }
 function renderProductAdjustedGate(d){
   let html = `<div class="card"><h2>Adjusted OHLC Gate · ${badge(d.status)}</h2>`;
-  html += `<div class="group-title">approved_only</div><ul>`;
-  html += `<li>FPT/VNM: ${esc(d.approved_only?.FPT_VNM||'BLOCKED')}</li>`;
-  html += `<li>approved_count: ${d.approved_only?.approved_count||0}</li></ul>`;
-  html += `<div class="group-title">prototype_allowed</div><ul>`;
-  html += `<li>FPT/VNM: ${esc(d.prototype_allowed?.FPT_VNM||'UNKNOWN')}</li></ul>`;
-  html += `<div class="kv caveat">${esc(d.caveat||'')}</div></div>`;
+  html += `<div class="group-title">approved_only</div><table><tr><th>symbol</th><th>status</th></tr>`;
+  html += `<tr><td>FPT</td><td><span class="badge b-fail">${esc(d.approved_only?.FPT||'BLOCKED')}</span></td></tr>`;
+  html += `<tr><td>VNM</td><td><span class="badge b-fail">${esc(d.approved_only?.VNM||'BLOCKED')}</span></td></tr>`;
+  html += `<tr><td>HPG/VCB/CTG/VHM</td><td><span class="badge b-fail">${esc(d.approved_only?.HPG_VCB_CTG_VHM||'BLOCKED')}</span></td></tr>`;
+  html += `</table><div class="kv">approved_count: ${d.approved_only?.approved_count||0} · official_backtest: ${d.approved_only?.official_backtest_allowed?'YES':'NO'}</div>`;
+  html += `<div class="group-title">prototype_allowed (vnstock)</div>`;
+  if(d.prototype_allowed?.symbols?.length){ html+=`<table><tr><th>symbol</th><th>status</th><th>rows</th><th>date range</th><th>source</th></tr>`;
+    d.prototype_allowed.symbols.forEach(s=>{
+      html+=`<tr><td>${esc(s.symbol)}</td><td><span class="badge b-ok">${esc(s.status||'PASS')}</span></td><td class="num">${fmt(s.rows)}</td><td>${esc(s.date_min||'')} .. ${esc(s.date_max||'')}</td><td><code>${esc(s.adjustment_source||'')}</code></td></tr>`;});
+    html+=`</table>`;} else { html+=`<div class="kv">no prototype data</div>`; }
+  (d.warnings||[]).forEach(w=>html+=`<div class="caveat">${esc(w)}</div>`);
   return html;
 }
 function renderProductSignals(d){
   let html = `<div class="card"><h2>Strategy Signals · ${badge(d.status)}</h2>`;
-  html += `<div class="kv">strategy: ${esc(d.strategy||'')} · source: ${esc(d.source_policy||'')}</div>`;
-  if(d.signals?.length){ html += `<table><tr><th>symbol</th><th>signal</th><th>score</th><th>reason</th></tr>`;
+  html += `<div class="kv">strategy: ${esc(d.strategy||'')} · source: ${esc(d.source_policy||'')} · basis: ${esc(d.data_basis||'')}</div>`;
+  if(d.signals?.length){ html += `<table><tr><th>symbol</th><th>signal</th><th>raw</th><th>position</th><th>score</th><th>reason</th></tr>`;
     d.signals.forEach(s=>{const sig=esc(s.signal||'');const c=sig==='BUY'?'b-ok':sig==='SELL'?'b-fail':'b-warn';
-      html+=`<tr><td>${esc(s.symbol)}</td><td><span class="badge ${c}">${sig}</span></td><td class="num">${fmt(s.score)}</td><td>${esc(s.reason||'')}</td></tr>`;});
+      html+=`<tr><td>${esc(s.symbol)}</td><td><span class="badge ${c}">${sig}</span></td><td>${esc(s.raw_signal||'-')}</td><td>${esc(s.position_state||'-')}</td><td class="num">${fmt(s.score)}</td><td>${esc(s.reason||'')}</td></tr>`;});
     html+=`</table>`;}
   (d.warnings||[]).forEach(w=>html+=`<div class="caveat">${esc(w)}</div>`);
   return html;
 }
 function renderProductBacktest(d){
   let html = `<div class="card"><h2>Backtest Engine v1 · ${badge(d.status)}</h2>`;
-  html += `<div class="kv">engine: ${esc(d.engine||'')} · strategy: ${esc(d.strategy||'')} · source: ${esc(d.source_policy||'')}</div>`;
-  if(d.results?.length){ html+=`<table><tr><th>symbol</th><th>return %</th><th>sharpe</th><th>sortino</th><th>pf</th><th>max dd %</th><th>win %</th><th>trades</th></tr>`;
-    d.results.forEach(r=>{html+=`<tr><td>${esc(r.symbol||r.error||'')}</td>`;
-      if(r.error){html+=`<td colspan="7">${esc(r.error)}</td>`;}else{
-      html+=`<td class="num">${fmt(r.total_return_pct)}</td><td class="num">${fmt(r.sharpe_ratio)}</td><td class="num">${fmt(r.sortino_ratio)}</td><td class="num">${fmt(r.profit_factor)}</td><td class="num">${fmt(r.max_drawdown_pct)}</td><td class="num">${fmt(r.win_rate)}</td><td class="num">${fmt(r.trade_count)}</td>`;}html+=`</tr>`;});
-    html+=`</table>`;}
+  html += `<div class="kv">engine: ${esc(d.engine||'')} · strategy: ${esc(d.strategy||'')} · policy: ${esc(d.source_policy||'')}</div>`;
+  if(d.results?.length){ d.results.forEach(r=>{
+    if(r.status==='error'){html+=`<div class="kv caveat">${esc(r.symbol)}: ${esc(r.error||'')}</div>`;return;}
+    html+=`<div class="group-title">${esc(r.symbol)}</div>`;
+    // Backtest Setup
+    html+=`<div class="group-title">Backtest Setup</div><table>`;
+    const dl=r.data_lineage||{};
+    html+=`<tr><td>symbol</td><td>${esc(r.symbol)}</td></tr>`;
+    html+=`<tr><td>strategy</td><td><code>${esc(d.strategy||'')}</code></td></tr>`;
+    html+=`<tr><td>date_range</td><td>${esc(dl.date_range||d.date_range||'')}</td></tr>`;
+    html+=`<tr><td>data_basis</td><td><code>${esc(dl.data_basis||'')}</code></td></tr>`;
+    html+=`<tr><td>adjustment_source</td><td><code>${esc(dl.adjustment_source||'')}</code></td></tr>`;
+    html+=`<tr><td>price_basis</td><td>${esc(dl.price_basis||'')}</td></tr>`;
+    html+=`<tr><td>commission_bps</td><td class="num">${dl.commission_bps||d.commission_bps||0}</td></tr>`;
+    html+=`<tr><td>slippage_bps</td><td class="num">${dl.slippage_bps||d.slippage_bps||0}</td></tr>`;
+    html+=`</table>`;
+    // Strategy Logic
+    const sl=r.strategy_logic||{};
+    html+=`<div class="group-title">Strategy Logic</div><table>`;
+    html+=`<tr><td>rule</td><td>${esc(sl.rule||'')}</td></tr>`;
+    html+=`<tr><td>buy_condition</td><td>${esc(sl.buy_condition||'')}</td></tr>`;
+    html+=`<tr><td>sell_condition</td><td>${esc(sl.sell_condition||'')}</td></tr>`;
+    html+=`<tr><td>signal_timing</td><td>${esc(sl.signal_timing||'')}</td></tr>`;
+    html+=`</table>`;
+    // Trade Summary
+    const ts=r.trade_summary||{};
+    html+=`<div class="group-title">Trade Summary</div><table>`;
+    html+=`<tr><td>total_trades</td><td class="num">${fmt(ts.total_trades)}</td></tr>`;
+    html+=`<tr><td>closed_trades</td><td class="num">${fmt(ts.closed_trades)}</td></tr>`;
+    if(ts.why_no_trades){html+=`<tr><td colspan="2" class="caveat">${esc(ts.why_no_trades)}</td></tr>`;}
+    html+=`</table>`;
+    // Metrics
+    const m=r.metrics||{};
+    html+=`<div class="group-title">Metrics</div><table><tr><th>metric</th><th>value</th></tr>`;
+    html+=`<tr><td>total_return_pct</td><td class="num">${fmt(m.total_return_pct)}</td></tr>`;
+    html+=`<tr><td>sharpe_ratio</td><td class="num">${fmt(m.sharpe_ratio)}</td></tr>`;
+    html+=`<tr><td>sortino_ratio</td><td class="num">${fmt(m.sortino_ratio)}</td></tr>`;
+    html+=`<tr><td>profit_factor</td><td class="num">${fmt(m.profit_factor)}</td></tr>`;
+    html+=`<tr><td>max_drawdown_pct</td><td class="num">${fmt(m.max_drawdown_pct)}</td></tr>`;
+    html+=`<tr><td>win_rate</td><td class="num">${fmt(m.win_rate)}</td></tr>`;
+    html+=`<tr><td>total_commission</td><td class="num">${fmt(m.total_commission)}</td></tr>`;
+    html+=`<tr><td>total_slippage_estimate</td><td class="num">${fmt(m.total_slippage_estimate)}</td></tr>`;
+    html+=`</table>`;
+  });}
   (d.warnings||[]).forEach(w=>html+=`<div class="caveat">${esc(w)}</div>`);
+  html+=`<div class="kv">⚠ prototype only: vnstock-derived adjusted rows, not approved. Not investment advice.</div>`;
   return html;
 }
 function renderProductCostSlippage(d){

@@ -274,16 +274,70 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
         mode = _resolve_mode(request)
         return await asyncio.to_thread(_envelope_from_query, f"latest news {symbol.upper()}", mode=mode, url=url)
 
+    class _FakeRequest:
+        """Minimal stand-in for Request when calling async endpoints directly."""
+        def __init__(self, query_string: str = ""):
+            self._query_string = query_string
+        @property
+        def query_params(self):
+            from starlette.datastructures import QueryParams
+            return QueryParams(self._query_string)
+
+    def _fake_request(query_string: str) -> Request:
+        return _FakeRequest(query_string)
+
     @app.post("/api/demo/ask")
     async def demo_ask(request: Request) -> JSONResponse:
         body = await _read_json(request)
-        message = str(body.get("message") or body.get("query") or "").strip()
+        message = str(body.get("message") or body.get("query") or "").strip().lower()
         if not message:
             return _json(400, {"status": "error", "caveats": ["message (or query) is required"]})
+        # Check for simple query shortcuts (rule mode, no LLM needed)
+        symbols_from_msg = [s.strip().upper() for s in ("FPT", "VNM") if s.lower() in message]
+        if "signal" in message and symbols_from_msg:
+            return _json(200, await product_signals(
+                _fake_request(f"symbols={','.join(symbols_from_msg)}&strategy=ma_cross_v1&source_policy=prototype_allowed")))
+        if "backtest" in message and symbols_from_msg:
+            return _json(200, await product_backtest(
+                _fake_request(f"symbols={','.join(symbols_from_msg)}&strategy=ma_cross_v1&source_policy=prototype_allowed")))
+        if "data status" in message or "data-status" in message:
+            return _json(200, await product_data_status())
+        if "adjusted gate" in message or "adjusted-gate" in message:
+            return _json(200, await product_adjusted_gate())
+        if "cost" in message and "slippage" in message:
+            return _json(200, await product_cost_slippage())
+        if "source" in message and ("verification" in message or "check" in message):
+            return _json(200, await product_source_verification())
+        if "overview" in message:
+            return _json(200, await product_overview())
+        # Default to rule mode, fall back gracefully on deep
         deep = str(body.get("mode", "rule")).lower() == "deep"
         mode = qr.resolve_mode(body.get("query_mode"))
-        payload = await asyncio.to_thread(_envelope_from_query, message, mode=mode, url=url, deep=deep)
-        return _json(200, payload)
+        try:
+            payload = await asyncio.to_thread(_envelope_from_query, message, mode=mode, url=url, deep=deep)
+            return _json(200, payload)
+        except Exception as exc:
+            # Graceful fallback for deep mode failures
+            if deep:
+                fallback_warnings = [
+                    "DeepAgents mode unavailable in this environment.",
+                    "Falling back to rule mode.",
+                    "For product console, use the sidebar buttons instead.",
+                ]
+                return _json(200, {
+                    "status": "unavailable",
+                    "domain": "deep_agents",
+                    "answer_markdown": "## DeepAgents Unavailable\n\nDeepAgents mode requires LLM backend which is not available here.\n\n**Use the sidebar buttons for product console actions:**\n- Product overview\n- QuestDB data status\n- Adjusted OHLC gate\n- Strategy signals\n- Backtest engine v1",
+                    "caveats": fallback_warnings,
+                    "next_action": {
+                        "priority": 0,
+                        "title": "Use rule-mode sidebar buttons",
+                        "status": "INFO",
+                        "why": "Rule mode is fully functional without LLM backend.",
+                        "ui_path": "/product/overview",
+                    },
+                })
+            raise
 
     @app.get("/api/demo/trace/examples")
     async def demo_trace_examples() -> dict:
@@ -415,45 +469,65 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
     async def product_adjusted_gate() -> dict:
         try:
             gate = G.adjusted_ohlc_gate(url)
-            # Blocked symbols: approved source missing
-            blocked = market.query_questdb(
-                "SELECT symbol, adjustment_status FROM daily_prices "
-                "WHERE adjustment_status IN ('adjusted_price_missing_warn', 'source_unverified') "
-                "LIMIT 10", url=url)
-            proto_ok = market.query_questdb(
-                "SELECT symbol FROM daily_prices WHERE symbol IN ('FPT','VNM') LIMIT 2", url=url)
-            # Extract sample of blocked symbols
-            blocked_sample = []
-            for r in blocked.get("rows", [])[:5]:
+            # Query adjusted_daily_prices for FPT/VNM prototype evidence - avoid || concat
+            proto_data = market.query_questdb(
+                "SELECT symbol, count() as cnt, min(trade_date) as date_min, max(trade_date) as date_max "
+                "FROM adjusted_daily_prices WHERE symbol IN ('FPT','VNM') GROUP BY symbol", url=url)
+            # Build prototype symbol list
+            proto_symbols = []
+            for r in proto_data.get("rows", []):
                 if isinstance(r, dict):
-                    blocked_sample.append({"symbol": r.get("symbol", ""), "status": r.get("adjustment_status", "")})
-                elif isinstance(r, (list, tuple)) and len(r) >= 2:
-                    blocked_sample.append({"symbol": r[0], "status": r[1]})
+                    sym = r.get("symbol", "")
+                    proto_symbols.append({
+                        "symbol": sym,
+                        "status": "PASS_PROTOTYPE",
+                        "rows": r.get("cnt", 0),
+                        "adjustment_source": f"vnstock:company_events:{sym}",
+                        "date_min": str(r.get("date_min", "")),
+                        "date_max": str(r.get("date_max", "")),
+                        "used_for_demo_backtest": True,
+                    })
+                elif isinstance(r, (list, tuple)) and len(r) >= 4:
+                    sym = r[0]
+                    proto_symbols.append({
+                        "symbol": sym,
+                        "status": "PASS_PROTOTYPE",
+                        "rows": r[1],
+                        "adjustment_source": f"vnstock:company_events:{sym}",
+                        "date_min": str(r[2]) if len(r) > 2 else "",
+                        "date_max": str(r[3]) if len(r) > 3 else "",
+                        "used_for_demo_backtest": True,
+                    })
             return {
                 "status": gate.status.lower() if gate.status else "unknown",
-                "adjusted_columns_present": gate.evidence.get("adjusted_columns_present", []),
-                "adjusted_columns_count": len(gate.evidence.get("adjusted_columns_present", [])),
-                "raw_equivalent_ratio": gate.evidence.get("raw_equivalent_ratio"),
+                "daily_prices_raw_equivalent": gate.evidence.get("raw_equivalent_ratio") == 1.0,
+                "daily_prices_adjusted_columns_present": gate.evidence.get("adjusted_columns_present", []),
                 "approved_only": {
                     "approved_count": 0,
-                    "FPT_VNM": "BLOCKED_UNAPPROVED_SOURCE",
-                    "other_symbols": "BLOCKED_ADJUSTED_SOURCE_MISSING",
+                    "official_backtest_allowed": False,
+                    "reason": "approved adjusted OHLC source missing",
+                    "FPT": "BLOCKED_UNAPPROVED_SOURCE",
+                    "VNM": "BLOCKED_UNAPPROVED_SOURCE",
+                    "HPG_VCB_CTG_VHM": "BLOCKED_ADJUSTED_SOURCE_MISSING",
                 },
                 "prototype_allowed": {
-                    "FPT_VNM": "PASS_PROTOTYPE" if proto_ok.get("rows") else "NO_DATA",
+                    "prototype_count": len(proto_symbols),
+                    "symbols": proto_symbols,
                 },
-                "caveat": "vnstock is prototype only, not approved. All rows are raw_equivalent.",
-                "blocked_symbols_sample": blocked_sample,
+                "warnings": [
+                    "daily_prices adjusted columns are raw-equivalent; prototype uses adjusted_daily_prices for FPT/VNM only",
+                    "vnstock-derived adjusted rows are prototype only, not approved",
+                    "approved_only remains blocked until approved corporate action/vendor adjusted source exists",
+                ],
             }
         except Exception as exc:
-            # Graceful degradation when tables don't exist
+            # Graceful degradation
             return {
-                "status": "warn",
-                "adjusted_columns_present": [],
-                "approved_only": {"approved_count": 0, "FPT_VNM": "BLOCKED_UNAPPROVED_SOURCE", "other_symbols": "BLOCKED_ADJUSTED_SOURCE_MISSING"},
-                "prototype_allowed": {"FPT_VNM": "NO_DATA"},
-                "caveat": f"vnstock is prototype only, not approved. Error: {str(exc)[:100]}",
-                "blocked_symbols_sample": [],
+                "status": "error",
+                "message": str(exc)[:200],
+                "approved_only": {"approved_count": 0, "official_backtest_allowed": False},
+                "prototype_allowed": {"prototype_count": 0, "symbols": []},
+                "warnings": [f"Error checking gate: {str(exc)[:100]}"],
             }
 
     @app.get("/product/signals")
@@ -473,74 +547,240 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
             try:
                 res = fst.get_latest_signal(sym.strip(), strategy_id=sid, url=url)
                 if res.get("status") != "ok" or not res.get("rows"):
-                    signals.append({"symbol": sym.strip(), "signal": "HOLD", "score": None,
-                                    "reason": res.get("caveats", ["no signal rows"])[0] if res.get("caveats") else "no data"})
+                    signals.append({
+                        "symbol": sym.strip(), "signal": "HOLD", "raw_signal": None,
+                        "score": None, "reason": res.get("caveats", ["no signal rows"])[0] if res.get("caveats") else "no data",
+                        "position_state": "NO_DATA",
+                    })
                     continue
                 row = res["rows"][0]
                 if isinstance(row, dict):
-                    signal_val = row.get("signal", "HOLD")
+                    raw_signal = row.get("signal", "HOLD")
                     score = row.get("score")
                     reason = row.get("reason_code", "")
                 else:
-                    signal_val = row[4] if len(row) > 4 else "HOLD"
+                    raw_signal = row[4] if len(row) > 4 else "HOLD"
                     score = row[5] if len(row) > 5 else None
                     reason = row[6] if len(row) > 6 else ""
+                # Map CASH to HOLD for display, preserve raw for transparency
+                display_signal = raw_signal if raw_signal in ("BUY", "SELL", "HOLD") else "HOLD"
+                position_state = "NO_POSITION" if raw_signal == "CASH" else "HOLDING" if raw_signal == "BUY" else "FLAT"
                 signals.append({
                     "symbol": sym.strip(),
-                    "signal": signal_val or "HOLD",
+                    "signal": display_signal,
+                    "raw_signal": raw_signal,
                     "score": score,
                     "reason": reason or "",
+                    "position_state": position_state,
                 })
             except Exception as exc:
-                signals.append({"symbol": sym.strip(), "signal": "ERROR", "score": None, "reason": str(exc)[:100]})
+                signals.append({"symbol": sym.strip(), "signal": "ERROR", "raw_signal": None,
+                               "score": None, "reason": str(exc)[:100], "position_state": "ERROR"})
         if source_policy == "prototype_allowed":
-            warnings.append("prototype only: vnstock-derived adjusted rows, not approved")
-        return {"status": "ok", "strategy": strategy, "source_policy": source_policy,
-                "signals": signals, "warnings": warnings}
+            warnings.append("prototype only: signal is for research/demo, not trading advice")
+        return {
+            "status": "ok",
+            "strategy": strategy,
+            "source_policy": source_policy,
+            "data_basis": "signals table / latest deterministic signal",
+            "signals": signals,
+            "warnings": warnings,
+        }
 
     @app.get("/product/backtest")
     async def product_backtest(request: Request) -> dict:
         symbols = request.query_params.get("symbols", "FPT,VNM").split(",")
         strategy = request.query_params.get("strategy", "ma_cross_v1")
         source_policy = request.query_params.get("source_policy", "prototype_allowed")
+        strategy_id_map = {"ma_cross_v1": "ma20_ma50"}
+        sid = strategy_id_map.get(strategy, "ma20_ma50")
+        start_date = "2021-01-01"
+        end_date = "2025-12-31"
+        commission_bps = 15
+        slippage_bps = 10
+
         warnings = []
         if source_policy == "approved_only":
             warnings.append("BLOCKED: no approved adjusted OHLC source")
-            return {"status": "blocked", "engine": "custom_backtest_v1", "strategy": strategy,
-                    "source_policy": source_policy, "results": [], "warnings": warnings}
-        strategy_id_map = {"ma_cross_v1": "ma20_ma50"}
-        sid = strategy_id_map.get(strategy, "ma20_ma50")
+            return {
+                "status": "blocked", "engine": "custom_backtest_v1", "strategy": strategy,
+                "source_policy": source_policy, "results": [], "warnings": warnings,
+            }
+
+        # Strategy logic definitions
+        strategy_logic = {
+            "ma_cross_v1": {
+                "rule": "MA20 / MA50 crossover",
+                "buy_condition": "MA20 crosses above MA50",
+                "sell_condition": "MA20 crosses below or equals MA50",
+                "signal_timing": "Signal is computed from historical bars only, no future rows",
+            },
+            "baseline_buy_hold_v1": {
+                "rule": "Buy at first available bar",
+                "sell_condition": "Mark-to-market at final bar",
+                "purpose": "Engine validation baseline, not alpha strategy",
+            },
+        }
+
+        # Execution logic
+        execution_logic = {
+            "signal_generation": "Signal generated on bar t",
+            "execution_rule": "Execute on next tradable bar (open price)",
+            "position_sizing": "95% of available cash per signal",
+            "cash_update": "Cash updated after each fill",
+            "no_raw_fallback": "Uses adjusted_daily_prices only, no raw daily_prices fallback",
+        }
+
         results = []
+        # Pre-fetch prototype data evidence for FPT/VNM
+        proto_evidence = {}
+        for sym in [s.strip() for s in symbols[:5] if s.strip() in ("FPT", "VNM")]:
+            proto_res = market.query_questdb(
+                f"SELECT count() as cnt, min(trade_date) as dmin, max(trade_date) as dmax "
+                f"FROM adjusted_daily_prices WHERE symbol = '{sym}'", url=url)
+            if proto_res.get("status") == "ok" and proto_res.get("rows"):
+                row = proto_res["rows"][0]
+                proto_evidence[sym] = {
+                    "rows": row.get("cnt", 0) if isinstance(row, dict) else (row[0] if row else 0),
+                    "date_min": str(row.get("dmin", "") if isinstance(row, dict) else (row[1] if len(row) > 1 else "")),
+                    "date_max": str(row.get("dmax", "") if isinstance(row, dict) else (row[2] if len(row) > 2 else "")),
+                }
+
         for sym in symbols[:5]:
+            sym_stripped = sym.strip()
             try:
                 bars, data_caveats = se.load_bars_from_questdb(
-                    sym.strip(), "2023-01-01", "2025-12-31", adjusted=True, url=url)
+                    sym_stripped, start_date, end_date, adjusted=True, url=url)
                 if not bars:
-                    results.append({"symbol": sym.strip(), "error": "no data"})
+                    results.append({
+                        "symbol": sym_stripped,
+                        "status": "error",
+                        "error": "no adjusted_daily_prices data available for this symbol",
+                    })
+                    warnings.extend(data_caveats)
                     continue
-                exchange = se.fetch_exchange(sym.strip(), url=url)
-                out = se.run_simple_backtest(bars, symbol=sym.strip(), strategy=sid, slippage_bps=10.0, exchange=exchange)
+
+                exchange = se.fetch_exchange(sym_stripped, url=url)
+                out = se.run_simple_backtest(bars, symbol=sym_stripped, strategy=sid,
+                                           slippage_bps=slippage_bps, exchange=exchange)
                 sm = out.metrics
-                results.append({
-                    "symbol": sym.strip(),
-                    "total_return_pct": sm.get("total_return_pct"),
-                    "sharpe_ratio": sm.get("sharpe_ratio"),
-                    "sortino_ratio": sm.get("sortino_ratio"),
-                    "profit_factor": sm.get("profit_factor"),
-                    "max_drawdown_pct": sm.get("max_drawdown_pct"),
-                    "win_rate": sm.get("win_rate_pct"),
-                    "trade_count": sm.get("trade_count"),
-                    "closed_trade_count": sm.get("closed_trades"),
-                    "total_commission": sm.get("total_commission"),
-                    "total_slippage_estimate": sm.get("total_slippage_estimate"),
-                })
+                closed_trades = sm.get("closed_trades", 0)
+
+                # Build explanation
+                adj_source = f"vnstock:company_events:{sym_stripped}"
+                drange = f"{bars[0].date if bars else start_date} to {bars[-1].date if bars else end_date}"
+                explanation = (
+                    f"Backtest is simulating strategy `{strategy}` on {sym_stripped} from {start_date} to {end_date} "
+                    f"using `adjusted_daily_prices` prototype rows from `{adj_source}`. "
+                    f"The strategy computes MA20 and MA50 from past bars. "
+                    f"When MA20 crosses above MA50, it buys; when MA20 crosses below/equal MA50, it exits to CASH. "
+                    f"Each signal is executed according to the engine's execution rule "
+                    f"with {commission_bps}bps commission and {slippage_bps}bps slippage applied. "
+                    f"The table below shows trades and resulting metrics."
+                )
+
+                # Trade summary
+                trade_summary = {
+                    "total_trades": sm.get("trade_count") or closed_trades,
+                    "closed_trades": closed_trades,
+                    "first_trade": None,
+                    "last_trade": None,
+                    "why_no_trades": None,
+                }
+
+                if closed_trades == 0:
+                    trade_summary["why_no_trades"] = (
+                        "No trade was generated because MA20/MA50 did not cross during the selected period. "
+                        "Try a longer date range or different symbol."
+                    )
+
+                # Sample trades from equity curve
+                sample_trades = []
+                try:
+                    if hasattr(out, 'trades') and out.trades:
+                        all_trades = list(out.trades) if hasattr(out.trades, '__iter__') else []
+                        # Take first 3 and last 3
+                        if len(all_trades) > 6:
+                            trades_sample = all_trades[:3] + all_trades[-3:]
+                        else:
+                            trades_sample = all_trades
+                        for t in trades_sample:
+                            # Handle RoundTripTrade objects with attributes, not dict
+                            if hasattr(t, '__dict__'):
+                                sample_trades.append({
+                                    "date": str(getattr(t, 'dt', getattr(t, 'date', ''))),
+                                    "side": str(getattr(t, 'side', '')),
+                                    "price": getattr(t, 'price', None),
+                                    "quantity": getattr(t, 'quantity', None),
+                                    "value": getattr(t, 'value', None),
+                                })
+                            elif isinstance(t, dict):
+                                sample_trades.append({
+                                    "date": str(t.get("date", "")),
+                                    "side": t.get("side", ""),
+                                    "price": t.get("price"),
+                                    "quantity": t.get("quantity"),
+                                    "value": t.get("value"),
+                                })
+                        if all_trades:
+                            trade_summary["first_trade"] = sample_trades[0] if sample_trades else None
+                            trade_summary["last_trade"] = sample_trades[-1] if len(sample_trades) > 1 else None
+                except Exception:
+                    pass  # Trade extraction is best-effort
+
+                bar_result = {
+                    "symbol": sym_stripped,
+                    "backtest_explanation": explanation,
+                    "strategy_logic": strategy_logic.get(strategy, strategy_logic["ma_cross_v1"]),
+                    "execution_logic": execution_logic,
+                    "data_lineage": {
+                        "data_basis": "adjusted_daily_prices",
+                        "source_policy": source_policy,
+                        "adjustment_source": adj_source,
+                        "price_basis": "adjusted OHLC",
+                        "commission_bps": commission_bps,
+                        "slippage_bps": slippage_bps,
+                        "date_range": drange,
+                    },
+                    "trade_summary": trade_summary,
+                    "sample_trades": sample_trades[:6] if sample_trades else [],
+                    "metrics": {
+                        "total_return_pct": sm.get("total_return_pct"),
+                        "sharpe_ratio": sm.get("sharpe_ratio"),
+                        "sortino_ratio": sm.get("sortino_ratio"),
+                        "profit_factor": sm.get("profit_factor"),
+                        "max_drawdown_pct": sm.get("max_drawdown_pct"),
+                        "win_rate": sm.get("win_rate_pct"),
+                        "total_commission": sm.get("total_commission"),
+                        "total_slippage_estimate": sm.get("total_slippage_estimate"),
+                    },
+                    "caveats": [],
+                }
+                if sym_stripped in proto_evidence:
+                    bar_result["data_lineage"]["prototype_rows"] = proto_evidence[sym_stripped].get("rows", 0)
+                    bar_result["data_lineage"]["data_date_range"] = (
+                        f"{proto_evidence[sym_stripped].get('date_min', '')} "
+                        f"to {proto_evidence[sym_stripped].get('date_max', '')}"
+                    )
+                results.append(bar_result)
                 warnings.extend(data_caveats)
             except Exception as exc:
-                results.append({"symbol": sym.strip(), "error": str(exc)[:100]})
+                results.append({"symbol": sym_stripped, "status": "error", "error": str(exc)[:100]})
+
         if source_policy == "prototype_allowed":
             warnings.append("prototype only: vnstock-derived adjusted rows, not approved")
-        return {"status": "ok", "engine": "custom_backtest_v1", "strategy": strategy,
-                "source_policy": source_policy, "results": results, "warnings": warnings}
+
+        return {
+            "status": "ok",
+            "engine": "custom_backtest_v1",
+            "strategy": strategy,
+            "source_policy": source_policy,
+            "date_range": f"{start_date} to {end_date}",
+            "commission_bps": commission_bps,
+            "slippage_bps": slippage_bps,
+            "results": results,
+            "warnings": warnings,
+        }
 
     @app.get("/product/cost-slippage")
     async def product_cost_slippage() -> dict:

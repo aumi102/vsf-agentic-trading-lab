@@ -499,7 +499,7 @@ def test_product_adjusted_gate_returns_approved_and_prototype():
     assert r.status_code == 200
     body = r.json()
     # graceful degradation when QuestDB unreachable
-    assert set(body.keys()) >= {"status", "approved_only", "prototype_allowed", "caveat"}
+    assert set(body.keys()) >= {"status", "approved_only", "prototype_allowed", "warnings"}
     assert body["approved_only"]["approved_count"] == 0
 
 
@@ -522,6 +522,10 @@ def test_product_signals_returns_concise_shape():
     for s in body["signals"]:
         assert "symbol" in s
         assert "signal" in s
+        # CASH mapped to HOLD, raw_signal preserved
+        if s["raw_signal"] == "CASH":
+            assert s["signal"] == "HOLD"
+            assert s["position_state"] == "NO_POSITION"
 
 
 def test_product_backtest_returns_custom_engine_shape():
@@ -537,6 +541,16 @@ def test_product_backtest_returns_custom_engine_shape():
     assert body["engine"] == "custom_backtest_v1"
     assert "results" in body
     assert "warnings" in body
+    # Check first result has new fields (or error if no data)
+    res = body["results"][0]
+    assert res["symbol"] == "FPT"
+    if res.get("status") != "error":
+        assert "backtest_explanation" in res
+        assert "strategy_logic" in res
+        assert "execution_logic" in res
+        assert "data_lineage" in res
+        assert "trade_summary" in res
+        assert "metrics" in res
 
 
 def test_product_cost_slippage_returns_price_band_guard():
