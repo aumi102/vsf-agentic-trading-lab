@@ -42,6 +42,7 @@ def test_fastapi_app_imports_and_registers_routes():
         "/product/cost-slippage",
         "/product/source-verification",
         "/product/decision",
+        "/product/symbol-report",
     ):
         assert expected in paths, f"missing route {expected}"
 
@@ -791,3 +792,106 @@ def test_demo_html_renderer_distinguishes_signal_vs_decision():
     assert "Final Decision" in html
     assert "why_different_from_signal" in html
     assert "is_investment_advice" in html
+
+
+# --- symbol report composer ---------------------------------------------------
+def test_product_symbol_report_vnm_returns_answer_markdown_and_sections():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/product/symbol-report?symbol=VNM&strategy=ma_cross_v1&source_policy=prototype_allowed")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "answer_markdown" in body
+    assert "sections" in body
+    assert "symbol" in body
+    assert body["symbol"] == "VNM"
+
+
+def test_product_symbol_report_includes_required_sections():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/product/symbol-report?symbol=VNM&strategy=ma_cross_v1&source_policy=prototype_allowed")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    sec = body.get("sections", {})
+    for required in ("questdb_data", "adjusted_ohlc_gate", "signal_input",
+                     "final_decision", "backtest_summary", "cost_slippage_guard",
+                     "source_verification"):
+        assert required in sec, f"missing section: {required}"
+
+
+def test_product_symbol_report_ctg_no_official_action():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/product/symbol-report?symbol=CTG&strategy=ma_cross_v1&source_policy=prototype_allowed")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    decision = body.get("sections", {}).get("final_decision", {})
+    assert decision.get("action") in ("NO_OFFICIAL_ACTION", "UNANSWERED"), \
+        "CTG must not show HOLD as final action when adjusted source missing"
+
+
+def test_demo_ask_summarize_routes_to_symbol_report():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.post("/api/demo/ask", json={"message": "summarize VNM and its backtest", "mode": "rule"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "sections" in body, "summarize intent must route to symbol-report"
+    assert "final_decision" in body["sections"]
+
+
+def test_demo_ask_run_backtest_routes_to_backtest():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.post("/api/demo/ask", json={"message": "run VNM backtest", "mode": "rule"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body.get("engine") == "custom_backtest_v1", \
+        '"run VNM backtest" must route to /product/backtest, not symbol-report'
+
+
+def test_demo_menu_includes_symbol_report():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/api/demo/menu")
+    assert r.status_code == 200
+    body = r.json()
+    labels = {m["label"] for m in body.get("menu", [])}
+    assert "Symbol report" in labels
+
+
+def test_demo_html_renderer_includes_symbol_report_sections():
+    from pathlib import Path
+
+    html = Path("src/trading_agent/api/demo_console.html").read_text(encoding="utf-8")
+    assert "Symbol Report" in html
+    assert "Short Answer" in html
+    assert "QuestDB Data" in html
+    assert "Final Decision" in html
+    assert "Backtest Summary" in html
+    assert "Caveats" in html

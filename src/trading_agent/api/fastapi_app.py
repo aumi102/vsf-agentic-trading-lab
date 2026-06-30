@@ -68,6 +68,8 @@ MENU = [
      "description": "adjusted OHLC source/corporate action status."},
     {"id": "decision", "label": "Symbol decision", "group": "Trading Core", "method": "GET", "path": "/product/decision?symbol=VNM&strategy=ma_cross_v1&source_policy=prototype_allowed",
      "description": "final research decision for one ticker"},
+    {"id": "symbol_report", "label": "Symbol report", "group": "Trading Core", "method": "GET", "path": "/product/symbol-report?symbol=VNM&strategy=ma_cross_v1&source_policy=prototype_allowed",
+     "description": "data + signal + decision + backtest summary"},
 ]
 
 
@@ -294,30 +296,59 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
             return _json(400, {"status": "error", "caveats": ["message (or query) is required"]})
         # Check for simple query shortcuts (rule mode, no LLM needed)
         symbols_from_msg = [s.strip().upper() for s in ("FPT", "VNM") if s.lower() in message]
-        # Decision shortcuts: "nên làm gì", "decision", "analyze", "phân tích",
-        # "đánh giá", "recommend", "khuyến nghị" + supported symbol.
-        decision_triggers = (
-            "nên làm gì", "decision", "analyze", "phân tích",
-            "đánh giá", "recommend", "khuyến nghị",
-        )
-        decision_symbols = ("FPT", "VNM", "CTG", "HPG", "VCB", "VHM")
-        decision_sym = None
-        for ds in decision_symbols:
-            if ds.lower() in message:
-                decision_sym = ds
+        # Supported symbols across all shortcuts
+        all_symbols = ("FPT", "VNM", "CTG", "HPG", "VCB", "VHM")
+        found_sym = None
+        for s in all_symbols:
+            if s.lower() in message:
+                found_sym = s
                 break
-        if decision_sym and any(trig in message for trig in decision_triggers):
-            return _json(200, await product_decision(
-                symbol=decision_sym,
+
+        # Priority 1: Symbol report intent (highest — summarise / overview / report / tổng hợp)
+        report_triggers = (
+            "summarize", "summary", "report", "tổng hợp",
+            "overview", "phân tích tổng quan",
+        )
+        matched_report_intent = found_sym and any(trig in message for trig in report_triggers)
+        if matched_report_intent:
+            return _json(200, await product_symbol_report(
+                symbol=found_sym,
                 strategy="ma_cross_v1",
                 source_policy="prototype_allowed",
                 include_backtest=True,
             ))
+
+        # Priority 2: Decision intent ("nên làm gì", "decision", "analyze", etc.)
+        decision_triggers = (
+            "nên làm gì", "decision", "analyze", "phân tích",
+            "đánh giá", "recommend", "khuyến nghị",
+        )
+        if found_sym and any(trig in message for trig in decision_triggers):
+            return _json(200, await product_decision(
+                symbol=found_sym,
+                strategy="ma_cross_v1",
+                source_policy="prototype_allowed",
+                include_backtest=True,
+            ))
+        # Priority 3: Explicit backtest-only intent
+        # Order-independent: check both "run backtest SYMBOL" and "SYMBOL backtest"
+        explicit_backtest_intents = (
+            f"run backtest {found_sym.lower()}" if found_sym else "",
+            f"{found_sym.lower()} backtest" if found_sym else "",
+            "chạy backtest",
+            "backtest only",
+        )
+        backtest_intent = (
+            found_sym
+            and any(trig in message for trig in explicit_backtest_intents if trig)
+            and not matched_report_intent
+        )
+        if backtest_intent:
+            return _json(200, await product_backtest(
+                _fake_request(f"symbols={found_sym}&strategy=ma_cross_v1&source_policy=prototype_allowed")))
+
         if "signal" in message and symbols_from_msg:
             return _json(200, await product_signals(
-                _fake_request(f"symbols={','.join(symbols_from_msg)}&strategy=ma_cross_v1&source_policy=prototype_allowed")))
-        if "backtest" in message and symbols_from_msg:
-            return _json(200, await product_backtest(
                 _fake_request(f"symbols={','.join(symbols_from_msg)}&strategy=ma_cross_v1&source_policy=prototype_allowed")))
         if "data status" in message or "data-status" in message:
             return _json(200, await product_data_status())
@@ -1169,6 +1200,368 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
                 "backtest_summary": backtest_summary,
                 "market_summary": market_summary,
             },
+            "caveats": caveats,
+        }
+
+    @app.get("/product/symbol-report")
+    async def product_symbol_report(
+        symbol: str = "VNM",
+        strategy: str = "ma_cross_v1",
+        source_policy: str = "prototype_allowed",
+        include_backtest: bool = True,
+    ) -> dict:
+        """Compose a full product-level symbol report from existing product outputs.
+
+        Orchestrates data-status + adjusted-gate + signals + decision + (optional)
+        backtest + cost/slippage + source-verification into one user-facing report.
+        """
+        sym = (symbol or "VNM").strip().upper()
+        strategy = (strategy or "ma_cross_v1").strip()
+        source_policy = (source_policy or "prototype_allowed").strip()
+        caveats: list[str] = []
+        warnings: list[str] = []
+        sections: dict[str, Any] = {}
+        summary: dict[str, str] = {}
+
+        # -----------------------------------------------------------------
+        # 1. QuestDB data status (concise)
+        # -----------------------------------------------------------------
+        try:
+            daily = market.query_questdb("SELECT count() cnt FROM daily_prices", url=url)
+            adj = market.query_questdb("SELECT count() cnt FROM adjusted_daily_prices", url=url)
+            fa_runs = market.query_questdb(
+                "SELECT status, count() cnt FROM fa_ingest_runs GROUP BY status", url=url)
+            event_news = market.query_questdb("SELECT count() cnt FROM event_news_items", url=url)
+
+            def _cnt_rows(res):
+                if not res or res.get("status") != "ok" or not res.get("rows"):
+                    return 0
+                row = res["rows"][0]
+                if isinstance(row, dict):
+                    return row.get("cnt", 0)
+                return row[0] if row else 0
+
+            sections["questdb_data"] = {
+                "status": "ok",
+                "daily_prices_rows": _cnt_rows(daily),
+                "adjusted_daily_prices_rows": _cnt_rows(adj),
+                "event_news_items_rows": _cnt_rows(event_news),
+                "fa_runs": [
+                    {"status": r.get("status", r[0] if not isinstance(r, dict) else "?"),
+                     "count": r.get("cnt", r[1] if not isinstance(r, dict) else 0)}
+                    for r in (fa_runs.get("rows", []) if fa_runs.get("rows") else [])
+                ],
+            }
+            summary["data_status"] = (
+                f"QuestDB has {sections['questdb_data']['daily_prices_rows']:,} daily_prices rows "
+                f"and {sections['questdb_data']['adjusted_daily_prices_rows']:,} adjusted_daily_prices rows."
+            )
+        except Exception as exc:
+            sections["questdb_data"] = {"status": "error", "message": str(exc)[:100]}
+            summary["data_status"] = "QuestDB data status unavailable."
+            caveats.append("QuestDB data-status lookup failed")
+
+        # -----------------------------------------------------------------
+        # 2. Adjusted OHLC gate (per-symbol)
+        # -----------------------------------------------------------------
+        prototype = False
+        approved = False
+        proto_rows = 0
+        try:
+            proto_res = market.query_questdb(
+                f"SELECT count() cnt FROM adjusted_daily_prices WHERE symbol = '{sym}'", url=url)
+            if proto_res.get("status") == "ok" and proto_res.get("rows"):
+                row = proto_res["rows"][0]
+                proto_rows = (row.get("cnt", 0) if isinstance(row, dict) else (row[0] if row else 0))
+            prototype = proto_rows > 0
+            gate = G.adjusted_ohlc_gate(url)
+            gate_status = (gate.status or "unknown").lower()
+        except Exception as exc:
+            gate_status = "error"
+            caveats.append(f"adjusted-gate lookup failed: {str(exc)[:80]}")
+
+        sections["adjusted_ohlc_gate"] = {
+            "gate_status": gate_status,
+            "symbol": sym,
+            "approved": approved,
+            "prototype": prototype,
+            "prototype_rows": proto_rows,
+            "source_policy": source_policy,
+        }
+        if prototype:
+            summary["adjusted_source_status"] = (
+                f"{sym} has {proto_rows:,} prototype adjusted_daily_prices rows "
+                f"(vnstock-derived, not approved) under source_policy={source_policy}."
+            )
+        elif source_policy == "approved_only":
+            summary["adjusted_source_status"] = (
+                f"{sym} has no approved adjusted OHLC source. "
+                f"approved_only blocks official action."
+            )
+        else:
+            summary["adjusted_source_status"] = (
+                f"{sym} has no prototype adjusted OHLC source. "
+                f"No official backtest or decision available for this symbol."
+            )
+            caveats.append(f"{sym} has no approved/prototype adjusted OHLC source")
+
+        # -----------------------------------------------------------------
+        # 3. Strategy signal
+        # -----------------------------------------------------------------
+        raw_signal = None
+        display_signal = None
+        signal_score = None
+        reason_code = None
+        signal_status = "unavailable"
+        try:
+            sid_map = {"ma_cross_v1": "ma20_ma50_v1"}
+            sid = sid_map.get(strategy, "ma20_ma50_v1")
+            res = fst.get_latest_signal(sym, strategy_id=sid, url=url)
+            if res.get("status") == "ok" and res.get("rows"):
+                row = res["rows"][0]
+                if isinstance(row, dict):
+                    raw = row.get("signal", "HOLD")
+                    signal_score = row.get("score")
+                    reason_code = row.get("reason_code", "")
+                else:
+                    raw = row[4] if len(row) > 4 else "HOLD"
+                    signal_score = row[5] if len(row) > 5 else None
+                raw_signal = raw if raw in ("BUY", "SELL", "HOLD", "CASH") else "HOLD"
+                display_signal = raw_signal if raw_signal in ("BUY", "SELL", "HOLD") else "HOLD"
+                signal_status = "ok"
+            else:
+                signal_status = "unavailable"
+        except Exception as exc:
+            signal_status = f"error: {str(exc)[:60]}"
+            caveats.append(f"signal lookup failed: {str(exc)[:80]}")
+
+        sections["signal_input"] = {
+            "symbol": sym,
+            "strategy": strategy,
+            "raw_signal": raw_signal,
+            "display_signal": display_signal,
+            "score": signal_score,
+            "reason_code": reason_code,
+            "status": signal_status,
+        }
+        summary["signal"] = (
+            f"Latest ma_cross_v1 raw_signal={raw_signal or '?'}, "
+            f"display={display_signal or '?'}, reason={reason_code or '?'}."
+        )
+
+        # -----------------------------------------------------------------
+        # 4. Final decision (reuse decision logic inline)
+        # -----------------------------------------------------------------
+        decision_action = "UNANSWERED"
+        decision_confidence = "low"
+        decision_reason = "signal unavailable or insufficient data"
+        why_different = "decision cannot be determined from current inputs."
+
+        if not prototype and sym not in ("FPT", "VNM"):
+            decision_action = "NO_OFFICIAL_ACTION"
+            decision_reason = "adjusted/corporate action source missing"
+            why_different = (
+                "decision blocked: this symbol has no prototype adjusted OHLC source. "
+                "Raw signal would be misleading without adjusted data."
+            )
+        elif source_policy == "approved_only" and not approved:
+            decision_action = "NO_OFFICIAL_ACTION"
+            decision_reason = "approved adjusted OHLC source missing"
+            why_different = "approved_only policy blocks official action."
+        elif signal_status == "ok":
+            if raw_signal == "CASH":
+                decision_action = "NO_POSITION"
+                decision_confidence = "medium" if prototype else "low"
+                decision_reason = "strategy is in CASH/no-position state"
+                why_different = (
+                    "raw_signal=CASH → display_signal=HOLD in signal layer; "
+                    "decision=NO_POSITION recognises out-of-market state."
+                )
+            elif raw_signal == "BUY":
+                decision_action = "BUY_CANDIDATE"
+                decision_confidence = "medium" if prototype else "low"
+                decision_reason = f"ma_cross_v1 issued BUY; prototype data available"
+                why_different = "decision=BUY_CANDIDATE adds source/backtest/advice guardrails."
+                caveats.append("this is a candidate view, not investment advice")
+            elif raw_signal == "SELL":
+                decision_action = "SELL_OR_EXIT"
+                decision_confidence = "medium" if prototype else "low"
+                decision_reason = "ma_cross_v1 issued SELL; exit candidate"
+                why_different = "decision=SELL_OR_EXIT emphasises risk/exit action."
+                caveats.append("this is a candidate view, not investment advice")
+            elif display_signal == "HOLD":
+                decision_action = "HOLD"
+                decision_confidence = "medium" if prototype else "low"
+                decision_reason = "no active buy/sell/cash signal from ma_cross_v1"
+                why_different = "display_signal=HOLD is the research view when no active crossover."
+
+        sections["final_decision"] = {
+            "action": decision_action,
+            "confidence": decision_confidence,
+            "reason": decision_reason,
+            "why_different_from_signal": why_different,
+            "is_investment_advice": False,
+        }
+        summary["decision"] = (
+            f"Final decision: {decision_action} (confidence={decision_confidence}). "
+            f"{decision_reason}."
+        )
+
+        # -----------------------------------------------------------------
+        # 5. Backtest summary (optional, only for FPT/VNM with prototype)
+        # -----------------------------------------------------------------
+        sections["backtest_summary"] = {"available": False}
+        if include_backtest and prototype:
+            try:
+                bars, data_caveats = se.load_bars_from_questdb(
+                    sym, "2021-01-01", "2025-12-31", adjusted=True, url=url)
+                caveats.extend(data_caveats)
+                if bars:
+                    sid_bt = "ma20_ma50" if strategy == "ma_cross_v1" else "ma20_ma50"
+                    exchange = se.fetch_exchange(sym, url=url)
+                    out = se.run_simple_backtest(
+                        bars, symbol=sym, strategy=sid_bt,
+                        slippage_bps=10, exchange=exchange)
+                    sm = out.metrics or {}
+                    sections["backtest_summary"] = {
+                        "available": True,
+                        "symbol": sym,
+                        "strategy": strategy,
+                        "total_return_pct": sm.get("total_return_pct"),
+                        "sharpe_ratio": sm.get("sharpe_ratio"),
+                        "max_drawdown_pct": sm.get("max_drawdown_pct"),
+                        "trade_count": sm.get("trade_count") or sm.get("closed_trades"),
+                        "win_rate": sm.get("win_rate_pct"),
+                        "data_basis": "adjusted_daily_prices",
+                        "adjustment_source": f"vnstock:company_events:{sym}",
+                        "date_range": f"{bars[0].date if bars else ''} to {bars[-1].date if bars else ''}",
+                    }
+                    summary["backtest"] = (
+                        f"Backtest (prototype, 2021-2025): "
+                        f"total_return={sm.get('total_return_pct', 0):.2f}%, "
+                        f"sharpe={sm.get('sharpe_ratio', 0):.3f}, "
+                        f"max_dd={sm.get('max_drawdown_pct', 0):.2f}%, "
+                        f"trades={sm.get('trade_count') or sm.get('closed_trades', 0)}."
+                    )
+                else:
+                    summary["backtest"] = f"Backtest not available for {sym}."
+            except Exception as exc:
+                summary["backtest"] = f"Backtest failed: {str(exc)[:80]}."
+                caveats.append(f"backtest failed: {str(exc)[:80]}")
+        else:
+            if include_backtest and not prototype:
+                summary["backtest"] = (
+                    f"Backtest not available: {sym} has no prototype adjusted rows. "
+                    f"Only FPT/VNM have prototype adjusted_daily_prices rows."
+                )
+            else:
+                summary["backtest"] = "Backtest excluded by include_backtest=false."
+
+        # -----------------------------------------------------------------
+        # 6. Cost / slippage guard
+        # -----------------------------------------------------------------
+        sections["cost_slippage_guard"] = {
+            "commission_bps": 15,
+            "slippage_bps": 10,
+            "price_band_guard_HOSE_HSX": 700,
+            "price_band_guard_HNX": 1000,
+            "price_band_guard_UPCOM": 1500,
+        }
+        summary["risk_cost"] = (
+            "Cost guard: 15bps commission, 10bps slippage. "
+            "Price-band guard: HOSE 700bps, HNX 1000bps, UPCOM 1500bps."
+        )
+
+        # -----------------------------------------------------------------
+        # 7. Source verification (concise)
+        # -----------------------------------------------------------------
+        try:
+            items = market.query_questdb(
+                f"SELECT count() cnt FROM event_news_items WHERE symbol = '{sym}'", url=url)
+            fa_rows = market.query_questdb(
+                f"SELECT count() cnt FROM fa_balance_sheet WHERE symbol = '{sym}'", url=url)
+
+            def _cnt_src(res):
+                if res.get("status") != "ok" or not res.get("rows"):
+                    return 0
+                row = res["rows"][0]
+                return row.get("cnt", 0) if isinstance(row, dict) else (row[0] if row else 0)
+
+            sections["source_verification"] = {
+                "status": "ok",
+                "symbol": sym,
+                "event_news_items": _cnt_src(items),
+                "fa_balance_sheet": _cnt_src(fa_rows),
+                "approved_adjusted_OHLC_blocked": True,
+                "next_blocker": "approved corporate action source or vendor adjusted prices",
+            }
+            summary["source_verification"] = (
+                f"Source verification: {sections['source_verification']['event_news_items']} "
+                f"event/news rows, {sections['source_verification']['fa_balance_sheet']} FA rows. "
+                f"Approved adjusted OHLC blocked: next step is approved corporate-action/vendor source."
+            )
+        except Exception as exc:
+            sections["source_verification"] = {"status": "error", "message": str(exc)[:100]}
+            summary["source_verification"] = "Source verification unavailable."
+            caveats.append(f"source verification failed: {str(exc)[:80]}")
+
+        # -----------------------------------------------------------------
+        # Standard caveats
+        # -----------------------------------------------------------------
+        if prototype:
+            caveats.append("vnstock-derived adjusted rows are prototype only, not approved")
+        if source_policy == "prototype_allowed":
+            caveats.append("source_policy=prototype_allowed; not investment advice")
+        caveats.append("uses adjusted_daily_prices only, no raw daily_prices fallback")
+
+        # -----------------------------------------------------------------
+        # answer_markdown (user-facing summary)
+        # -----------------------------------------------------------------
+        if decision_action == "NO_OFFICIAL_ACTION":
+            answer_markdown = (
+                f"## {sym} Symbol Report\n\n"
+                f"**Status:** {sections['adjusted_ohlc_gate']['gate_status'].upper()}\n\n"
+                f"**Final Decision:** NO_OFFICIAL_ACTION\n\n"
+                f"**Reason:** {decision_reason}\n\n"
+                f"---\n\n"
+                f"**Signal:** raw_signal={raw_signal or '?'}, display={display_signal or '?'}, "
+                f"reason={reason_code or '?'} (from ma_cross_v1).\n\n"
+                f"**Adjusted Source:** no prototype adjusted_daily_prices rows for {sym}. "
+                f"Only FPT/VNM currently have prototype rows.\n\n"
+                f"---\n\n"
+                f"{summary.get('risk_cost', '')}\n\n"
+                f"{summary.get('source_verification', '')}\n\n"
+                f"---\n\n"
+                f"⚠ *This is research output only, not investment advice.*"
+            )
+        else:
+            answer_markdown = (
+                f"## {sym} Symbol Report\n\n"
+                f"**Status:** {sections['adjusted_ohlc_gate']['gate_status'].upper()}\n\n"
+                f"**Final Decision:** {decision_action} (confidence={decision_confidence})\n\n"
+                f"**Reason:** {decision_reason}\n\n"
+                f"---\n\n"
+                f"**Signal:** raw_signal={raw_signal or '?'}, display={display_signal or '?'}, "
+                f"score={signal_score}, reason={reason_code or '?'} (ma_cross_v1).\n\n"
+                f"**Adjusted Source:** {proto_rows:,} prototype adjusted_daily_prices rows "
+                f"from vnstock-derived source. Not approved.\n\n"
+                f"**Backtest:** {summary.get('backtest', 'N/A')}\n\n"
+                f"**Cost Guard:** {summary.get('risk_cost', '')}\n\n"
+                f"**Source Verification:** {summary.get('source_verification', '')}\n\n"
+                f"---\n\n"
+                f"⚠ *This is research output only, not investment advice.*"
+            )
+
+        overall_status = "ok" if decision_action != "NO_OFFICIAL_ACTION" else "partial"
+
+        return {
+            "status": overall_status,
+            "symbol": sym,
+            "strategy": strategy,
+            "source_policy": source_policy,
+            "answer_markdown": answer_markdown,
+            "summary": summary,
+            "sections": sections,
             "caveats": caveats,
         }
 

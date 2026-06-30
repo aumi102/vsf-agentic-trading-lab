@@ -142,6 +142,7 @@ function render(id, d){
   if(d.commission_bps!==undefined && d.price_band_guard) return renderProductCostSlippage(d);
   if(d.approved_adjusted_OHLC_blocked!==undefined) return renderProductSourceVerification(d);
   if(d.decision && d.inputs) return renderProductDecision(d);
+  if(d.answer_markdown && d.sections) return renderProductSymbolReport(d);
   if(d.gates) return renderValidation(d);
   if(d.checks) return renderReadiness(d);
   if(d.results && d.recommendation_mode!==undefined) return renderBenchmark(d);
@@ -312,6 +313,91 @@ function renderProductDecision(d){
   if(d.source_policy==='prototype_allowed') html += `<div class="caveat">vnstock-derived adjusted rows are prototype only, not approved</div>`;
   if(d.source_policy==='approved_only') html += `<div class="caveat">approved_only remains blocked until approved corporate action/vendor adjusted source exists</div>`;
   html += `<div class="caveat">This is research output only, not investment advice.</div>`;
+  html += `</div>`;
+  return html;
+}
+function renderProductSymbolReport(d){
+  let html = `<div class="card"><h2>Symbol Report · ${esc(d.symbol||'')} · ${badge(d.status)}</h2>`;
+  // Short Answer
+  if(d.answer_markdown){
+    html += `<div class="group-title">Short Answer</div><div class="md" style="background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:12px">${mdToHtml(d.answer_markdown)}</div>`;
+  }
+  // QuestDB Data
+  const qd = (d.sections && d.sections.questdb_data) || {};
+  html += `<div class="card"><h2>QuestDB Data</h2><table><tr><th>table</th><th>rows</th></tr>`;
+  html += `<tr><td>daily_prices</td><td class="num">${fmt(qd.daily_prices_rows||0)}</td></tr>`;
+  html += `<tr><td>adjusted_daily_prices</td><td class="num">${fmt(qd.adjusted_daily_prices_rows||0)}</td></tr>`;
+  html += `<tr><td>event_news_items</td><td class="num">${fmt(qd.event_news_items_rows||0)}</td></tr>`;
+  html += `</table></div>`;
+  // Adjusted OHLC Gate
+  const ag = (d.sections && d.sections.adjusted_ohlc_gate) || {};
+  const agBadge = ag.prototype ? "b-warn" : "b-fail";
+  html += `<div class="card"><h2>Adjusted OHLC Gate · ${badge(ag.gate_status||'')}</h2><table><tr><th>field</th><th>value</th></tr>`;
+  html += `<tr><td>symbol</td><td>${esc(ag.symbol||'')}</td></tr>`;
+  html += `<tr><td>prototype rows</td><td class="num">${fmt(ag.prototype_rows||0)}</td></tr>`;
+  html += `<tr><td>approved</td><td>${ag.approved?'<span class="badge b-ok">yes</span>':'<span class="badge b-fail">no</span>'}</td></tr>`;
+  html += `<tr><td>prototype</td><td>${ag.prototype?'<span class="badge b-warn">yes (vnstock-derived)</span>':'<span class="badge b-fail">no</span>'}</td></tr>`;
+  html += `</table></div>`;
+  // Signal Input
+  const si = (d.sections && d.sections.signal_input) || {};
+  const sigDisplay = esc(si.display_signal||'-');
+  const sigBadge = sigDisplay==='BUY'?'b-ok':sigDisplay==='SELL'?'b-fail':'b-warn';
+  html += `<div class="card"><h2>Signal Input</h2><table><tr><th>field</th><th>value</th></tr>`;
+  html += `<tr><td>raw_signal</td><td>${esc(si.raw_signal||'-')}</td></tr>`;
+  html += `<tr><td>display_signal</td><td><span class="badge ${sigBadge}">${sigDisplay}</span></td></tr>`;
+  html += `<tr><td>strategy</td><td><code>${esc(si.strategy||'')}</code></td></tr>`;
+  html += `<tr><td>score</td><td class="num">${fmt(si.score)}</td></tr>`;
+  html += `<tr><td>reason_code</td><td><code>${esc(si.reason_code||'')}</code></td></tr>`;
+  html += `</table></div>`;
+  // Final Decision
+  const fd = (d.sections && d.sections.final_decision) || {};
+  const fdBadge = (a) => { if(!a)return"b-neutral";const x=a.toUpperCase();
+    if(x==="BUY_CANDIDATE")return"b-ok";if(x==="HOLD"||x==="NO_POSITION")return"b-warn";
+    if(x==="SELL_OR_EXIT")return"b-fail";if(x==="NO_OFFICIAL_ACTION"||x==="UNANSWERED")return"b-fail";return"b-neutral"; };
+  html += `<div class="card"><h2>Final Decision</h2><table><tr><th>field</th><th>value</th></tr>`;
+  html += `<tr><td>action</td><td><span class="badge ${fdBadge(fd.action)}">${esc(fd.action||'')}</span></td></tr>`;
+  html += `<tr><td>confidence</td><td>${badge(fd.confidence||'')}</td></tr>`;
+  html += `<tr><td>reason</td><td>${esc(fd.reason||'')}</td></tr>`;
+  html += `<tr><td>why different from signal</td><td class="caveat">${esc(fd.why_different_from_signal||'')}</td></tr>`;
+  html += `<tr><td>is_investment_advice</td><td><span class="badge b-warn">${fd.is_investment_advice===false?'no':'yes'}</span></td></tr>`;
+  html += `</table></div>`;
+  // Backtest Summary
+  const bs = (d.sections && d.sections.backtest_summary) || {};
+  html += `<div class="card"><h2>Backtest Summary</h2>`;
+  if(bs.available){
+    html += `<table><tr><th>metric</th><th>value</th></tr>`;
+    html += `<tr><td>total_return_pct</td><td class="num">${fmt(bs.total_return_pct)}</td></tr>`;
+    html += `<tr><td>sharpe_ratio</td><td class="num">${fmt(bs.sharpe_ratio)}</td></tr>`;
+    html += `<tr><td>max_drawdown_pct</td><td class="num">${fmt(bs.max_drawdown_pct)}</td></tr>`;
+    html += `<tr><td>trade_count</td><td class="num">${fmt(bs.trade_count)}</td></tr>`;
+    html += `<tr><td>win_rate</td><td class="num">${fmt(bs.win_rate)}</td></tr>`;
+    html += `<tr><td>data_basis</td><td><code>${esc(bs.data_basis||'')}</code></td></tr>`;
+    html += `<tr><td>adjustment_source</td><td><code>${esc(bs.adjustment_source||'')}</code></td></tr>`;
+    html += `</table>`;
+  } else {
+    html += `<div class="kv">Backtest not available for ${esc(d.symbol||'')}.</div>`;
+  }
+  html += `</div>`;
+  // Cost/Slippage
+  const cs = (d.sections && d.sections.cost_slippage_guard) || {};
+  html += `<div class="card"><h2>Cost / Slippage Guard</h2><table><tr><th>field</th><th>value</th></tr>`;
+  html += `<tr><td>commission_bps</td><td class="num">${fmt(cs.commission_bps||15)}</td></tr>`;
+  html += `<tr><td>slippage_bps</td><td class="num">${fmt(cs.slippage_bps||10)}</td></tr>`;
+  html += `<tr><td>price_band HOSE</td><td class="num">${fmt(cs.price_band_guard_HOSE_HSX||700)} bps</td></tr>`;
+  html += `<tr><td>price_band HNX</td><td class="num">${fmt(cs.price_band_guard_HNX||1000)} bps</td></tr>`;
+  html += `</table></div>`;
+  // Source Verification
+  const sv = (d.sections && d.sections.source_verification) || {};
+  html += `<div class="card"><h2>Source Verification · ${badge(sv.status||'')}</h2><table><tr><th>field</th><th>value</th></tr>`;
+  html += `<tr><td>symbol</td><td>${esc(sv.symbol||'')}</td></tr>`;
+  html += `<tr><td>event_news_items</td><td class="num">${fmt(sv.event_news_items||0)}</td></tr>`;
+  html += `<tr><td>fa_balance_sheet</td><td class="num">${fmt(sv.fa_balance_sheet||0)}</td></tr>`;
+  html += `<tr><td>approved adjusted OHLC</td><td><span class="badge b-fail">blocked</span></td></tr>`;
+  html += `<tr><td>next step</td><td>${esc(sv.next_blocker||'')}</td></tr>`;
+  html += `</table></div>`;
+  // Caveats
+  html += caveatsCard(d.caveats);
+  html += `<div class="kv caveat">⚠ This is research output only, not investment advice. vnstock-derived rows are prototype only, not approved.</div>`;
   html += `</div>`;
   return html;
 }
