@@ -41,6 +41,7 @@ def test_fastapi_app_imports_and_registers_routes():
         "/product/backtest",
         "/product/cost-slippage",
         "/product/source-verification",
+        "/product/decision",
     ):
         assert expected in paths, f"missing route {expected}"
 
@@ -656,3 +657,137 @@ def test_demo_ask_rule_mode_shortcuts_still_work():
     body = r.json()
     assert "signals" in body
     assert "strategy" in body
+
+
+# --- product decision endpoint ---------------------------------------------
+def test_product_decision_vnm_returns_action_and_reason():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/product/decision?symbol=VNM&strategy=ma_cross_v1&source_policy=prototype_allowed")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] in ("ok", "blocked", "partial", "error")
+    assert body["symbol"] == "VNM"
+    assert "decision" in body
+    assert "action" in body["decision"]
+    assert "reason" in body["decision"]
+    assert body["decision"]["is_investment_advice"] is False
+    assert "why_different_from_signal" in body["decision"]
+
+
+def test_product_decision_vnm_includes_inputs_signal_and_backtest():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/product/decision?symbol=VNM&strategy=ma_cross_v1&source_policy=prototype_allowed")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    inputs = body.get("inputs", {})
+    assert "signal" in inputs
+    assert "backtest_summary" in inputs
+    assert "adjusted_gate" in inputs
+    # signal must expose raw + display + reason_code
+    sig = inputs["signal"]
+    assert "raw_signal" in sig
+    assert "display_signal" in sig
+    assert "strategy" in sig
+    # backtest summary must expose key fields
+    bt = inputs["backtest_summary"]
+    for k in ("available", "total_return_pct", "sharpe_ratio",
+              "max_drawdown_pct", "trade_count", "data_basis", "adjustment_source"):
+        assert k in bt, f"backtest_summary missing {k}"
+
+
+def test_product_decision_ctg_returns_no_official_action_or_unanswered():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/product/decision?symbol=CTG&strategy=ma_cross_v1&source_policy=prototype_allowed")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["decision"]["action"] in ("NO_OFFICIAL_ACTION", "UNANSWERED")
+    assert body["decision"]["is_investment_advice"] is False
+
+
+def test_product_decision_includes_caveats_and_why_different():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/product/decision?symbol=VNM&strategy=ma_cross_v1&source_policy=prototype_allowed")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "caveats" in body
+    assert isinstance(body["caveats"], list)
+    assert len(body["caveats"]) > 0
+    assert "why_different_from_signal" in body["decision"]
+    assert body["decision"]["why_different_from_signal"]
+
+
+def test_demo_ask_vnm_decision_routes_to_decision():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.post("/api/demo/ask", json={"message": "VNM nên làm gì?", "mode": "rule"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "decision" in body
+    assert "inputs" in body
+    assert body["symbol"] == "VNM"
+    assert body["decision"]["is_investment_advice"] is False
+
+
+def test_demo_ask_ctg_decision_routes_to_decision():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.post("/api/demo/ask", json={"message": "CTG nên làm gì?", "mode": "rule"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "decision" in body
+    assert body["symbol"] == "CTG"
+    assert body["decision"]["action"] in ("NO_OFFICIAL_ACTION", "UNANSWERED")
+    assert body["decision"]["is_investment_advice"] is False
+
+
+def test_demo_menu_includes_symbol_decision():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/api/demo/menu")
+    assert r.status_code == 200
+    body = r.json()
+    labels = {m["label"] for m in body.get("menu", [])}
+    assert "Symbol decision" in labels
+
+
+def test_demo_html_renderer_distinguishes_signal_vs_decision():
+    """The decision renderer text must include both 'Signal Input' and 'Final Decision'."""
+    from pathlib import Path
+
+    html = Path("src/trading_agent/api/demo_console.html").read_text(encoding="utf-8")
+    assert "Signal Input" in html
+    assert "Final Decision" in html
+    assert "why_different_from_signal" in html
+    assert "is_investment_advice" in html

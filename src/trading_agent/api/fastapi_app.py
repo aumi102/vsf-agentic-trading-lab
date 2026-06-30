@@ -66,6 +66,8 @@ MENU = [
      "description": "commission, slippage, price-band guard."},
     {"id": "source_verification", "label": "Corporate events source check", "group": "Source Verification", "method": "GET", "path": "/product/source-verification",
      "description": "adjusted OHLC source/corporate action status."},
+    {"id": "decision", "label": "Symbol decision", "group": "Trading Core", "method": "GET", "path": "/product/decision?symbol=VNM&strategy=ma_cross_v1&source_policy=prototype_allowed",
+     "description": "final research decision for one ticker"},
 ]
 
 
@@ -292,6 +294,25 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
             return _json(400, {"status": "error", "caveats": ["message (or query) is required"]})
         # Check for simple query shortcuts (rule mode, no LLM needed)
         symbols_from_msg = [s.strip().upper() for s in ("FPT", "VNM") if s.lower() in message]
+        # Decision shortcuts: "nên làm gì", "decision", "analyze", "phân tích",
+        # "đánh giá", "recommend", "khuyến nghị" + supported symbol.
+        decision_triggers = (
+            "nên làm gì", "decision", "analyze", "phân tích",
+            "đánh giá", "recommend", "khuyến nghị",
+        )
+        decision_symbols = ("FPT", "VNM", "CTG", "HPG", "VCB", "VHM")
+        decision_sym = None
+        for ds in decision_symbols:
+            if ds.lower() in message:
+                decision_sym = ds
+                break
+        if decision_sym and any(trig in message for trig in decision_triggers):
+            return _json(200, await product_decision(
+                symbol=decision_sym,
+                strategy="ma_cross_v1",
+                source_policy="prototype_allowed",
+                include_backtest=True,
+            ))
         if "signal" in message and symbols_from_msg:
             return _json(200, await product_signals(
                 _fake_request(f"symbols={','.join(symbols_from_msg)}&strategy=ma_cross_v1&source_policy=prototype_allowed")))
@@ -838,6 +859,317 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
                 "execution_price", "raw_base_price", "gross_value", "net_value",
                 "commission", "slippage_value_estimate",
             ],
+        }
+
+    @app.get("/product/decision")
+    async def product_decision(
+        symbol: str = "FPT",
+        strategy: str = "ma_cross_v1",
+        source_policy: str = "prototype_allowed",
+        include_backtest: bool = True,
+    ) -> dict:
+        """Concise multi-tool product decision for one ticker.
+
+        Orchestrates signals + adjusted-gate + (optional) backtest and returns a
+        final research decision that is clearly distinct from a raw signal.
+        """
+        sym = (symbol or "FPT").strip().upper()
+        strategy = (strategy or "ma_cross_v1").strip()
+        source_policy = (source_policy or "prototype_allowed").strip()
+        caveats: list[str] = []
+
+        # -----------------------------------------------------------------
+        # 1. Adjusted gate / source policy check
+        # -----------------------------------------------------------------
+        approved = False
+        prototype = False
+        gate_status = "unknown"
+        try:
+            gate = G.adjusted_ohlc_gate(url)
+            gate_status = (gate.status or "unknown").lower()
+        except Exception:
+            gate_status = "error"
+
+        # Pre-fetch prototype row evidence for the requested symbol
+        proto_evidence: dict[str, Any] = {}
+        try:
+            proto_res = market.query_questdb(
+                "SELECT count() as cnt, min(trade_date) as dmin, max(trade_date) as dmax "
+                f"FROM adjusted_daily_prices WHERE symbol = '{sym}'",
+                url=url,
+            )
+            if proto_res.get("status") == "ok" and proto_res.get("rows"):
+                row = proto_res["rows"][0]
+                if isinstance(row, dict):
+                    proto_evidence = {
+                        "rows": row.get("cnt", 0),
+                        "date_min": str(row.get("dmin", "")),
+                        "date_max": str(row.get("dmax", "")),
+                    }
+                else:
+                    proto_evidence = {
+                        "rows": row[0] if len(row) > 0 else 0,
+                        "date_min": str(row[1]) if len(row) > 1 else "",
+                        "date_max": str(row[2]) if len(row) > 2 else "",
+                    }
+        except Exception:
+            pass
+
+        prototype = bool(proto_evidence and proto_evidence.get("rows", 0) > 0)
+        # Approved source: none in this environment (daily_prices adjusted cols are raw-equivalent)
+        approved_count = 0
+        source_status_label = "vnstock:company_events:FPT" if prototype else ""
+
+        if source_policy == "prototype_allowed":
+            if source_status_label:
+                pass  # filled below per symbol
+            source_status_label = f"vnstock:company_events:{sym}" if prototype else ""
+
+        # Default response status: blocked if approved_only and no approved source
+        status = "ok"
+        decision_blocked = False
+
+        adjusted_gate_block = {
+            "status": gate_status,
+            "source_status": "approved adjusted OHLC source missing",
+            "approved": approved,
+            "prototype": prototype,
+            "approved_count": approved_count,
+            "prototype_rows": proto_evidence.get("rows", 0),
+            "data_basis": "adjusted_daily_prices" if prototype else "none",
+            "source_policy": source_policy,
+        }
+
+        if source_policy == "approved_only" and approved_count == 0:
+            status = "blocked"
+            decision_blocked = True
+            caveats.append("approved adjusted OHLC source missing")
+            caveats.append("approved_only remains blocked until approved corporate action/vendor adjusted source exists")
+
+        if not prototype and sym not in ("FPT", "VNM"):
+            # Symbol has no prototype adjusted rows -> cannot compute decision
+            status = "blocked"
+            decision_blocked = True
+            caveats.append("symbol has no approved/prototype adjusted OHLC source")
+            caveats.append("adjusted/corporate action source missing for this symbol")
+
+        # -----------------------------------------------------------------
+        # 2. Latest signal (always attempt)
+        # -----------------------------------------------------------------
+        signal_input: dict[str, Any] = {
+            "raw_signal": None,
+            "display_signal": None,
+            "score": None,
+            "reason_code": None,
+            "strategy": strategy,
+            "position_state": None,
+        }
+        signal_status = "unavailable"
+        try:
+            sid = "ma20_ma50_v1" if strategy == "ma_cross_v1" else "ma20_ma50_v1"
+            res = fst.get_latest_signal(sym, strategy_id=sid, url=url)
+            if res.get("status") == "ok" and res.get("rows"):
+                row = res["rows"][0]
+                if isinstance(row, dict):
+                    raw = row.get("signal", "HOLD")
+                    score = row.get("score")
+                    reason = row.get("reason_code", "")
+                else:
+                    raw = row[4] if len(row) > 4 else "HOLD"
+                    score = row[5] if len(row) > 5 else None
+                raw_signal = raw if raw in ("BUY", "SELL", "HOLD", "CASH") else "HOLD"
+                display_signal = raw_signal if raw_signal in ("BUY", "SELL", "HOLD") else "HOLD"
+                position_state = (
+                    "NO_POSITION" if raw_signal == "CASH"
+                    else "HOLDING" if raw_signal == "BUY"
+                    else "FLAT" if raw_signal == "SELL"
+                    else "FLAT"
+                )
+                signal_input = {
+                    "raw_signal": raw_signal,
+                    "display_signal": display_signal,
+                    "score": score,
+                    "reason_code": reason if isinstance(reason, str) else (reason or ""),
+                    "strategy": strategy,
+                    "position_state": position_state,
+                }
+                signal_status = "ok"
+            else:
+                signal_status = "unavailable"
+                caveats.append("signal unavailable or insufficient data")
+        except Exception as exc:
+            signal_status = "error"
+            caveats.append(f"signal lookup failed: {str(exc)[:100]}")
+
+        # -----------------------------------------------------------------
+        # 3. Backtest summary (only when allowed + data present)
+        # -----------------------------------------------------------------
+        backtest_summary: dict[str, Any] = {
+            "available": False,
+            "total_return_pct": None,
+            "sharpe_ratio": None,
+            "max_drawdown_pct": None,
+            "trade_count": None,
+            "data_basis": "adjusted_daily_prices",
+            "adjustment_source": f"vnstock:company_events:{sym}" if prototype else "",
+        }
+        run_backtest = (
+            include_backtest
+            and source_policy == "prototype_allowed"
+            and prototype
+        )
+        if run_backtest:
+            try:
+                bars, data_caveats = se.load_bars_from_questdb(
+                    sym, "2021-01-01", "2025-12-31", adjusted=True, url=url
+                )
+                if bars:
+                    sid_bt = "ma20_ma50" if strategy == "ma_cross_v1" else "ma20_ma50"
+                    exchange = se.fetch_exchange(sym, url=url)
+                    out = se.run_simple_backtest(
+                        bars, symbol=sym, strategy=sid_bt,
+                        slippage_bps=10, exchange=exchange,
+                    )
+                    sm = out.metrics or {}
+                    backtest_summary = {
+                        "available": True,
+                        "total_return_pct": sm.get("total_return_pct"),
+                        "sharpe_ratio": sm.get("sharpe_ratio"),
+                        "max_drawdown_pct": sm.get("max_drawdown_pct"),
+                        "trade_count": sm.get("trade_count") or sm.get("closed_trades"),
+                        "data_basis": "adjusted_daily_prices",
+                        "adjustment_source": f"vnstock:company_events:{sym}",
+                        "date_range": (
+                            f"{bars[0].date if bars else ''} to {bars[-1].date if bars else ''}"
+                        ),
+                    }
+                    caveats.extend(data_caveats)
+                else:
+                    caveats.append("backtest skipped: no adjusted_daily_prices bars")
+            except Exception as exc:
+                caveats.append(f"backtest failed: {str(exc)[:100]}")
+        else:
+            if include_backtest and source_policy == "prototype_allowed":
+                caveats.append("backtest skipped: symbol has no prototype adjusted rows")
+
+        # -----------------------------------------------------------------
+        # 4. Decision rules
+        # -----------------------------------------------------------------
+        raw_signal = signal_input.get("raw_signal")
+        display_signal = signal_input.get("display_signal")
+
+        action = "UNANSWERED"
+        confidence = "low"
+        decision_reason = ""
+        why_different = ""
+
+        if decision_blocked:
+            if sym not in ("FPT", "VNM"):
+                action = "NO_OFFICIAL_ACTION"
+                decision_reason = "adjusted/corporate action source missing"
+                why_different = (
+                    "decision blocked: this symbol has no prototype adjusted OHLC source "
+                    "(only FPT/VNM currently have prototype rows). Raw signal would be misleading without adjusted data."
+                )
+            else:
+                action = "NO_OFFICIAL_ACTION"
+                decision_reason = "approved adjusted OHLC source missing"
+                why_different = (
+                    "approved_only policy blocks official action. prototype rows exist "
+                    "but were explicitly excluded by source_policy."
+                )
+        elif signal_status != "ok":
+            action = "UNANSWERED"
+            decision_reason = "signal unavailable or insufficient data"
+            why_different = "decision cannot be made: signal layer did not produce a current value."
+        elif raw_signal == "CASH":
+            # Strategy is out of the market
+            action = "NO_POSITION"
+            confidence = "medium" if prototype else "low"
+            decision_reason = "strategy is in CASH/no-position state (no current buy/sell signal)"
+            why_different = (
+                "raw_signal=CASH is mapped to display_signal=HOLD by signal layer; "
+                "decision layer recognises this as NO_POSITION, not as an active HOLD call."
+            )
+        elif raw_signal == "BUY":
+            action = "BUY_CANDIDATE"
+            # Confidence: medium only if no blocking data caveat AND prototype data present
+            if prototype and not decision_blocked:
+                confidence = "medium"
+            else:
+                confidence = "low"
+            decision_reason = (
+                f"ma_cross_v1 issued BUY on {sym}; no blocking data caveats; "
+                f"prototype adjusted data available"
+                if prototype
+                else f"ma_cross_v1 issued BUY on {sym}; data caveat present"
+            )
+            why_different = (
+                "signal=raw BUY is one input; decision=BUY_CANDIDATE adds adjusted-source, "
+                "backtest, and not-investment-advice guardrails before any action is taken."
+            )
+            caveats.append("this is a candidate view, not investment advice")
+        elif raw_signal == "SELL":
+            action = "SELL_OR_EXIT"
+            confidence = "medium" if prototype else "low"
+            decision_reason = "ma_cross_v1 issued SELL; treat as exit candidate"
+            why_different = (
+                "signal=raw SELL is one input; decision=SELL_OR_EXIT emphasises exit/risk action "
+                "and adds the same source/backtest/advice guardrails."
+            )
+            caveats.append("this is a candidate view, not investment advice")
+        elif display_signal == "HOLD":
+            action = "HOLD"
+            confidence = "medium" if prototype else "low"
+            decision_reason = "no active buy/sell/cash signal from ma_cross_v1"
+            why_different = (
+                "display_signal=HOLD can come from CASH or from flat position; "
+                "decision=HOLD is the explicit research view when no active crossover."
+            )
+        else:
+            action = "UNANSWERED"
+            decision_reason = "signal unavailable or insufficient data"
+            why_different = "decision cannot be made: signal layer produced no actionable raw value."
+
+        # Standard caveats always present for the demo
+        if prototype:
+            caveats.append("vnstock-derived adjusted rows are prototype only, not approved")
+        if source_policy == "prototype_allowed":
+            caveats.append("source_policy=prototype_allowed; not investment advice")
+        if status == "ok" and not decision_blocked:
+            caveats.append("uses adjusted_daily_prices only, no raw daily_prices fallback")
+
+        # Market summary: lightweight latest OHLCV if available
+        market_summary: dict[str, Any] = {}
+        try:
+            summary = legacy._handle_derived_latest(url, sym, "summary")
+            payload = summary[1] if isinstance(summary, tuple) else summary
+            if isinstance(payload, dict):
+                rows = payload.get("rows") or payload.get("data", {}).get("rows")
+                if isinstance(rows, list) and rows:
+                    market_summary = {"latest_bar": rows[0]}
+        except Exception:
+            pass
+
+        return {
+            "status": status,
+            "symbol": sym,
+            "strategy": strategy,
+            "source_policy": source_policy,
+            "decision": {
+                "action": action,
+                "confidence": confidence,
+                "reason": decision_reason,
+                "why_different_from_signal": why_different,
+                "is_investment_advice": False,
+            },
+            "inputs": {
+                "signal": signal_input,
+                "adjusted_gate": adjusted_gate_block,
+                "backtest_summary": backtest_summary,
+                "market_summary": market_summary,
+            },
+            "caveats": caveats,
         }
 
     @app.get("/product/source-verification")

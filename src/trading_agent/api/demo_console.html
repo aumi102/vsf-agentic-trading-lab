@@ -141,6 +141,7 @@ function render(id, d){
   if(d.engine==='custom_backtest_v1') return renderProductBacktest(d);
   if(d.commission_bps!==undefined && d.price_band_guard) return renderProductCostSlippage(d);
   if(d.approved_adjusted_OHLC_blocked!==undefined) return renderProductSourceVerification(d);
+  if(d.decision && d.inputs) return renderProductDecision(d);
   if(d.gates) return renderValidation(d);
   if(d.checks) return renderReadiness(d);
   if(d.results && d.recommendation_mode!==undefined) return renderBenchmark(d);
@@ -241,6 +242,77 @@ function renderProductBacktest(d){
   });}
   (d.warnings||[]).forEach(w=>html+=`<div class="caveat">${esc(w)}</div>`);
   html+=`<div class="kv">⚠ prototype only: vnstock-derived adjusted rows, not approved. Not investment advice.</div>`;
+  return html;
+}
+function renderProductDecision(d){
+  // Signal is a strategy input. Decision is the agent's final research conclusion.
+  let html = `<div class="card"><h2>Symbol Decision · ${esc(d.symbol||'')} · ${badge(d.status)}</h2>`;
+  html += `<div class="kv">Signal is a strategy input. Decision is the agent's final research conclusion after checking adjusted source, data quality, backtest/risk caveats.</div>`;
+  html += `<div class="kv">strategy: <code>${esc(d.strategy||'')}</code> · source_policy: <code>${esc(d.source_policy||'')}</code></div>`;
+
+  // Final Decision
+  const dec = d.decision || {};
+  const decBadge = (a) => {
+    if(!a) return "b-neutral";
+    const x = a.toUpperCase();
+    if(x==="BUY_CANDIDATE") return "b-ok";
+    if(x==="HOLD" || x==="NO_POSITION") return "b-warn";
+    if(x==="SELL_OR_EXIT") return "b-fail";
+    if(x==="NO_OFFICIAL_ACTION" || x==="UNANSWERED") return "b-fail";
+    return "b-neutral";
+  };
+  html += `<div class="group-title">Final Decision</div><table><tr><th>field</th><th>value</th></tr>`;
+  html += `<tr><td>action</td><td><span class="badge ${decBadge(dec.action)}">${esc(dec.action||'')}</span></td></tr>`;
+  html += `<tr><td>confidence</td><td>${badge(dec.confidence||'')}</td></tr>`;
+  html += `<tr><td>reason</td><td>${esc(dec.reason||'')}</td></tr>`;
+  html += `<tr><td>why different from signal</td><td class="caveat">${esc(dec.why_different_from_signal||'')}</td></tr>`;
+  html += `<tr><td>is_investment_advice</td><td><span class="badge b-warn">${dec.is_investment_advice===false?'no':'yes'}</span></td></tr>`;
+  html += `</table></div>`;
+
+  // Signal Input
+  const sig = (d.inputs && d.inputs.signal) || {};
+  html += `<div class="card"><h2>Signal Input</h2><table><tr><th>field</th><th>value</th></tr>`;
+  html += `<tr><td>raw_signal</td><td>${esc(sig.raw_signal||'-')}</td></tr>`;
+  html += `<tr><td>display_signal</td><td>${esc(sig.display_signal||'-')}</td></tr>`;
+  html += `<tr><td>strategy</td><td><code>${esc(sig.strategy||'')}</code></td></tr>`;
+  html += `<tr><td>score</td><td class="num">${fmt(sig.score)}</td></tr>`;
+  html += `<tr><td>reason_code</td><td><code>${esc(sig.reason_code||'')}</code></td></tr>`;
+  html += `</table></div>`;
+
+  // Adjusted Source Status
+  const ag = (d.inputs && d.inputs.adjusted_gate) || {};
+  html += `<div class="card"><h2>Adjusted Source Status · ${badge(ag.status||'')}</h2><table><tr><th>field</th><th>value</th></tr>`;
+  html += `<tr><td>approved</td><td>${ag.approved?'<span class="badge b-ok">yes</span>':'<span class="badge b-fail">no</span>'}</td></tr>`;
+  html += `<tr><td>prototype</td><td>${ag.prototype?'<span class="badge b-warn">yes</span>':'<span class="badge b-warn">no</span>'}</td></tr>`;
+  html += `<tr><td>approved_count</td><td class="num">${fmt(ag.approved_count||0)}</td></tr>`;
+  html += `<tr><td>prototype_rows</td><td class="num">${fmt(ag.prototype_rows||0)}</td></tr>`;
+  html += `<tr><td>source_status</td><td>${esc(ag.source_status||'')}</td></tr>`;
+  html += `<tr><td>data_basis</td><td><code>${esc(ag.data_basis||'')}</code></td></tr>`;
+  if(ag.approved===false && d.source_policy==='approved_only'){
+    html += `<tr><td colspan="2" class="caveat">approved_only blocks official action until approved corporate-action/vendor adjusted source exists</td></tr>`;
+  }
+  html += `</table></div>`;
+
+  // Backtest Summary
+  const bt = (d.inputs && d.inputs.backtest_summary) || {};
+  html += `<div class="card"><h2>Backtest Summary</h2><table><tr><th>field</th><th>value</th></tr>`;
+  html += `<tr><td>available</td><td>${bt.available?'<span class="badge b-ok">yes</span>':'<span class="badge b-warn">no</span>'}</td></tr>`;
+  html += `<tr><td>total_return_pct</td><td class="num">${fmt(bt.total_return_pct)}</td></tr>`;
+  html += `<tr><td>sharpe_ratio</td><td class="num">${fmt(bt.sharpe_ratio)}</td></tr>`;
+  html += `<tr><td>max_drawdown_pct</td><td class="num">${fmt(bt.max_drawdown_pct)}</td></tr>`;
+  html += `<tr><td>trade_count</td><td class="num">${fmt(bt.trade_count)}</td></tr>`;
+  html += `<tr><td>data_basis</td><td><code>${esc(bt.data_basis||'')}</code></td></tr>`;
+  html += `<tr><td>adjustment_source</td><td><code>${esc(bt.adjustment_source||'')}</code></td></tr>`;
+  html += `</table></div>`;
+
+  // Caveats
+  html += caveatsCard(d.caveats);
+  html += `<div class="card"><h2>Guardrails</h2>`;
+  if(d.source_policy==='prototype_allowed') html += `<div class="caveat">prototype only: vnstock-derived adjusted rows are prototype only, not approved</div>`;
+  if(d.source_policy==='prototype_allowed') html += `<div class="caveat">vnstock-derived adjusted rows are prototype only, not approved</div>`;
+  if(d.source_policy==='approved_only') html += `<div class="caveat">approved_only remains blocked until approved corporate action/vendor adjusted source exists</div>`;
+  html += `<div class="caveat">This is research output only, not investment advice.</div>`;
+  html += `</div>`;
   return html;
 }
 function renderProductCostSlippage(d){
