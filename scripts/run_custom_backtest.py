@@ -326,7 +326,7 @@ def run_backtest(
 
     for sym in symbols:
         sym_info = sym_status.get(sym, {})
-        if sym_info.get("backtest_gate") == "pass":
+        if sym_info.get("backtest_gate") in ("pass", "partial"):
             bars = _fetch_bars(client, base_url, sym, from_date, to_date)
             if bars is None:
                 block_count += 1

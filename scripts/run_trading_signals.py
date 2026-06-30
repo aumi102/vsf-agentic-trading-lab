@@ -299,7 +299,7 @@ def compute_signals(
 
     for sym in symbols:
         sym_info = sym_status.get(sym, {})
-        if sym_info.get("backtest_gate") == "pass":
+        if sym_info.get("backtest_gate") in ("pass", "partial"):
             bars = _fetch_bars(client, base_url, sym, lookback)
             if bars is None:
                 # Should not happen but guard anyway

@@ -1,5 +1,17 @@
 # Mentor status report
 
+## 2026-06-30 snapshot
+
+| Metric | Value |
+|--------|-------|
+| `approved_count` | 0 |
+| `prototype_count` | 2 (FPT, VNM) |
+| Bucket audit | `BUCKETS_DISJOINT_PASS` |
+| FPT PDF | scanned/image-based (no OCR) |
+| Next blocker | Approved corporate action source or vendor adjusted prices |
+
+Live demo: `python scripts\run_mentor_live_trading_demo.py --from 2021-01-01 --to 2025-12-31 --strategy ma_cross_v1 --commission-bps 15 --slippage-bps 5 --price-band-guard`
+
 ## 2026-06-29 update -- approved source policy enforced
 
 ### Trading-core scripts (source-policy aware)

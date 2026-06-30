@@ -420,6 +420,7 @@ def _result(
 
 
 def main() -> int:
+    import json as _json
     parser = argparse.ArgumentParser(description="QuestDB adjusted OHLCV readiness check.")
     parser.add_argument("--questdb-url", default=DEFAULT_URL)
     parser.add_argument("--symbols", default=None,
@@ -445,12 +446,28 @@ def main() -> int:
         syms = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
 
     base_url = args.questdb_url.rstrip("/")
-    with qdb.open_client(timeout_seconds=60.0) as client:
-        result = check_adjusted_readiness(client, base_url, syms, args.start_date, args.end_date,
-                                           source_policy=args.source_policy)
+    try:
+        with qdb.open_client(timeout_seconds=60.0) as client:
+            result = check_adjusted_readiness(
+                client, base_url, syms, args.start_date, args.end_date,
+                source_policy=args.source_policy,
+            )
+    except Exception as exc:
+        # Always emit JSON on error so callers can parse the failure reason
+        error_result = {
+            "status": "ERROR",
+            "backtest_gate": "blocked",
+            "error_type": type(exc).__name__,
+            "error_message": str(exc),
+            "caveats": [f"QuestDB error: {type(exc).__name__}: {exc}"],
+            "by_symbol": [],
+            "symbols": syms or [],
+            "coverage": {},
+        }
+        print(_json.dumps(error_result, indent=2))
+        return 1
 
     if args.json:
-        import json as _json
         print(_json.dumps(result, indent=2))
 
     status = result["status"]

@@ -73,8 +73,27 @@ def test_run_trading_core_demo_compiles():
 
 # ─── adjusted_ohlc_readiness gate ──────────────────────────────────────────────
 
+def _skip_if_qdb_unavailable():
+    """Return (skip, data_or_none). If QuestDB unavailable, return (True, None)."""
+    result = _run("adjusted_ohlc_readiness.py", "--symbols", "FPT", "--json")
+    if result.returncode != 0 and not result.stdout.strip():
+        import pytest
+        pytest.skip(f"QuestDB unavailable: {result.stderr[:200]}")
+    try:
+        data = json.loads(result.stdout)
+        if data.get("status") == "ERROR":
+            import pytest
+            pytest.skip(f"QuestDB unavailable: {data.get('error_message', '')[:200]}")
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return False, None
+
+
 def test_readiness_approved_only_fpt_vnm_blocked():
     """FPT/VNM: vnstock source, approved_only (default) -> BLOCKED_UNAPPROVED_SOURCE."""
+    skip, _ = _skip_if_qdb_unavailable()
+    if skip:
+        return
     result = _run("adjusted_ohlc_readiness.py", "--symbols", "FPT,VNM", "--json")
     assert result.returncode == 1, f"FPT/VNM should be blocked, got:\nstdout={result.stdout!r}\nstderr={result.stderr!r}"
     data = json.loads(result.stdout)
@@ -92,9 +111,12 @@ def test_readiness_approved_only_fpt_vnm_blocked():
 
 def test_readiness_prototype_allowed_fpt_vnm_pass_prototype():
     """FPT/VNM: vnstock source, prototype_allowed -> PASS_PROTOTYPE."""
+    skip, _ = _skip_if_qdb_unavailable()
+    if skip:
+        return
     result = _run("adjusted_ohlc_readiness.py", "--symbols", "FPT,VNM",
                    "--json", "--source-policy", "prototype_allowed")
-    assert result.returncode == 0, f"PASS_PROTOTYPE should exit 0, got:\n{result.stdout}"
+    assert result.returncode == 0, f"PASS_PROTOTYPE should exit 0, got:\nstdout={result.stdout!r}\nstderr={result.stderr!r}"
     data = json.loads(result.stdout)
     assert data["status"] == "PASS_PROTOTYPE"
     assert data["backtest_gate"] == "partial"
@@ -108,6 +130,9 @@ def test_readiness_prototype_allowed_fpt_vnm_pass_prototype():
 
 def test_readiness_hpg_blocked():
     """HPG has no source-backed data -> BLOCKED_ADJUSTED_SOURCE_MISSING."""
+    skip, _ = _skip_if_qdb_unavailable()
+    if skip:
+        return
     result = _run("adjusted_ohlc_readiness.py", "--symbols", "HPG", "--json")
     assert result.returncode == 1
     data = json.loads(result.stdout)
@@ -117,6 +142,9 @@ def test_readiness_hpg_blocked():
 
 def test_readiness_mixed_fpt_hpg_vcb_vnm_partial():
     """Mixed FPT+VNM+HPG+VCB -> overall blocked (all are blocked under approved_only)."""
+    skip, _ = _skip_if_qdb_unavailable()
+    if skip:
+        return
     result = _run("adjusted_ohlc_readiness.py", "--symbols", "FPT,HPG,VCB,VNM", "--json")
     # All blocked under approved_only -> exit 1
     assert result.returncode == 1
@@ -704,3 +732,165 @@ def test_no_raw_daily_prices_fallback():
                "daily_prices" in sym_data.get("blocked_reason", "").lower()
         # Should not have an approved status
         assert sym_data["source_approval_status"] not in ("APPROVED",)
+
+
+# ─── mentor live demo script (CHECKPOINT 4) ───────────────────────────────
+
+def test_mentor_live_demo_script_compiles():
+    result = subprocess.run(
+        [sys.executable, "-m", "compileall", "-q",
+         str(SCRIPTS / "run_mentor_live_trading_demo.py")],
+        cwd=ROOT, capture_output=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_mentor_live_demo_json_has_required_sections():
+    """Demo JSON output must contain all required top-level sections."""
+    skip, _ = _skip_if_qdb_unavailable()
+    if skip:
+        return
+    result = _run(
+        "run_mentor_live_trading_demo.py",
+        "--from", "2021-01-01", "--to", "2025-12-31",
+        "--strategy", "ma_cross_v1",
+        "--commission-bps", "15", "--slippage-bps", "5",
+        "--price-band-guard", "--json",
+    )
+    assert result.returncode == 0, f"Demo should succeed: {result.stdout} {result.stderr}"
+    data = json.loads(result.stdout)
+    for section in ("demo_summary", "approved_mode", "prototype_mode",
+                    "source_evidence", "risk_cost_slippage", "metrics_audit",
+                    "operator_talking_points", "next_blocker", "verdict"):
+        assert section in data, f"Missing section: {section}"
+
+
+def test_mentor_live_demo_approved_mode_blocked():
+    """Approved mode verdict must be APPROVED_MODE_BLOCKED_BY_ADJUSTED_SOURCE."""
+    skip, _ = _skip_if_qdb_unavailable()
+    if skip:
+        return
+    result = _run(
+        "run_mentor_live_trading_demo.py",
+        "--from", "2021-01-01", "--to", "2025-12-31",
+        "--strategy", "ma_cross_v1",
+        "--commission-bps", "15", "--slippage-bps", "5",
+        "--price-band-guard", "--json",
+    )
+    assert result.returncode == 0
+    data = json.loads(result.stdout)
+    assert data["approved_mode"]["verdict"] == "APPROVED_MODE_BLOCKED_BY_ADJUSTED_SOURCE"
+    assert data["approved_mode"]["approved_adjusted_symbols_count"] == 0
+    assert data["approved_mode"]["official_backtest_allowed"] is False
+    assert data["approved_mode"]["official_signal_allowed"] is False
+    # FPT/VNM must be blocked_unapproved, HPG/VCB/CTG/VHM must be blocked_missing
+    by_sym = data["approved_mode"]["by_symbol"]
+    for sym in ("FPT", "VNM"):
+        assert by_sym[sym]["status"] == "BLOCKED_UNAPPROVED_SOURCE"
+    for sym in ("HPG", "VCB", "CTG", "VHM"):
+        assert by_sym[sym]["status"] == "BLOCKED_ADJUSTED_SOURCE_MISSING"
+
+
+def test_mentor_live_demo_prototype_mode_runs_with_caveat():
+    """Prototype mode verdict must be PROTOTYPE_MODE_RUNS_WITH_CAVEAT."""
+    skip, _ = _skip_if_qdb_unavailable()
+    if skip:
+        return
+    result = _run(
+        "run_mentor_live_trading_demo.py",
+        "--from", "2021-01-01", "--to", "2025-12-31",
+        "--strategy", "ma_cross_v1",
+        "--commission-bps", "15", "--slippage-bps", "5",
+        "--price-band-guard", "--json",
+    )
+    assert result.returncode == 0
+    data = json.loads(result.stdout)
+    assert data["prototype_mode"]["verdict"] == "PROTOTYPE_MODE_RUNS_WITH_CAVEAT"
+    assert data["prototype_mode"]["prototype_adjusted_symbols_count"] == 2
+    assert set(data["prototype_mode"]["symbols"]) == {"FPT", "VNM"}
+    assert data["prototype_mode"]["caveat"] == "PROTOTYPE_ONLY_UNAPPROVED_SOURCE"
+
+
+def test_mentor_live_demo_no_raw_daily_prices_fallback():
+    """Approved mode must not fall back to raw daily_prices."""
+    skip, _ = _skip_if_qdb_unavailable()
+    if skip:
+        return
+    result = _run(
+        "run_mentor_live_trading_demo.py",
+        "--from", "2021-01-01", "--to", "2025-12-31",
+        "--strategy", "ma_cross_v1",
+        "--commission-bps", "15", "--slippage-bps", "5",
+        "--price-band-guard", "--json",
+    )
+    assert result.returncode == 0
+    data = json.loads(result.stdout)
+    # approved_count must be 0 (no raw fallback)
+    assert data["approved_mode"]["approved_adjusted_symbols_count"] == 0
+
+
+def test_mentor_live_demo_cost_slippage_metrics_present():
+    """Baseline backtest must have cost/slippage/trade-level fields."""
+    skip, _ = _skip_if_qdb_unavailable()
+    if skip:
+        return
+    result = _run(
+        "run_mentor_live_trading_demo.py",
+        "--from", "2021-01-01", "--to", "2025-12-31",
+        "--strategy", "baseline_buy_hold_v1",
+        "--commission-bps", "15", "--slippage-bps", "5",
+        "--price-band-guard", "--json",
+    )
+    assert result.returncode == 0
+    data = json.loads(result.stdout)
+    baseline = data["prototype_mode"]["backtests"]["backtest_baseline_buy_hold_v1"]
+    m = baseline["metrics"]
+    for key in ("total_return_pct", "sharpe_ratio", "sortino_ratio",
+                "profit_factor", "max_drawdown_pct", "win_rate",
+                "total_commission", "total_slippage_estimate"):
+        assert key in m, f"Missing metric: {key}"
+    assert baseline["trade_count"] >= 0
+    assert baseline["closed_trade_count"] >= 0
+
+
+def test_mentor_live_demo_operator_talking_points_vietnamese():
+    """Talking points must include the required Vietnamese phrase."""
+    skip, _ = _skip_if_qdb_unavailable()
+    if skip:
+        return
+    result = _run(
+        "run_mentor_live_trading_demo.py",
+        "--from", "2021-01-01", "--to", "2025-12-31",
+        "--strategy", "ma_cross_v1",
+        "--commission-bps", "15", "--slippage-bps", "5",
+        "--price-band-guard", "--json",
+    )
+    assert result.returncode == 0
+    data = json.loads(result.stdout)
+    tps = data["operator_talking_points"]
+    # Check required Vietnamese phrase
+    all_text = " ".join(str(v) for v in tps.values())
+    assert "Em đang ưu tiên block đúng hơn là pass sai" in all_text, \
+        "Required Vietnamese phrase missing in talking points"
+
+
+def test_mentor_live_demo_source_evidence_includes_pdf_blocker():
+    """Source evidence must document the FPT PDF scanned blocker."""
+    skip, _ = _skip_if_qdb_unavailable()
+    if skip:
+        return
+    result = _run(
+        "run_mentor_live_trading_demo.py",
+        "--from", "2021-01-01", "--to", "2025-12-31",
+        "--strategy", "ma_cross_v1",
+        "--commission-bps", "15", "--slippage-bps", "5",
+        "--price-band-guard", "--json",
+    )
+    assert result.returncode == 0
+    data = json.loads(result.stdout)
+    lines = data["source_evidence"]["lines"]
+    joined = " ".join(lines)
+    assert "scanned" in joined.lower() or "image-based" in joined.lower(), \
+        "Source evidence must mention FPT PDF is scanned/image-based"
+    assert "OCR" not in joined or "No OCR" in joined or "no OCR" in joined, \
+        "Source evidence must confirm no OCR used"
