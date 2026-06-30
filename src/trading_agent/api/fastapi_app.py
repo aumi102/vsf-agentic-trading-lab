@@ -66,8 +66,6 @@ MENU = [
      "description": "commission, slippage, price-band guard."},
     {"id": "source_verification", "label": "Corporate events source check", "group": "Source Verification", "method": "GET", "path": "/product/source-verification",
      "description": "adjusted OHLC source/corporate action status."},
-    {"id": "prototype_source", "label": "FPT/VNM prototype source", "group": "Source Verification", "method": "GET", "path": "/product/adjusted-gate",
-     "description": "vnstock rows are prototype only, not approved."},
 ]
 
 
@@ -313,22 +311,65 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
         # Default to rule mode, fall back gracefully on deep
         deep = str(body.get("mode", "rule")).lower() == "deep"
         mode = qr.resolve_mode(body.get("query_mode"))
+        # Check API key presence for deep mode (don't expose value)
+        api_key_set = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("VSF_DEEPAGENTS_API_KEY"))
+        if deep and not api_key_set:
+            return _json(200, {
+                "status": "unavailable",
+                "domain": "deep_agents",
+                "answer_markdown": (
+                    "## Deep mode requires LLM credentials\n\n"
+                    "Deep mode dependencies are installed, but LLM credentials/model config are missing.\n\n"
+                    "Set `OPENAI_API_KEY` (and optionally `VSF_DEEPAGENTS_MODEL`) and restart the backend."
+                ),
+                "caveats": [
+                    "Deep mode requires OPENAI_API_KEY or VSF_DEEPAGENTS_API_KEY",
+                    "Rule mode works without LLM credentials",
+                ],
+                "next_action": {
+                    "priority": 0,
+                    "title": "Configure LLM credentials",
+                    "status": "INFO",
+                    "why": "Deep mode uses LLM orchestration; rule mode uses deterministic product tools.",
+                    "ui_path": "/product/overview",
+                },
+            })
         try:
             payload = await asyncio.to_thread(_envelope_from_query, message, mode=mode, url=url, deep=deep)
             return _json(200, payload)
-        except Exception as exc:
-            # Graceful fallback for deep mode failures
+        except (ImportError, ModuleNotFoundError) as exc:
+            # Deep mode dependencies missing — clean message, no traceback
             if deep:
-                fallback_warnings = [
-                    "DeepAgents mode unavailable in this environment.",
-                    "Falling back to rule mode.",
-                    "For product console, use the sidebar buttons instead.",
-                ]
                 return _json(200, {
                     "status": "unavailable",
                     "domain": "deep_agents",
-                    "answer_markdown": "## DeepAgents Unavailable\n\nDeepAgents mode requires LLM backend which is not available here.\n\n**Use the sidebar buttons for product console actions:**\n- Product overview\n- QuestDB data status\n- Adjusted OHLC gate\n- Strategy signals\n- Backtest engine v1",
-                    "caveats": fallback_warnings,
+                    "answer_markdown": (
+                        "## Deep mode dependencies missing\n\n"
+                        "The DeepAgents extra (deepagents, langchain, langchain-openai) is not installed.\n\n"
+                        "Rebuild with `INSTALL_DEEPAGENTS=true` to enable deep mode."
+                    ),
+                    "caveats": ["Deep mode requires the deepagents extra build flag"],
+                    "next_action": {
+                        "priority": 0,
+                        "title": "Install deepagents extra",
+                        "status": "INFO",
+                        "why": "Deep mode uses deepagents + langchain.",
+                        "ui_path": "/product/overview",
+                    },
+                })
+            raise
+        except Exception as exc:
+            # Graceful fallback for other deep mode failures
+            if deep:
+                return _json(200, {
+                    "status": "unavailable",
+                    "domain": "deep_agents",
+                    "answer_markdown": (
+                        "## Deep mode unavailable\n\n"
+                        f"Deep mode is installed but failed to run: {str(exc)[:200]}\n\n"
+                        "Use rule mode or the sidebar buttons for product console actions."
+                    ),
+                    "caveats": ["Deep mode failed; rule mode is fully functional"],
                     "next_action": {
                         "priority": 0,
                         "title": "Use rule-mode sidebar buttons",

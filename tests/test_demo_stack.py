@@ -616,3 +616,43 @@ def test_demo_html_contains_product_menu_not_mentor_talking_points():
     assert "Mentor readiness" not in labels
     assert "Next recommended actions" not in labels
     assert "Pipeline trace examples" not in labels
+    # duplicate FPT/VNM prototype source removed
+    assert "FPT/VNM prototype source" not in labels
+
+
+def test_demo_ask_deep_mode_no_api_key_returns_clean_message():
+    """Deep mode should not expose traceback when OPENAI_API_KEY is missing."""
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    # Use a query that won't match the rule-mode shortcuts
+    r = client.post("/api/demo/ask", json={"message": "summarize FPT", "mode": "deep"})
+    assert r.status_code == 200
+    body = r.json()
+    # Should not contain raw module-not-found traceback
+    response_text = r.text.lower()
+    assert "no module named" not in response_text
+    assert "pip install" not in response_text
+    assert "traceback" not in response_text
+    assert "importerror" not in response_text
+    assert "modulenotfounderror" not in response_text
+    # Should be a clean unavailable/config message or valid deep response
+    assert body["status"] in ("ok", "unavailable")
+
+
+def test_demo_ask_rule_mode_shortcuts_still_work():
+    """Rule-mode shortcuts bypass deep/rule paths."""
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.post("/api/demo/ask", json={"message": "FPT signal", "mode": "deep"})
+    assert r.status_code == 200
+    body = r.json()
+    assert "signals" in body
+    assert "strategy" in body
