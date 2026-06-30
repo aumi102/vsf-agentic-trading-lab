@@ -73,7 +73,7 @@
     <div class="placeholder">loading menu…</div>
     <div class="ask">
       <div class="group-title">Ask the agent</div>
-      <textarea id="askbox" placeholder="e.g. compare backtest strategies FPT"></textarea>
+      <textarea id="askbox" placeholder="Ask: FPT signal, run FPT backtest, data status"></textarea>
       <div class="row">
         <select id="askmode"><option value="rule">rule</option><option value="deep">deep (LLM)</option></select>
         <button onclick="ask()">Ask</button>
@@ -134,6 +134,13 @@ async function ask(){
 function render(id, d){
   if(d && d.status==='error' && d.error_type) return renderError(d);
   if(d.menu) return "<div class='card'>menu</div>";
+  if(d.usable_now) return renderProductOverview(d);
+  if(d.daily_prices_rows!==undefined) return renderProductDataStatus(d);
+  if(d.adjusted_columns_present!==undefined) return renderProductAdjustedGate(d);
+  if(d.signals!==undefined && !d.trace) return renderProductSignals(d);
+  if(d.engine==='custom_backtest_v1') return renderProductBacktest(d);
+  if(d.commission_bps!==undefined && d.price_band_guard) return renderProductCostSlippage(d);
+  if(d.approved_adjusted_OHLC_blocked!==undefined) return renderProductSourceVerification(d);
   if(d.gates) return renderValidation(d);
   if(d.checks) return renderReadiness(d);
   if(d.results && d.recommendation_mode!==undefined) return renderBenchmark(d);
@@ -142,6 +149,76 @@ function render(id, d){
   if(d.questdb_health) return renderStatus(d);
   if(d.variants) return renderVariants(d);
   return renderEnvelope(d); // market/fa/backtest/slippage/events/ask/simple-engine(+logic)
+}
+function renderProductOverview(d){
+  let html = `<div class="card"><h2>Product Overview · ${badge(d.status)}</h2>`;
+  html += `<div class="group-title">Usable Now</div><ul>`;
+  (d.usable_now||[]).forEach(x=>html+=`<li>${esc(x)}</li>`);
+  html += `</ul><div class="group-title">Not Yet Production</div><ul>`;
+  (d.not_yet_production||[]).forEach(x=>html+=`<li class="caveat">${esc(x)}</li>`);
+  html += `</ul><div class="kv">${esc(d.main_run_mode||'')}</div></div>`;
+  return html;
+}
+function renderProductDataStatus(d){
+  let html = `<div class="card"><h2>QuestDB Data Status · ${badge(d.status)}</h2><table><tr><th>table</th><th>rows</th></tr>`;
+  html += `<tr><td>daily_prices</td><td class="num">${fmt(d.daily_prices_rows||0)}</td></tr>`;
+  html += `<tr><td>adjusted_daily_prices</td><td class="num">${fmt(d.adjusted_daily_prices_rows||0)}</td></tr>`;
+  html += `<tr><td>event_news_items</td><td class="num">${fmt(d.event_news_items_rows||0)}</td></tr>`;
+  (d.fa_ingest_runs||[]).forEach(r=>{html+=`<tr><td>fa_ingest_runs (${r.status})</td><td class="num">${fmt(r.count)}</td></tr>`;});
+  html += `</table></div>`;
+  return html;
+}
+function renderProductAdjustedGate(d){
+  let html = `<div class="card"><h2>Adjusted OHLC Gate · ${badge(d.status)}</h2>`;
+  html += `<div class="group-title">approved_only</div><ul>`;
+  html += `<li>FPT/VNM: ${esc(d.approved_only?.FPT_VNM||'BLOCKED')}</li>`;
+  html += `<li>approved_count: ${d.approved_only?.approved_count||0}</li></ul>`;
+  html += `<div class="group-title">prototype_allowed</div><ul>`;
+  html += `<li>FPT/VNM: ${esc(d.prototype_allowed?.FPT_VNM||'UNKNOWN')}</li></ul>`;
+  html += `<div class="kv caveat">${esc(d.caveat||'')}</div></div>`;
+  return html;
+}
+function renderProductSignals(d){
+  let html = `<div class="card"><h2>Strategy Signals · ${badge(d.status)}</h2>`;
+  html += `<div class="kv">strategy: ${esc(d.strategy||'')} · source: ${esc(d.source_policy||'')}</div>`;
+  if(d.signals?.length){ html += `<table><tr><th>symbol</th><th>signal</th><th>score</th><th>reason</th></tr>`;
+    d.signals.forEach(s=>{const sig=esc(s.signal||'');const c=sig==='BUY'?'b-ok':sig==='SELL'?'b-fail':'b-warn';
+      html+=`<tr><td>${esc(s.symbol)}</td><td><span class="badge ${c}">${sig}</span></td><td class="num">${fmt(s.score)}</td><td>${esc(s.reason||'')}</td></tr>`;});
+    html+=`</table>`;}
+  (d.warnings||[]).forEach(w=>html+=`<div class="caveat">${esc(w)}</div>`);
+  return html;
+}
+function renderProductBacktest(d){
+  let html = `<div class="card"><h2>Backtest Engine v1 · ${badge(d.status)}</h2>`;
+  html += `<div class="kv">engine: ${esc(d.engine||'')} · strategy: ${esc(d.strategy||'')} · source: ${esc(d.source_policy||'')}</div>`;
+  if(d.results?.length){ html+=`<table><tr><th>symbol</th><th>return %</th><th>sharpe</th><th>sortino</th><th>pf</th><th>max dd %</th><th>win %</th><th>trades</th></tr>`;
+    d.results.forEach(r=>{html+=`<tr><td>${esc(r.symbol||r.error||'')}</td>`;
+      if(r.error){html+=`<td colspan="7">${esc(r.error)}</td>`;}else{
+      html+=`<td class="num">${fmt(r.total_return_pct)}</td><td class="num">${fmt(r.sharpe_ratio)}</td><td class="num">${fmt(r.sortino_ratio)}</td><td class="num">${fmt(r.profit_factor)}</td><td class="num">${fmt(r.max_drawdown_pct)}</td><td class="num">${fmt(r.win_rate)}</td><td class="num">${fmt(r.trade_count)}</td>`;}html+=`</tr>`;});
+    html+=`</table>`;}
+  (d.warnings||[]).forEach(w=>html+=`<div class="caveat">${esc(w)}</div>`);
+  return html;
+}
+function renderProductCostSlippage(d){
+  let html = `<div class="card"><h2>Cost & Slippage Guard · ${badge(d.status)}</h2><table><tr><th>param</th><th>value</th></tr>`;
+  html+=`<tr><td>commission_bps</td><td class="num">${d.commission_bps}</td></tr>`;
+  html+=`<tr><td>slippage_bps</td><td class="num">${d.slippage_bps}</td></tr>`;
+  for(const [k,v] of Object.entries(d.price_band_guard||{})){html+=`<tr><td>price band guard ${esc(k)}</td><td class="num">${v} bps</td></tr>`;}
+  html+=`</table>`;
+  html+=`<div class="group-title">Trade-level Fields</div><ul>`;
+  (d.trade_level_fields||[]).forEach(f=>html+=`<li><code>${esc(f)}</code></li>`);
+  html+=`</ul></div>`;
+  return html;
+}
+function renderProductSourceVerification(d){
+  let html = `<div class="card"><h2>Source Verification · ${badge(d.status)}</h2><table><tr><th>table</th><th>FPT rows</th></tr>`;
+  html+=`<tr><td>event_news_items</td><td class="num">${fmt(d.event_news_items_FPT||0)}</td></tr>`;
+  html+=`<tr><td>event_news_raw_payloads</td><td class="num">${fmt(d.event_news_raw_payloads_FPT||0)}</td></tr>`;
+  html+=`<tr><td>fa_balance_sheet</td><td class="num">${fmt(d.fa_balance_sheet_FPT||0)}</td></tr></table>`;
+  html+=`<div class="kv">FPT PDF scanned: ${d.FPT_PDF_scanned?'yes':'no'}</div>`;
+  html+=`<div class="kv">approved adjusted OHLC blocked: ${d.approved_adjusted_OHLC_blocked?'yes':'no'}</div>`;
+  html+=`<div class="kv caveat">next: ${esc(d.next_blocker||'')}</div></div>`;
+  return html;
 }
 function renderLogic(L){
   if(!L) return "";

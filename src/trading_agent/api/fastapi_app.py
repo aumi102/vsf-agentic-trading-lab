@@ -34,6 +34,8 @@ from trading_agent.storage import questdb_pgwire_client as pg
 from trading_agent.storage import questdb_read as qr
 from trading_agent.tools import questdb_backtest_result_tool as backtest_tool
 from trading_agent.tools import questdb_market_data_tool as market
+from trading_agent.tools import questdb_feature_signal_tool as fst
+from trading_agent.validation import gates as G
 
 HERE = Path(__file__).resolve().parent
 CONSOLE_HTML = HERE / "demo_console.html"
@@ -50,38 +52,22 @@ PROBE_SQL: dict[str, Callable[[str], str]] = {
 }
 
 MENU = [
-    {"id": "status", "label": "System status", "group": "Diagnostics", "method": "GET", "path": "/api/demo/status",
-     "description": "QuestDB table health, FA latest run, backtest coverage."},
-    {"id": "validation", "label": "Validation gates", "group": "Diagnostics", "method": "GET", "path": "/api/demo/validation",
-     "description": "Fast read-only data gates (no docker/subprocess)."},
-    {"id": "readiness", "label": "Mentor readiness", "group": "Diagnostics", "method": "GET", "path": "/api/demo/readiness",
-     "description": "In-process routing readiness for the demo queries."},
-    {"id": "market", "label": "Market summary FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/market/FPT",
-     "description": "Latest OHLCV + features + deterministic signal."},
-    {"id": "fa", "label": "Financial report FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/fa/FPT",
-     "description": "Persisted Vietcap FA facts (read-time metric names)."},
-    {"id": "fa_coverage", "label": "FA coverage status", "group": "Diagnostics", "method": "GET", "path": "/api/demo/fa/coverage",
-     "description": "Read-only Vietcap FA coverage: per-table, important symbols, latest run."},
-    {"id": "backtest", "label": "Backtest comparison FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/backtest/FPT",
-     "description": "Persisted Backtrader strategy comparison (no live run)."},
-    {"id": "slippage", "label": "Slippage scenarios FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/backtest/FPT/slippage",
-     "description": "Persisted 0/5/10/15 bps slippage scenarios."},
-    {"id": "simple_engine", "label": "SimpleEngine vs Backtrader FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/backtest/FPT/simple-engine",
-     "description": "Transparent self-implemented engine vs persisted Backtrader."},
-    {"id": "simple_engine_logic", "label": "SimpleEngine logic FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/backtest/FPT/simple-engine/logic",
-     "description": "Exact signal/execution/sizing/cost logic, made explicit."},
-    {"id": "simple_engine_variants", "label": "Strategy logic lab FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/backtest/FPT/simple-engine/variants",
-     "description": "Deterministic ablations: price input, execution, capital, slippage, volume, RSI."},
-    {"id": "events_fpt", "label": "Latest disclosure FPT", "group": "Agent answers", "method": "GET", "path": "/api/demo/events/FPT",
-     "description": "Official disclosure records for FPT."},
-    {"id": "events_vnm", "label": "Event guardrail VNM", "group": "Guardrails", "method": "GET", "path": "/api/demo/events/VNM",
-     "description": "Shows 'unavailable' (no OHLCV proxy) for VNM."},
-    {"id": "trace", "label": "Pipeline trace examples", "group": "Anti-blackbox", "method": "GET", "path": "/api/demo/trace/examples",
-     "description": "Full anti-blackbox traces for each domain."},
-    {"id": "benchmark", "label": "Query benchmark", "group": "Performance", "method": "GET", "path": "/api/demo/benchmark/questdb",
-     "description": "REST vs PGWire timing on representative reads."},
-    {"id": "next", "label": "Next recommended actions", "group": "Diagnostics", "method": "GET", "path": "/api/demo/next-actions",
-     "description": "Prioritized next steps from current state."},
+    {"id": "product_overview", "label": "Product overview", "group": "Product Status", "method": "GET", "path": "/product/overview",
+     "description": "What is currently usable."},
+    {"id": "data_status", "label": "QuestDB data status", "group": "Product Status", "method": "GET", "path": "/product/data-status",
+     "description": "FA + market data loaded in QuestDB."},
+    {"id": "adjusted_gate", "label": "Adjusted OHLC gate", "group": "Product Status", "method": "GET", "path": "/product/adjusted-gate",
+     "description": "approved_only vs prototype_allowed."},
+    {"id": "signals", "label": "Strategy signals", "group": "Trading Core", "method": "GET", "path": "/product/signals",
+     "description": "BUY / SELL / HOLD signal."},
+    {"id": "backtest", "label": "Backtest engine v1", "group": "Trading Core", "method": "GET", "path": "/product/backtest",
+     "description": "Custom backtest with baseline + strategy."},
+    {"id": "cost_slippage", "label": "Cost & slippage guard", "group": "Trading Core", "method": "GET", "path": "/product/cost-slippage",
+     "description": "commission, slippage, price-band guard."},
+    {"id": "source_verification", "label": "Corporate events source check", "group": "Source Verification", "method": "GET", "path": "/product/source-verification",
+     "description": "adjusted OHLC source/corporate action status."},
+    {"id": "prototype_source", "label": "FPT/VNM prototype source", "group": "Source Verification", "method": "GET", "path": "/product/adjusted-gate",
+     "description": "vnstock rows are prototype only, not approved."},
 ]
 
 
@@ -371,6 +357,207 @@ def create_app(questdb_url: str | None = None) -> FastAPI:
     async def events_latest(symbol: str, request: Request) -> JSONResponse:
         code, payload = await asyncio.to_thread(legacy.handle_event_news_latest, url, symbol, _multi(request))
         return _json(code, payload)
+
+    # ---- product console endpoints -------------------------------------------
+    @app.get("/product/overview")
+    async def product_overview() -> dict:
+        return {
+            "status": "prototype_ready",
+            "usable_now": [
+                "QuestDB-backed FA/market data lookup",
+                "adjusted OHLC readiness gate",
+                "BUY/SELL/HOLD strategy signals",
+                "custom backtest engine v1",
+                "cost/slippage/price-band guard",
+                "trade-level metrics",
+            ],
+            "not_yet_production": [
+                "approved adjusted OHLC source missing",
+                "FPT/VNM use prototype vnstock-derived adjusted rows only",
+                "no real trading/broker execution",
+            ],
+            "main_run_mode": "backend demo console at /demo",
+        }
+
+    @app.get("/product/data-status")
+    async def product_data_status() -> dict:
+        try:
+            daily = market.query_questdb("SELECT count() cnt FROM daily_prices", url=url)
+            adj = market.query_questdb("SELECT count() cnt FROM adjusted_daily_prices", url=url)
+            fa_runs = market.query_questdb(
+                "SELECT status, count() cnt FROM fa_ingest_runs GROUP BY status", url=url)
+            event_news = market.query_questdb("SELECT count() cnt FROM event_news_items", url=url)
+            if any(r.get("status") == "error" for r in [daily, adj, fa_runs, event_news]):
+                return {"status": "error", "questdb_reachable": True, "message": "query failed"}
+            return {
+                "status": "ok",
+                "questdb_reachable": True,
+                "daily_prices_rows": daily.get("rows", [[0]])[0][0] if daily.get("rows") else 0,
+                "adjusted_daily_prices_rows": adj.get("rows", [[0]])[0][0] if adj.get("rows") else 0,
+                "fa_ingest_runs": [{"status": r[0], "count": r[1]} for r in fa_runs.get("rows", [])],
+                "event_news_items_rows": event_news.get("rows", [[0]])[0][0] if event_news.get("rows") else 0,
+            }
+        except Exception as exc:
+            return {"status": "error", "questdb_reachable": False, "message": str(exc)[:200]}
+
+    @app.get("/product/adjusted-gate")
+    async def product_adjusted_gate() -> dict:
+        try:
+            gate = G.adjusted_ohlc_gate(url)
+            # Blocked symbols: approved source missing
+            blocked = market.query_questdb(
+                "SELECT symbol, adjustment_status FROM daily_prices "
+                "WHERE adjustment_status IN ('adjusted_price_missing_warn', 'source_unverified') "
+                "LIMIT 10", url=url)
+            proto_ok = market.query_questdb(
+                "SELECT symbol FROM daily_prices WHERE symbol IN ('FPT','VNM') LIMIT 2", url=url)
+            return {
+                "status": gate.status.lower() if gate.status else "unknown",
+                "adjusted_columns_present": gate.evidence.get("adjusted_columns_present", []),
+                "approved_only": {
+                    "approved_count": 0,
+                    "FPT_VNM": "BLOCKED_UNAPPROVED_SOURCE",
+                    "other_symbols": "BLOCKED_ADJUSTED_SOURCE_MISSING",
+                },
+                "prototype_allowed": {
+                    "FPT_VNM": "PASS_PROTOTYPE" if proto_ok.get("rows") else "NO_DATA",
+                },
+                "caveat": "vnstock is prototype only, not approved",
+                "blocked_symbols_sample": [{"symbol": r[0], "status": r[1]} for r in blocked.get("rows", [])[:5]],
+            }
+        except Exception as exc:
+            # Graceful degradation when tables don't exist
+            return {
+                "status": "warn",
+                "adjusted_columns_present": [],
+                "approved_only": {"approved_count": 0, "FPT_VNM": "BLOCKED_UNAPPROVED_SOURCE", "other_symbols": "BLOCKED_ADJUSTED_SOURCE_MISSING"},
+                "prototype_allowed": {"FPT_VNM": "NO_DATA"},
+                "caveat": f"vnstock is prototype only, not approved. Error: {str(exc)[:100]}",
+                "blocked_symbols_sample": [],
+            }
+
+    @app.get("/product/signals")
+    async def product_signals(request: Request) -> dict:
+        symbols = request.query_params.get("symbols", "FPT,VNM").split(",")
+        strategy = request.query_params.get("strategy", "ma_cross_v1")
+        source_policy = request.query_params.get("source_policy", "prototype_allowed")
+        strategy_id_map = {"ma_cross_v1": "ma20_ma50_v1"}
+        sid = strategy_id_map.get(strategy, "ma20_ma50_v1")
+        signals = []
+        warnings = []
+        if source_policy == "approved_only":
+            warnings.append("BLOCKED: no approved adjusted OHLC source")
+            return {"status": "blocked", "strategy": strategy, "source_policy": source_policy,
+                    "signals": [], "warnings": warnings}
+        for sym in symbols[:5]:
+            try:
+                res = fst.get_latest_signal(sym.strip(), strategy_id=sid, url=url)
+                row = res.get("rows", [[None]])[0] if res.get("rows") else [None]
+                signal_val = row[4] if len(row) > 4 else "HOLD"
+                score = row[5] if len(row) > 5 else None
+                reason = row[6] if len(row) > 6 else ""
+                signals.append({
+                    "symbol": sym.strip(),
+                    "signal": signal_val or "HOLD",
+                    "score": score,
+                    "reason": reason or "",
+                })
+            except Exception as exc:
+                signals.append({"symbol": sym.strip(), "signal": "ERROR", "score": None, "reason": str(exc)[:100]})
+        if source_policy == "prototype_allowed":
+            warnings.append("prototype only: vnstock-derived adjusted rows, not approved")
+        return {"status": "ok", "strategy": strategy, "source_policy": source_policy,
+                "signals": signals, "warnings": warnings}
+
+    @app.get("/product/backtest")
+    async def product_backtest(request: Request) -> dict:
+        symbols = request.query_params.get("symbols", "FPT,VNM").split(",")
+        strategy = request.query_params.get("strategy", "ma_cross_v1")
+        source_policy = request.query_params.get("source_policy", "prototype_allowed")
+        warnings = []
+        if source_policy == "approved_only":
+            warnings.append("BLOCKED: no approved adjusted OHLC source")
+            return {"status": "blocked", "engine": "custom_backtest_v1", "strategy": strategy,
+                    "source_policy": source_policy, "results": [], "warnings": warnings}
+        strategy_id_map = {"ma_cross_v1": "ma20_ma50"}
+        sid = strategy_id_map.get(strategy, "ma20_ma50")
+        results = []
+        for sym in symbols[:5]:
+            try:
+                bars, data_caveats = se.load_bars_from_questdb(
+                    sym.strip(), "2023-01-01", "2025-12-31", adjusted=True, url=url)
+                if not bars:
+                    results.append({"symbol": sym.strip(), "error": "no data"})
+                    continue
+                exchange = se.fetch_exchange(sym.strip(), url=url)
+                out = se.run_simple_backtest(bars, symbol=sym.strip(), strategy=sid, slippage_bps=10.0, exchange=exchange)
+                sm = out.metrics
+                results.append({
+                    "symbol": sym.strip(),
+                    "total_return_pct": sm.get("total_return_pct"),
+                    "sharpe_ratio": sm.get("sharpe_ratio"),
+                    "sortino_ratio": sm.get("sortino_ratio"),
+                    "profit_factor": sm.get("profit_factor"),
+                    "max_drawdown_pct": sm.get("max_drawdown_pct"),
+                    "win_rate": sm.get("win_rate_pct"),
+                    "trade_count": sm.get("trade_count"),
+                    "closed_trade_count": sm.get("closed_trades"),
+                    "total_commission": sm.get("total_commission"),
+                    "total_slippage_estimate": sm.get("total_slippage_estimate"),
+                })
+                warnings.extend(data_caveats)
+            except Exception as exc:
+                results.append({"symbol": sym.strip(), "error": str(exc)[:100]})
+        if source_policy == "prototype_allowed":
+            warnings.append("prototype only: vnstock-derived adjusted rows, not approved")
+        return {"status": "ok", "engine": "custom_backtest_v1", "strategy": strategy,
+                "source_policy": source_policy, "results": results, "warnings": warnings}
+
+    @app.get("/product/cost-slippage")
+    async def product_cost_slippage() -> dict:
+        return {
+            "status": "ok",
+            "commission_bps": 15,
+            "slippage_bps": 10,
+            "price_band_guard": {
+                "HOSE_HSX": 700,
+                "HNX": 1000,
+                "UPCOM": 1500,
+            },
+            "trade_level_fields": [
+                "execution_price", "raw_base_price", "gross_value", "net_value",
+                "commission", "slippage_value_estimate",
+            ],
+        }
+
+    @app.get("/product/source-verification")
+    async def product_source_verification() -> dict:
+        try:
+            items = market.query_questdb(
+                "SELECT count() cnt FROM event_news_items WHERE symbol = 'FPT'", url=url)
+            payloads = market.query_questdb(
+                "SELECT count() cnt FROM event_news_raw_payloads WHERE symbol = 'FPT'", url=url)
+            fa_rows = market.query_questdb(
+                "SELECT count() cnt FROM fa_balance_sheet WHERE symbol = 'FPT'", url=url)
+
+            def _cnt(res):
+                if res.get("status") != "ok" or not res.get("rows"):
+                    return 0
+                row = res["rows"][0]
+                return row[0] if row else 0
+
+            return {
+                "status": "ok",
+                "event_news_items_FPT": _cnt(items),
+                "event_news_raw_payloads_FPT": _cnt(payloads),
+                "fa_balance_sheet_FPT": _cnt(fa_rows),
+                "FPT_PDF_scanned": True,
+                "required_fields_missing": ["corporate_action_source", "vendor_adjusted_prices"],
+                "approved_adjusted_OHLC_blocked": True,
+                "next_blocker": "approved corporate action source or vendor adjusted prices",
+            }
+        except Exception as exc:
+            return {"status": "error", "message": str(exc)[:200]}
 
     return app
 

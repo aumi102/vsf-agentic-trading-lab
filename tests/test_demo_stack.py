@@ -34,6 +34,13 @@ def test_fastapi_app_imports_and_registers_routes():
         "/api/demo/ask",
         "/v1/chat/completions",
         "/market/summary/{symbol}",
+        "/product/overview",
+        "/product/data-status",
+        "/product/adjusted-gate",
+        "/product/signals",
+        "/product/backtest",
+        "/product/cost-slippage",
+        "/product/source-verification",
     ):
         assert expected in paths, f"missing route {expected}"
 
@@ -442,3 +449,156 @@ def test_pgwire_ping_live_or_skip():
         pytest.skip("QuestDB PGWire not reachable in this environment")
     assert res["query_mode"] == "pgwire"
     assert math.isfinite(res["timing"]["total_ms"])
+
+
+# --- product console endpoints (smoke tests) ----------------------------------
+def test_product_overview_returns_usable_now():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/product/overview")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "prototype_ready"
+    assert "usable_now" in body
+    assert len(body["usable_now"]) > 0
+    assert "not_yet_production" in body
+    assert "QuestDB-backed FA/market data lookup" in body["usable_now"]
+
+
+def test_product_data_status_returns_counts():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/product/data-status")
+    assert r.status_code == 200
+    body = r.json()
+    # graceful degradation when QuestDB unreachable
+    assert set(body.keys()) >= {"status", "questdb_reachable"}
+    if body["status"] == "ok":
+        assert "daily_prices_rows" in body
+        assert "adjusted_daily_prices_rows" in body
+        # no giant symbol list
+        assert "symbols" not in body or isinstance(body.get("symbols"), list)
+
+
+def test_product_adjusted_gate_returns_approved_and_prototype():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/product/adjusted-gate")
+    assert r.status_code == 200
+    body = r.json()
+    # graceful degradation when QuestDB unreachable
+    assert set(body.keys()) >= {"status", "approved_only", "prototype_allowed", "caveat"}
+    assert body["approved_only"]["approved_count"] == 0
+
+
+def test_product_signals_returns_concise_shape():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/product/signals?symbols=FPT,VNM&strategy=ma_cross_v1&source_policy=prototype_allowed")
+    assert r.status_code == 200
+    body = r.json()
+    assert "signals" in body
+    assert "strategy" in body
+    assert "source_policy" in body
+    assert body["strategy"] == "ma_cross_v1"
+    # concise: at most 5 symbols
+    assert len(body["signals"]) <= 5
+    for s in body["signals"]:
+        assert "symbol" in s
+        assert "signal" in s
+
+
+def test_product_backtest_returns_custom_engine_shape():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/product/backtest?symbols=FPT&strategy=ma_cross_v1&source_policy=prototype_allowed")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["engine"] == "custom_backtest_v1"
+    assert "results" in body
+    assert "warnings" in body
+
+
+def test_product_cost_slippage_returns_price_band_guard():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/product/cost-slippage")
+    assert r.status_code == 200
+    body = r.json()
+    assert "commission_bps" in body
+    assert "slippage_bps" in body
+    assert "price_band_guard" in body
+    assert "trade_level_fields" in body
+    # price band guard must exist
+    assert len(body["price_band_guard"]) > 0
+
+
+def test_product_source_verification_returns_blocker():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+    r = client.get("/product/source-verification")
+    assert r.status_code == 200
+    body = r.json()
+    # graceful degradation when QuestDB unreachable
+    assert "status" in body
+    if body["status"] == "ok":
+        assert body["approved_adjusted_OHLC_blocked"] is True
+        assert "next_blocker" in body
+    elif body["status"] == "error":
+        # gracefully returns error with message, not crash
+        assert "message" in body
+
+
+def test_demo_html_contains_product_menu_not_mentor_talking_points():
+    from fastapi.testclient import TestClient
+
+    from trading_agent.api import fastapi_app
+
+    app = fastapi_app.create_app(questdb_url="http://127.0.0.1:9000")
+    client = TestClient(app)
+
+    # Menu is loaded dynamically via /api/demo/menu - check that API
+    r = client.get("/api/demo/menu")
+    assert r.status_code == 200
+    body = r.json()
+    labels = {m["label"] for m in body.get("menu", [])}
+
+    # new product items present
+    assert "Product overview" in labels
+    assert "Adjusted OHLC gate" in labels
+    assert "Strategy signals" in labels
+    assert "Backtest engine v1" in labels
+    assert "Cost & slippage guard" in labels
+
+    # old noisy items should NOT be in menu
+    assert "Mentor readiness" not in labels
+    assert "Next recommended actions" not in labels
+    assert "Pipeline trace examples" not in labels
